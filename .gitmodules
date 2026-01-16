@@ -1,0 +1,3 @@
+[submodule "arc89"]
+	path = arc89
+	url = https://github.com/algorandfoundation/arc89.git
