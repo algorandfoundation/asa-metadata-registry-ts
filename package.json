@@ -24,8 +24,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.{ts}\" \"*.json\"",
+    "format:check": "prettier --check \"src/**/*.{ts}\" \"*.json\""
   },
   "repository": {
     "type": "git",
@@ -39,10 +39,12 @@
   "homepage": "https://github.com/algorandfoundation/asa-metadata-registry-ts#readme",
   "devDependencies": {
     "@algorandfoundation/algokit-client-generator": "^6.0.1",
+    "@algorandfoundation/algokit-utils": "^9.2.0",
     "@eslint/js": "^9.18.0",
     "@types/node": "^25.0.9",
     "@typescript-eslint/eslint-plugin": "^8.15.0",
     "@typescript-eslint/parser": "^8.15.0",
+    "algosdk": "^3.5.2",
     "concurrently": "^9.2.0",
     "eslint": "^9.15.0",
     "globals": "^16.4.0",
@@ -51,6 +53,6 @@
   },
   "peerDependencies": {
     "@algorandfoundation/algokit-utils": "^9.0.0",
-    "algosdk": "^3.4.0"
+    "algosdk": "^3.0.0"
   }
 }
