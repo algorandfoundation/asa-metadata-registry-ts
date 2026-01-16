@@ -1,0 +1,56 @@
+{
+  "name": "@algorandfoundation/asa-metadata-registry-sdk",
+  "version": "0.1.0",
+  "description": "ASA Metadata Registry TypeScript SDK",
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js",
+      "types": "./dist/cjs/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist/",
+    "build:cjs": "tsc --project tsconfig.cjs.json",
+    "build:esm": "tsc --project tsconfig.esm.json",
+    "build": "concurrently 'npm run build:cjs' 'npm run build:esm'",
+    "prepublishOnly": "npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/algorandfoundation/asa-metadata-registry-ts.git"
+  },
+  "author": "Algorand Foundation",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/algorandfoundation/asa-metadata-registry-ts/issues"
+  },
+  "homepage": "https://github.com/algorandfoundation/asa-metadata-registry-ts#readme",
+  "devDependencies": {
+    "@algorandfoundation/algokit-client-generator": "^6.0.1",
+    "@eslint/js": "^9.18.0",
+    "@types/node": "^25.0.9",
+    "@typescript-eslint/eslint-plugin": "^8.15.0",
+    "@typescript-eslint/parser": "^8.15.0",
+    "concurrently": "^9.2.0",
+    "eslint": "^9.15.0",
+    "globals": "^16.4.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "@algorandfoundation/algokit-utils": "^9.0.0",
+    "algosdk": "^3.4.0"
+  }
+}
