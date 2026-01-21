@@ -12,7 +12,7 @@ export * from './bitmasks'
 export * from './errors'
 export * from './deployments'
 
-// Phase 3: deterministic codecs/hashing
+// Pure utilities: Codec and Hashing
 export * from './codec'
 export * from './hashing'
 

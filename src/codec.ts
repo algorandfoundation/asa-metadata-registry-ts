@@ -164,10 +164,12 @@ export const b64url_decode = (dataB64Url: string): Uint8Array => b64UrlDecode(da
 /**
  * Represents the ARC-90 compliance fragment '#arc<A>+<B>+...'.
  *
- * Ported behavior notes:
- * - Order is not enforced.
- * - Invalid fragments are ignored (parsed as empty compliance).
- * - ARC-3 special case: ARC-3 must be the sole entry.
+ * Per ARC-90:
+ * - Format: #arc<A>+<B>+<C> where A, B, C are decimal numbers
+ * - First entry has 'arc' prefix, subsequent entries are bare numbers
+ * - No leading zeros allowed
+ * - Special case: ARC-3 must be sole entry (#arc3)
+ * - Order is not enforced (clients MUST accept any order)
  */
 export class Arc90Compliance {
   public readonly arcs: readonly number[]
