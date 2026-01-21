@@ -24,8 +24,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
-    "format": "prettier --write \"src/**/*.{ts}\" \"*.json\"",
-    "format:check": "prettier --check \"src/**/*.{ts}\" \"*.json\""
+    "format": "prettier --write \"src/**/*.ts\" \"*.json\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"*.json\""
   },
   "repository": {
     "type": "git",
