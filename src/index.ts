@@ -1,8 +1,6 @@
 /**
  * ASA Metadata Registry TypeScript SDK
  *
- * Phases 0–2: module layout + leaf constants/errors/deployments.
- *
  * The generated AppClient is re-exported from `./generated`.
  */
 

@@ -42,7 +42,7 @@ export const DEFAULT_DEPLOYMENTS: Readonly<Record<string, RegistryDeployment>> =
   mainnet: {
     network: 'mainnet',
     genesisHashB64: MAINNET_GH_B64,
-    appId: null, // MainNet app id is TBD.
+    appId: null, // mainnet app id is TBD.
     creatorAddress: MAINNET_TRUSTED_DEPLOYER_ADDR,
     arc90UriNetauth: null,
   },
