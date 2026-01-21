@@ -1,4 +1,4 @@
-# Python → TypeScript Port Parity Contract (Phases 0–2)
+# Python → TypeScript Port Parity Contract (Phases 0–3)
 
 This repository is the TypeScript port of the **ASA Metadata Registry Python SDK**.
 
@@ -33,9 +33,6 @@ Mirrors the Python SDK layout (names kept as close as possible):
 - `src/deployments.ts` – known deployments (data-only)
 
 Stubs created in Phase 1 (to be implemented later):
-
-- `src/codec.ts`
-- `src/hashing.ts`
 - `src/validation.ts`
 - `src/models.ts`
 - `src/algod.ts`
@@ -48,12 +45,23 @@ Stubs created in Phase 1 (to be implemented later):
 The following symbols are exported by the Python SDK today. TS will export the
 same conceptual symbols, with async adaptations where needed.
 
-### Implemented in Phases 0–2
+### Implemented in Phases 0–3
 
 - Modules:
   - `constants`, `flags`, `enums`, `bitmasks`
+  - `codec`, `hashing`
 - Values / types:
   - `DEFAULT_DEPLOYMENTS`, `RegistryDeployment`
+
+- Codec:
+  - `assetIdToBoxName`, `boxNameToAssetId`
+  - `b64_encode`, `b64_decode`, `b64url_encode`, `b64url_decode`
+  - `Arc90Uri`, `Arc90Compliance`, `completePartialAssetUrl`
+
+- Hashing:
+  - `sha512_256`, `sha256`
+  - `paginate`
+  - `computeHeaderHash`, `computePageHash`, `computeMetadataHash`, `computeArc3MetadataHash`
 - Errors:
   - `AsaMetadataRegistryError`
   - `MissingAppClientError`
@@ -78,9 +86,7 @@ same conceptual symbols, with async adaptations where needed.
   - `AsaMetadataRegistryRead`, `MetadataSource`, `SimulateOptions`
 - Write:
   - `AsaMetadataRegistryWrite`, `WriteOptions`
-- Codec / hashing / validation helpers:
-  - `Arc90Uri`, `Arc90Compliance`, `completePartialAssetUrl`
-  - `computeHeaderHash`, `computePageHash`, `computeMetadataHash`, `computeArc3MetadataHash`
+- Validation helpers:
   - `encodeMetadataJson`, `decodeMetadataJson`, `isArc3Metadata`, `validateArc3Schema`
 - Models:
   - `RegistryParameters`, `MetadataHeader`, `MetadataBody`, `Pagination`, `PaginatedMetadata`
