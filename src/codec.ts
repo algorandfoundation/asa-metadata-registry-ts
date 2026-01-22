@@ -18,6 +18,9 @@ const toBigInt = (v: bigint | number): bigint => {
   if (!Number.isFinite(v) || !Number.isInteger(v)) {
     throw new TypeError('value must be an integer')
   }
+  if (v < Number.MIN_SAFE_INTEGER || v > Number.MAX_SAFE_INTEGER) {
+    throw new RangeError('number value is not within the safe integer range (use bigint for large values)')
+  }
   return BigInt(v)
 }
 
@@ -61,11 +64,15 @@ const parseQuery = (query: string): Map<string, string[]> => {
     const eq = part.indexOf('=')
     const rawKey = eq >= 0 ? part.slice(0, eq) : part
     const rawVal = eq >= 0 ? part.slice(eq + 1) : ''
-    const key = decodeURIComponent(rawKey.replace(/\+/g, '%20'))
-    const val = decodeURIComponent(rawVal.replace(/\+/g, '%20'))
-    const arr = out.get(key)
-    if (arr) arr.push(val)
-    else out.set(key, [val])
+    try {
+      const key = decodeURIComponent(rawKey.replace(/\+/g, '%20'))
+      const val = decodeURIComponent(rawVal.replace(/\+/g, '%20'))
+      const arr = out.get(key)
+      if (arr) arr.push(val)
+      else out.set(key, [val])
+    } catch (e) {
+      throw new InvalidArc90UriError('Invalid percent-encoding in query string', { cause: e })
+    }
   }
   return out
 }
