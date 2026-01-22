@@ -28,9 +28,6 @@ export type AbiValue = bigint | number | boolean | Uint8Array | readonly number[
 
 const MAX_UINT8 = 0xff
 
-const isPlainObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
-
 const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean => {
   if (a.length !== b.length) return false
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
