@@ -1,4 +1,4 @@
-# Python → TypeScript Port Parity Contract (Phases 0–3)
+# Python → TypeScript Port Parity Contract (Phases 0–4)
 
 This repository is the TypeScript port of the **ASA Metadata Registry Python SDK**.
 
@@ -33,8 +33,6 @@ Mirrors the Python SDK layout (names kept as close as possible):
 - `src/deployments.ts` – known deployments (data-only)
 
 Stubs created in Phase 1 (to be implemented later):
-- `src/validation.ts`
-- `src/models.ts`
 - `src/algod.ts`
 - `src/registry.ts`
 - `src/read/*`
@@ -45,7 +43,7 @@ Stubs created in Phase 1 (to be implemented later):
 The following symbols are exported by the Python SDK today. TS will export the
 same conceptual symbols, with async adaptations where needed.
 
-### Implemented in Phases 0–3
+### Implemented in Phases 0–4
 
 - Modules:
   - `constants`, `flags`, `enums`, `bitmasks`
@@ -62,6 +60,16 @@ same conceptual symbols, with async adaptations where needed.
   - `sha512_256`, `sha256`
   - `paginate`
   - `computeHeaderHash`, `computePageHash`, `computeMetadataHash`, `computeArc3MetadataHash`
+
+- Validation helpers:
+  - `encodeMetadataJson`, `decodeMetadataJson`
+  - `isArc3Metadata`, `validateArc3Schema`
+
+- Models:
+  - `RegistryParameters`, `MetadataHeader`, `MetadataBody`, `Pagination`, `PaginatedMetadata`
+  - `MetadataExistence`, `MbrDelta`, `MbrDeltaSign`
+  - `MetadataFlags`, `ReversibleFlags`, `IrreversibleFlags`
+  - `AssetMetadataBox`, `AssetMetadataRecord`, `AssetMetadata`
 - Errors:
   - `AsaMetadataRegistryError`
   - `MissingAppClientError`
@@ -86,13 +94,7 @@ same conceptual symbols, with async adaptations where needed.
   - `AsaMetadataRegistryRead`, `MetadataSource`, `SimulateOptions`
 - Write:
   - `AsaMetadataRegistryWrite`, `WriteOptions`
-- Validation helpers:
-  - `encodeMetadataJson`, `decodeMetadataJson`, `isArc3Metadata`, `validateArc3Schema`
-- Models:
-  - `RegistryParameters`, `MetadataHeader`, `MetadataBody`, `Pagination`, `PaginatedMetadata`
-  - `MetadataExistence`, `MbrDelta`, `MbrDeltaSign`
-  - `MetadataFlags`, `ReversibleFlags`, `IrreversibleFlags`
-  - `AssetMetadataBox`, `AssetMetadataRecord`, `AssetMetadata`
+
 
 ## Notes
 
