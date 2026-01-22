@@ -8,10 +8,8 @@ import * as constants from './constants'
 import { InvalidArc90UriError } from './errors'
 
 // ---------------------------------------------------------------------------
-// Internal helpers
+// Conversion utilities
 // ---------------------------------------------------------------------------
-
-const MAX_UINT64 = (1n << 64n) - 1n
 
 /**
  * Casts a number or bigint to bigint with safe integer validation.
@@ -44,6 +42,12 @@ export const toNonNegativeBigInt = (v: bigint | number): bigint => {
   if (result < 0n) throw new RangeError('value must be non-negative')
   return result
 }
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+const MAX_UINT64 = (1n << 64n) - 1n
 
 const textDecoder = new TextDecoder()
 
