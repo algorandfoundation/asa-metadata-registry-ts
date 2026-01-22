@@ -21,23 +21,11 @@ const toBigInt = (v: bigint | number): bigint => {
   return BigInt(v)
 }
 
-const concatBytes = (...parts: Uint8Array[]): Uint8Array => {
-  const total = parts.reduce((sum, p) => sum + p.length, 0)
-  const out = new Uint8Array(total)
-  let off = 0
-  for (const p of parts) {
-    out.set(p, off)
-    off += p.length
-  }
-  return out
-}
-
 const textDecoder = new TextDecoder()
 
-const uint16ToBytesBE = (n: number): Uint8Array => {
-  if (!Number.isInteger(n) || n < 0 || n > 0xffff) throw new RangeError('uint16 out of range')
-  return new Uint8Array([(n >> 8) & 0xff, n & 0xff])
-}
+// Pre-decoded ARC-90 URI constants
+const ARC90_SCHEME_STR = textDecoder.decode(constants.ARC90_URI_SCHEME_NAME)
+const ARC90_APP_PATH_STR = textDecoder.decode(constants.ARC90_URI_APP_PATH_NAME)
 
 const uint64ToBytesBE = (n: bigint): Uint8Array => {
   if (n < 0n || n > MAX_UINT64) throw new RangeError('value must fit in uint64')
@@ -60,7 +48,7 @@ const bytesToUint64BE = (b: Uint8Array): bigint => {
 const parseUint64Decimal = (s: string): bigint => {
   if (!/^[0-9]+$/.test(s)) throw new TypeError('value must be a base-10 unsigned integer string')
   const x = BigInt(s)
-  if (x < 0n || x > MAX_UINT64) throw new RangeError('value must fit in uint64')
+  if (x > MAX_UINT64) throw new RangeError('value must fit in uint64')
   return x
 }
 
@@ -192,9 +180,10 @@ export class Arc90Compliance {
     const arcs: number[] = []
 
     for (const p of parts) {
-      if (p.length > 1 && p[0] === '0') return new Arc90Compliance([])
+      if (!p) return new Arc90Compliance([])
+      if (p[0] === '0') return new Arc90Compliance([])
       const n = Number(p)
-      if (!Number.isInteger(n) || n < 0) return new Arc90Compliance([])
+      if (!Number.isSafeInteger(n) || n < 0) return new Arc90Compliance([])
       arcs.push(n)
     }
 
@@ -264,15 +253,15 @@ export class Arc90Uri {
     let path: string
     if (this.netauth) {
       netloc = this.netauth
-      path = `${textDecoder.decode(constants.ARC90_URI_APP_PATH_NAME)}/${this.appId.toString()}`
+      path = `${ARC90_APP_PATH_STR}/${this.appId.toString()}`
     } else {
-      netloc = textDecoder.decode(constants.ARC90_URI_APP_PATH_NAME)
+      netloc = ARC90_APP_PATH_STR
       path = this.appId.toString()
     }
 
     const query = `box=${encodeURIComponent(box)}`
     const fragment = frag.startsWith('#') ? frag : frag ? `#${frag}` : ''
-    return `${textDecoder.decode(constants.ARC90_URI_SCHEME_NAME)}://${netloc}/${path}?${query}${fragment}`
+    return `${ARC90_SCHEME_STR}://${netloc}/${path}?${query}${fragment}`
   }
 
   /** The Algod `/box?name=` query parameter expects standard base64 (with padding). */

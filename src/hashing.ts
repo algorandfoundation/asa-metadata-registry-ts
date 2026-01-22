@@ -54,9 +54,6 @@ const base64DecodeStrict = (s: string): Uint8Array => {
   // - proper padding
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(s)) throw new Error('Could not base64-decode "extra_metadata".')
   if (s.length % 4 !== 0) throw new Error('Could not base64-decode "extra_metadata".')
-  // Reject impossible padding patterns (e.g. '=' in the middle)
-  const firstPad = s.indexOf('=')
-  if (firstPad !== -1 && firstPad < s.length - 2) throw new Error('Could not base64-decode "extra_metadata".')
   return new Uint8Array(Buffer.from(s, 'base64'))
 }
 
@@ -118,7 +115,7 @@ export const computePageHash = (args: {
   if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex > MAX_UINT8) {
     throw new InvalidPageIndexError('page_index must fit in uint8')
   }
-  if (pageContent.length < 0 || pageContent.length > MAX_UINT16) {
+  if (pageContent.length > MAX_UINT16) {
     throw new RangeError('page_content length must fit in uint16')
   }
 
@@ -156,11 +153,11 @@ export const computeMetadataHash = (args: {
   })
 
   const pages = paginate(metadata, pageSize)
-  let data = concatBytes(constants.HASH_DOMAIN_METADATA, hh)
+  const pageHashes: Uint8Array[] = new Array(pages.length)
   for (let i = 0; i < pages.length; i++) {
-    const ph = computePageHash({ assetId, pageIndex: i, pageContent: pages[i] })
-    data = concatBytes(data, ph)
+    pageHashes[i] = computePageHash({ assetId, pageIndex: i, pageContent: pages[i] })
   }
+  const data = concatBytes(constants.HASH_DOMAIN_METADATA, hh, ...pageHashes)
 
   return sha512_256(data)
 }
