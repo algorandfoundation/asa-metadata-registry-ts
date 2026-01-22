@@ -1,4 +1,4 @@
-# Python → TypeScript Port Parity Contract (Phases 0–4)
+# Python → TypeScript Port Parity Contract (Phases 0–5)
 
 This repository is the TypeScript port of the **ASA Metadata Registry Python SDK**.
 
@@ -33,9 +33,9 @@ Mirrors the Python SDK layout (names kept as close as possible):
 - `src/deployments.ts` – known deployments (data-only)
 
 Stubs created in Phase 1 (to be implemented later):
-- `src/algod.ts`
 - `src/registry.ts`
-- `src/read/*`
+- `src/read/avm.ts`
+- `src/read/reader.ts`
 - `src/write/*`
 
 ## Public API parity checklist
@@ -43,7 +43,7 @@ Stubs created in Phase 1 (to be implemented later):
 The following symbols are exported by the Python SDK today. TS will export the
 same conceptual symbols, with async adaptations where needed.
 
-### Implemented in Phases 0–4
+### Implemented in Phases 0–5
 
 - Modules:
   - `constants`, `flags`, `enums`, `bitmasks`
@@ -70,6 +70,10 @@ same conceptual symbols, with async adaptations where needed.
   - `MetadataExistence`, `MbrDelta`, `MbrDeltaSign`
   - `MetadataFlags`, `ReversibleFlags`, `IrreversibleFlags`
   - `AssetMetadataBox`, `AssetMetadataRecord`, `AssetMetadata`
+
+- Box read path (Algod):
+  - `AlgodBoxReader` (read box bytes + resolve ASA url)
+  - `AsaMetadataRegistryBoxRead` (reconstruct ARC-89 getters from box contents)
 - Errors:
   - `AsaMetadataRegistryError`
   - `MissingAppClientError`
@@ -85,6 +89,10 @@ same conceptual symbols, with async adaptations where needed.
   - `MetadataDriftError`
   - `RegistryResolutionError`
   - `MetadataHashMismatchError`
+
+- Box reads (Algod):
+  - `AlgodBoxReader`
+  - `AsaMetadataRegistryBoxRead`
 
 ### Planned (stubs in Phase 1)
 
