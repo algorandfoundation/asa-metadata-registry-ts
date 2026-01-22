@@ -13,7 +13,14 @@ import { InvalidArc90UriError } from './errors'
 
 const MAX_UINT64 = (1n << 64n) - 1n
 
-const toBigInt = (v: bigint | number): bigint => {
+/**
+ * Casts a number or bigint to bigint with safe integer validation.
+ * @param v - The number or bigint to be converted.
+ * @returns The value as a bigint.
+ * @throws {TypeError} If the value is not a finite integer.
+ * @throws {RangeError} If the number is outside the safe integer range.
+ */
+export const toBigInt = (v: bigint | number): bigint => {
   if (typeof v === 'bigint') return v
   if (!Number.isFinite(v) || !Number.isInteger(v)) {
     throw new TypeError('value must be an integer')
@@ -22,6 +29,20 @@ const toBigInt = (v: bigint | number): bigint => {
     throw new RangeError('number value is not within the safe integer range (use bigint for large values)')
   }
   return BigInt(v)
+}
+
+/**
+ * Same as {@link toBigInt} but validates that the value is non-negative (>= 0).
+ * Does not check the uint64 upper bound (2^64-1). Throws if value is negative.
+ * @param v - The number or bigint to be converted.
+ * @returns The non-negative bigint.
+ * @throws {TypeError} If the value is not a finite integer.
+ * @throws {RangeError} If the number is outside the safe integer range or is negative.
+ */
+export const toNonNegativeBigInt = (v: bigint | number): bigint => {
+  const result = toBigInt(v)
+  if (result < 0n) throw new RangeError('value must be non-negative')
+  return result
 }
 
 const textDecoder = new TextDecoder()

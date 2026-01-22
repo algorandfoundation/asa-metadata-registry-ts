@@ -10,6 +10,7 @@ import * as consts from './constants'
 import { BoxParseError, InvalidPageIndexError, MetadataHashMismatchError } from './errors'
 import { computeHeaderHash, computeMetadataHash, computePageHash } from './hashing'
 import { decodeMetadataJson, encodeMetadataJson, validateArc3Schema } from './validation'
+import { toNonNegativeBigInt } from './codec'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -19,6 +20,10 @@ import { decodeMetadataJson, encodeMetadataJson, validateArc3Schema } from './va
  * ABI values returned by Algorand ARC-4 / generated clients.
  *
  * The generated client typically returns `bigint` for uint64 and `Uint8Array` for byte arrays.
+ *
+ * **Warning**: When passing `number` values representing uint64 (asset IDs, app IDs, rounds),
+ * ensure they are within Number.MAX_SAFE_INTEGER (2^53-1). Values outside this range will
+ * throw RangeError. Use `bigint` for large values.
  */
 export type AbiValue = bigint | number | boolean | Uint8Array | readonly number[] | readonly AbiValue[]
 
@@ -35,9 +40,14 @@ const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean => {
 }
 
 const asBigInt = (v: bigint | number, name: string): bigint => {
-  if (typeof v === 'bigint') return v
-  if (!Number.isSafeInteger(v) || v < 0) throw new RangeError(`${name} must be a non-negative safe integer`)
-  return BigInt(v)
+  try {
+    return toNonNegativeBigInt(v)
+  } catch (e) {
+    if (e instanceof Error) {
+      throw new Error(`${name}: ${e.message}`)
+    }
+    throw e
+  }
 }
 
 const asNumber = (v: unknown, name: string): number => {
