@@ -10,14 +10,10 @@
  * `algod.getX(...).do()`.
  */
 
-import type { Algodv2 } from 'algosdk'
-import { Arc90Uri, assetIdToBoxName, b64_decode, completePartialAssetUrl, toBigInt } from './codec'
+import type { Algodv2, modelsv2 } from 'algosdk'
+import { Arc90Uri, assetIdToBoxName, completePartialAssetUrl, toBigInt } from './codec'
 import { AsaNotFoundError, BoxNotFoundError, InvalidArc90UriError } from './errors'
 import { AssetMetadataBox, AssetMetadataRecord, RegistryParameters, getDefaultRegistryParams } from './models'
-
-type Mapping = Record<string, unknown>
-
-const isMapping = (v: unknown): v is Mapping => typeof v === 'object' && v !== null
 
 const asErrorMessage = (e: unknown): string => {
   if (e instanceof Error) return e.message
@@ -52,35 +48,17 @@ export class AlgodBoxReader {
     this.algod = algod
   }
 
-  /** Fetch a raw box value. Throws BoxNotFoundError if the box doesn't exist. */
-  async getBoxValue(args: { appId: bigint | number; boxName: Uint8Array }): Promise<Uint8Array> {
+  /** Fetch a raw box. Throws BoxNotFoundError if the box doesn't exist. */
+  async getBoxValue(args: { appId: bigint | number; boxName: Uint8Array }): Promise<modelsv2.Box> {
     const appId = toBigInt(args.appId)
+    if (!this.algod.getApplicationBoxByName) throw new Error('Algod client does not support getApplicationBoxByName')
 
-    const fn = this.algod.getApplicationBoxByName
-    if (!fn) throw new Error('Algod client does not support getApplicationBoxByName')
-
-    let resp: unknown
     try {
-      resp = await fn.call(this.algod, appId, args.boxName).do()
+      return await this.algod.getApplicationBoxByName(appId, args.boxName).do()
     } catch (e) {
       if (looksNotFound(e)) throw new BoxNotFoundError('Box not found', { cause: e })
       throw e
     }
-
-    // Common response shapes:
-    // - { name: string, value: string }
-    // - { box: { name: string, value: string } }
-    // - (rare) { value: Uint8Array }
-    let value: unknown = undefined
-    if (isMapping(resp)) {
-      if ('value' in resp) value = resp.value
-      else if ('box' in resp && isMapping(resp.box) && 'value' in resp.box) value = resp.box.value
-    }
-
-    if (typeof value === 'string') return b64_decode(value)
-    if (value instanceof Uint8Array) return value
-
-    throw new Error('Unexpected algod response shape for application box read')
   }
 
   /** Return the parsed metadata box, or null if the box doesn't exist. */
@@ -91,7 +69,8 @@ export class AlgodBoxReader {
   }): Promise<AssetMetadataBox | null> {
     let value: Uint8Array
     try {
-      value = await this.getBoxValue({ appId: args.appId, boxName: assetIdToBoxName(args.assetId) })
+      const box = await this.getBoxValue({ appId: args.appId, boxName: assetIdToBoxName(args.assetId) })
+      value = box.value
     } catch (e) {
       if (e instanceof BoxNotFoundError) return null
       throw e
@@ -131,32 +110,22 @@ export class AlgodBoxReader {
   // ASA lookups (optional)
   // ---------------------------------------------------------------------
 
-  async getAssetInfo(assetId: bigint | number): Promise<Mapping> {
+  async getAssetInfo(assetId: bigint | number): Promise<modelsv2.Asset> {
     const id = toBigInt(assetId)
-    const fn = this.algod.getAssetByID
-    if (!fn) throw new Error('Algod client does not support getAssetByID')
+    if (!this.algod.getAssetByID) throw new Error('Algod client does not support getAssetByID')
 
-    let resp: unknown
     try {
-      resp = await fn.call(this.algod, id).do()
+      return await this.algod.getAssetByID(id).do()
     } catch (e) {
       if (looksNotFound(e)) throw new AsaNotFoundError(`ASA ${id} not found`, { cause: e })
       throw e
     }
-
-    if (!isMapping(resp)) throw new Error('Unexpected algod response for asset info')
-    return resp
   }
 
   /** Return the ASA's URL field, or null if no URL is present. */
   async getAssetUrl(assetId: bigint | number): Promise<string | null> {
     const info = await this.getAssetInfo(assetId)
-
-    // Common shapes:
-    // - Python algod: { params: { url: ... } }
-    // - JS algod: { asset: { params: { url: ... } } }
-    const params = isMapping(info.params) ? (info.params as Mapping) : isMapping(info.asset) && isMapping((info.asset as Mapping).params) ? ((info.asset as Mapping).params as Mapping) : null
-    const url = params && 'url' in params ? params.url : null
+    const url = info?.params?.url ?? null
     return url == null ? null : String(url)
   }
 
