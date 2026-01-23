@@ -18,6 +18,8 @@ import {
   Pagination,
   RegistryParameters,
 } from '../models'
+import { toBigInt } from '../codec'
+import { AsaNotFoundError, BoxNotFoundError } from '../errors'
 
 type JsonObject = Record<string, unknown>
 
@@ -33,7 +35,7 @@ export class AsaMetadataRegistryBoxRead {
 
   constructor(args: { algod: AlgodBoxReader; appId: bigint | number; params: RegistryParameters }) {
     this.algod = args.algod
-    this.appId = typeof args.appId === 'bigint' ? args.appId : BigInt(args.appId)
+    this.appId = toBigInt(args.appId)
     this.params = args.params
   }
 
@@ -46,25 +48,25 @@ export class AsaMetadataRegistryBoxRead {
   // ------------------------------------------------------------------
 
   /**
-   * Off-chain, we can check only metadata existence by box lookup; ASA existence requires `asset_info`.
+   * Off-chain, we can check only metadata existence by box lookup; ASA existence requires getAssetInfo.
    */
   async arc89_check_metadata_exists(args: { asset_id: bigint | number }): Promise<readonly [boolean, boolean]> {
     const assetId = args.asset_id
 
-    let metadataExists = false
+    let metadataExists = true
     try {
       await this._box(assetId)
-      metadataExists = true
-    } catch {
-      metadataExists = false
+    } catch (e) {
+      if (e instanceof BoxNotFoundError) metadataExists = false
+      else throw e
     }
 
-    let asaExists = false
+    let asaExists = true
     try {
       await this.algod.getAssetInfo(assetId)
-      asaExists = true
-    } catch {
-      asaExists = false
+    } catch (e) {
+      if (e instanceof AsaNotFoundError) asaExists = false
+      else throw e
     }
 
     return [asaExists, metadataExists]
@@ -92,11 +94,14 @@ export class AsaMetadataRegistryBoxRead {
   }
 
   async arc89_get_metadata(args: { asset_id: bigint | number; page: number }): Promise<PaginatedMetadata> {
+    if (!Number.isInteger(args.page)) {
+      throw new TypeError('page must be an integer')
+    }
     const b = await this._box(args.asset_id)
     const pages = paginate(b.body.rawBytes, this.params.pageSize)
 
     // Keep Python parity: if out of range, return empty content.
-    if (!Number.isInteger(args.page) || args.page < 0 || args.page >= Math.max(1, pages.length)) {
+    if (args.page < 0 || args.page >= Math.max(1, pages.length)) {
       return new PaginatedMetadata({ hasNextPage: false, lastModifiedRound: b.header.lastModifiedRound, pageContent: new Uint8Array() })
     }
 
@@ -107,7 +112,10 @@ export class AsaMetadataRegistryBoxRead {
 
   async arc89_get_metadata_slice(args: { asset_id: bigint | number; offset: number; size: number }): Promise<Uint8Array> {
     const b = await this._box(args.asset_id)
-    if (!Number.isInteger(args.offset) || !Number.isInteger(args.size) || args.offset < 0 || args.size < 0) return new Uint8Array()
+    if (!Number.isInteger(args.offset) || !Number.isInteger(args.size)) {
+      throw new TypeError('offset and size must be integers')
+    }
+    if (args.offset < 0 || args.size < 0) return new Uint8Array()
     return b.body.rawBytes.slice(args.offset, args.offset + args.size)
   }
 
@@ -154,15 +162,12 @@ export class AsaMetadataRegistryBoxRead {
 
   /**
    * Returns a uint64-like value as bigint.
-   *
-   * Python returns `int`, which has arbitrary precision; in TS we use bigint to
-   * avoid 2^53-1 loss.
    */
   async get_uint64_by_key(args: { asset_id: bigint | number; key: string }): Promise<bigint> {
     const obj = await this.get_metadata_json({ asset_id: args.asset_id })
     const v = obj[args.key]
     if (typeof v === 'boolean') return v ? 1n : 0n
-    if (typeof v === 'number' && Number.isInteger(v) && v >= 0) return BigInt(v)
+    if (typeof v === 'number' && Number.isInteger(v) && v >= 0) return toBigInt(v)
     if (typeof v === 'bigint' && v >= 0n) return v
     return 0n
   }
@@ -175,7 +180,7 @@ export class AsaMetadataRegistryBoxRead {
     const obj = await this.get_metadata_json({ asset_id: args.asset_id })
     const v = obj[args.key]
     try {
-      return isPlainObject(v) ? JSON.stringify(v) : ''
+      return isPlainObject(v) ? (JSON.stringify(v) ?? '') : ''
     } catch {
       return ''
     }
