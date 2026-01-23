@@ -1,13 +1,9 @@
 /**
- * Algod helpers (Phase 5).
+ * Algod helpers (ARC-89 box reads).
  *
- * Ported from Python `asa_metadata_registry/algod.py`.
- *
- * The SDK intentionally depends on the *minimal* subset of Algod required to
- * read application boxes and ASA params.
- *
- * The JS Algod client (algosdk.Algodv2) uses a request-builder pattern:
- * `algod.getX(...).do()`.
+ * Ported from `asa_metadata_registry/algod.py`.
+ * Uses the minimal Algod subset for box reads and ASA params.
+ * algosdk.Algodv2 methods follow the request-builder pattern: getX(...).do().
  */
 
 import type { Algodv2, modelsv2 } from 'algosdk'
@@ -29,17 +25,16 @@ const looksNotFound = (e: unknown): boolean => {
   return msg.includes('404') || msg.includes('not found') || msg.includes('does not exist')
 }
 
-/**
- * Minimal shape needed from an Algod client.
- *
- * Tied to algosdk v3 Algodv2 signatures.
- */
 export type AlgodClientSubset = Pick<Algodv2, 'getApplicationBoxByName' | 'getAssetByID'>
 
 /**
  * Read ARC-89 metadata by directly reading the registry application box via Algod.
  *
  * This avoids transactions entirely and is usually the fastest read path.
+ *
+ * Required Algod methods:
+ * - getApplicationBoxByName
+ * - getAssetByID (for URI resolution)
  */
 export class AlgodBoxReader {
   public readonly algod: AlgodClientSubset
@@ -48,7 +43,10 @@ export class AlgodBoxReader {
     this.algod = algod
   }
 
-  /** Fetch a raw box. Throws BoxNotFoundError if the box doesn't exist. */
+  /**
+   * Fetch a box by name.
+   * @throws {BoxNotFoundError} If the box does not exist.
+   */
   async getBoxValue(args: { appId: bigint | number; boxName: Uint8Array }): Promise<modelsv2.Box> {
     const appId = toBigInt(args.appId)
 
@@ -60,7 +58,10 @@ export class AlgodBoxReader {
     }
   }
 
-  /** Return the parsed metadata box, or null if the box doesn't exist. */
+  /**
+   * Return the parsed metadata box, or null if the box doesn't exist.
+   * @throws {BoxNotFoundError} If the box does not exist.
+   */
   async tryGetMetadataBox(args: {
     appId: bigint | number
     assetId: bigint | number
@@ -79,7 +80,10 @@ export class AlgodBoxReader {
     return AssetMetadataBox.parse({ assetId: args.assetId, value, headerSize: p.headerSize, maxMetadataSize: p.maxMetadataSize })
   }
 
-  /** Retrieve the parsed metadata box, throwing if it does not exist. */
+  /**
+   * Return the parsed metadata box, or throw if missing.
+   * @throws {BoxNotFoundError} If the box does not exist.
+   */
   async getMetadataBox(args: {
     appId: bigint | number
     assetId: bigint | number
@@ -90,7 +94,12 @@ export class AlgodBoxReader {
     return box
   }
 
-  /** Retrieve the ARC-89 asset metadata box and return it as an AssetMetadataRecord. */
+  /**
+   * Retrieve the ARC-89 asset metadata box and return it as an AssetMetadataRecord.
+   * @param args - { appId, assetId, params }.
+   * @returns An AssetMetadataRecord containing the parsed header and body of the asset's metadata box.
+   * @throws {BoxNotFoundError} If the box does not exist.
+   */
   async getAssetMetadataRecord(args: {
     appId: bigint | number
     assetId: bigint | number
@@ -109,6 +118,10 @@ export class AlgodBoxReader {
   // ASA lookups (optional)
   // ---------------------------------------------------------------------
 
+  /**
+   * Fetch ASA info from Algod.
+   * @throws {AsaNotFoundError} If the ASA does not exist.
+   */
   async getAssetInfo(assetId: bigint | number): Promise<modelsv2.Asset> {
     const id = toBigInt(assetId)
 
@@ -120,7 +133,12 @@ export class AlgodBoxReader {
     }
   }
 
-  /** Return the ASA's URL field, or null if no URL is present. */
+  /**
+   * Return the ASA's URL as a string, or null if missing.
+   * @param assetId - The ASA ID whose URL field should be retrieved.
+   * @returns The URL string from `info.params.url`, or null if missing.
+   * @throws {AsaNotFoundError} If the ASA does not exist.
+   */
   async getAssetUrl(assetId: bigint | number): Promise<string | null> {
     const info = await this.getAssetInfo(assetId)
     const url = info?.params?.url ?? null
@@ -128,9 +146,10 @@ export class AlgodBoxReader {
   }
 
   /**
-   * Resolve an ARC-89 Asset Metadata URI from the ASA's `url` field.
-   *
-   * Throws InvalidArc90UriError if the URL is not ARC-89-compatible.
+   * Resolve an ARC-89 Asset Metadata URI from the ASA's URL.
+   * @param args - { assetId }.
+   * @returns Parsed ARC-90 URI.
+   * @throws {InvalidArc90UriError} If the ASA has no URL or if the URL is not an ARC-89-compatible ARC-90 partial URI.
    */
   async resolveMetadataUriFromAsset(args: { assetId: bigint | number }): Promise<Arc90Uri> {
     const url = await this.getAssetUrl(args.assetId)
