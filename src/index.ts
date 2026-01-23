@@ -16,9 +16,13 @@ export * from './deployments'
 export * from './codec'
 export * from './hashing'
 
-// Core domain layer
+// Core domain layer: Validation + Models
 export * from './validation'
 export * from './models'
+
+// Box-based reads (Algod)
+export * from './algod'
+export * from './read/box'
 
 // Also expose the modules as namespaces (similar to Python's `import asa_metadata_registry.constants`).
 export * as constants from './constants'
@@ -31,6 +35,9 @@ export * as hashing from './hashing'
 
 export * as validation from './validation'
 export * as models from './models'
+
+export * as algod from './algod'
+export * as boxRead from './read/box'
 
 // Generated ARC-56 client (excluded from translation; wrapped in later phases)
 // IMPORTANT: we only export it as a namespace to avoid name collisions with the SDK's domain models.
