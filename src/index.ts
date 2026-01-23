@@ -1,8 +1,6 @@
 /**
  * ASA Metadata Registry TypeScript SDK
  *
- * Phases 0–2: module layout + leaf constants/errors/deployments.
- *
  * The generated AppClient is re-exported from `./generated`.
  */
 
@@ -14,15 +12,15 @@ export * from './bitmasks'
 export * from './errors'
 export * from './deployments'
 
-// Phase 3: deterministic codecs/hashing
+// Pure utilities: Codec and Hashing
 export * from './codec'
 export * from './hashing'
 
-// Phase 4: validation + models (core domain layer)
+// Core domain layer: Validation + Models
 export * from './validation'
 export * from './models'
 
-// Phase 5: box-based reads (Algod)
+// Box-based reads (Algod)
 export * from './algod'
 export * from './read/box'
 

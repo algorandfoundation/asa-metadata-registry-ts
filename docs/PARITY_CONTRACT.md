@@ -33,6 +33,7 @@ Mirrors the Python SDK layout (names kept as close as possible):
 - `src/deployments.ts` – known deployments (data-only)
 
 Stubs created in Phase 1 (to be implemented later):
+
 - `src/registry.ts`
 - `src/read/avm.ts`
 - `src/read/reader.ts`
@@ -48,6 +49,7 @@ same conceptual symbols, with async adaptations where needed.
 - Modules:
   - `constants`, `flags`, `enums`, `bitmasks`
   - `codec`, `hashing`
+  
 - Values / types:
   - `DEFAULT_DEPLOYMENTS`, `RegistryDeployment`
 
@@ -71,9 +73,6 @@ same conceptual symbols, with async adaptations where needed.
   - `MetadataFlags`, `ReversibleFlags`, `IrreversibleFlags`
   - `AssetMetadataBox`, `AssetMetadataRecord`, `AssetMetadata`
 
-- Box read path (Algod):
-  - `AlgodBoxReader` (read box bytes + resolve ASA url)
-  - `AsaMetadataRegistryBoxRead` (reconstruct ARC-89 getters from box contents)
 - Errors:
   - `AsaMetadataRegistryError`
   - `MissingAppClientError`
