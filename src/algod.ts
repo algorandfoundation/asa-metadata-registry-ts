@@ -51,7 +51,6 @@ export class AlgodBoxReader {
   /** Fetch a raw box. Throws BoxNotFoundError if the box doesn't exist. */
   async getBoxValue(args: { appId: bigint | number; boxName: Uint8Array }): Promise<modelsv2.Box> {
     const appId = toBigInt(args.appId)
-    if (!this.algod.getApplicationBoxByName) throw new Error('Algod client does not support getApplicationBoxByName')
 
     try {
       return await this.algod.getApplicationBoxByName(appId, args.boxName).do()
@@ -112,7 +111,6 @@ export class AlgodBoxReader {
 
   async getAssetInfo(assetId: bigint | number): Promise<modelsv2.Asset> {
     const id = toBigInt(assetId)
-    if (!this.algod.getAssetByID) throw new Error('Algod client does not support getAssetByID')
 
     try {
       return await this.algod.getAssetByID(id).do()
