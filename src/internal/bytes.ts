@@ -8,6 +8,16 @@ export const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean => {
 
 export const coerceBytes = (v: unknown, name: string): Uint8Array => {
   if (v instanceof Uint8Array) return v
+  if (v instanceof ArrayBuffer) return new Uint8Array(v)
+ 
+  const B = (globalThis as any).Buffer
+  if (B && typeof B.isBuffer === 'function' && B.isBuffer(v)) return new Uint8Array(v as ArrayLike<number>)
+ 
+  // TypedArray / DataView
+  if (v && typeof v === 'object' && 'buffer' in (v as any) && (v as any).buffer instanceof ArrayBuffer) {
+    const view = v as any
+    return new Uint8Array(view.buffer, view.byteOffset ?? 0, view.byteLength ?? view.length)
+  }
   if (Array.isArray(v)) {
     // Best-effort: if this isn't a sequence of byte values, we'll error.
     const out = new Uint8Array(v.length)

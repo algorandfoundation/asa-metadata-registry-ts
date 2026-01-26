@@ -8,6 +8,7 @@ import { AsaMetadataRegistryClient } from '../generated'
 import type { RawSimulateOptions, SkipSignaturesSimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
 import { MissingAppClientError } from '../errors'
 import { asNumber, asUint8, asUint64BigInt } from '../internal/numbers'
+import { coerceBytes } from '../internal/bytes'
 import {
   MbrDelta,
   MetadataExistence,
@@ -39,24 +40,20 @@ const returnValues = (results: unknown): unknown[] => {
   })
 }
 
-const toUint8Array = (v: unknown, label: string): Uint8Array => {
-  if (v instanceof Uint8Array) return v
-  if (v instanceof ArrayBuffer) return new Uint8Array(v)
-  if (Array.isArray(v)) return Uint8Array.from(v)
-
-  const B = (globalThis as any).Buffer
-  if (B && typeof B.isBuffer === 'function' && B.isBuffer(v)) return new Uint8Array(v)
-
-  // TypedArray / DataView
-  if (v && typeof v === 'object' && 'buffer' in (v as any) && (v as any).buffer instanceof ArrayBuffer) {
-    const view = v as any
-    return new Uint8Array(view.buffer, view.byteOffset ?? 0, view.byteLength ?? view.length)
-  }
-
-  throw new TypeError(`${label} must be bytes (Uint8Array)`)
+/**
+ * Merge optional generated-client call params with an `args` array.
+ */
+const withArgs = (params: unknown | undefined, args: unknown[]) => {
+  const p = (params && typeof params === 'object') ? { ...(params as any) } : {}
+  ;(p as any).args = args
+  return p
 }
 
-const toRegistryParameters = (v: unknown): RegistryParameters => {
+// ------------------------------------------------------------------
+// Decode helpers (simulate return values)
+// ------------------------------------------------------------------
+
+const parseRegistryParameters = (v: unknown): RegistryParameters => {
   if (Array.isArray(v)) return RegistryParameters.fromTuple(v as any)
   if (!v || typeof v !== 'object') throw new TypeError('RegistryParameters must be a tuple or struct')
   const o = v as any
@@ -74,34 +71,34 @@ const toRegistryParameters = (v: unknown): RegistryParameters => {
   })
 }
 
-const toMbrDelta = (v: unknown): MbrDelta => {
+const parseMbrDelta = (v: unknown): MbrDelta => {
   if (Array.isArray(v)) return MbrDelta.fromTuple(v as any)
   if (!v || typeof v !== 'object') throw new TypeError('MbrDelta must be a tuple or struct')
   const o = v as any
   return new MbrDelta({ sign: asUint8(o.sign, 'sign'), amount: asNumber(o.amount, 'amount') })
 }
 
-const toMetadataExistence = (v: unknown): MetadataExistence => {
+const parseMetadataExistence = (v: unknown): MetadataExistence => {
   if (Array.isArray(v)) return MetadataExistence.fromTuple(v as any)
   if (!v || typeof v !== 'object') throw new TypeError('MetadataExistence must be a tuple or struct')
   const o = v as any
   return new MetadataExistence({ asaExists: Boolean(o.asaExists), metadataExists: Boolean(o.metadataExists) })
 }
 
-const toMetadataHeader = (v: unknown): MetadataHeader => {
+const parseMetadataHeader = (v: unknown): MetadataHeader => {
   if (Array.isArray(v)) return MetadataHeader.fromTuple(v as any)
   if (!v || typeof v !== 'object') throw new TypeError('MetadataHeader must be a tuple or struct')
   const o = v as any
   return new MetadataHeader({
     identifiers: asUint8(o.identifiers, 'identifiers'),
     flags: MetadataFlags.fromBytes(asUint8(o.reversibleFlags, 'reversibleFlags'), asUint8(o.irreversibleFlags, 'irreversibleFlags')),
-    metadataHash: toUint8Array(o.hash, 'hash'),
+    metadataHash: coerceBytes(o.hash, 'hash'),
     lastModifiedRound: asUint64BigInt(o.lastModifiedRound, 'last_modified_round'),
     deprecatedBy: asUint64BigInt(o.deprecatedBy, 'deprecated_by'),
   })
 }
 
-const toPagination = (v: unknown): Pagination => {
+const parsePagination = (v: unknown): Pagination => {
   if (Array.isArray(v)) return Pagination.fromTuple(v as any)
   if (!v || typeof v !== 'object') throw new TypeError('Pagination must be a tuple or struct')
   const o = v as any
@@ -112,21 +109,15 @@ const toPagination = (v: unknown): Pagination => {
   })
 }
 
-const toPaginatedMetadata = (v: unknown): PaginatedMetadata => {
+const parsePaginatedMetadata = (v: unknown): PaginatedMetadata => {
   if (Array.isArray(v)) return PaginatedMetadata.fromTuple(v as any)
   if (!v || typeof v !== 'object') throw new TypeError('PaginatedMetadata must be a tuple or struct')
   const o = v as any
   return new PaginatedMetadata({
     hasNextPage: Boolean(o.hasNextPage),
     lastModifiedRound: asUint64BigInt(o.lastModifiedRound, 'last_modified_round'),
-    pageContent: toUint8Array(o.pageContent, 'page_content'),
+    pageContent: coerceBytes(o.pageContent, 'page_content'),
   })
-}
-
-const withArgs = (params: unknown | undefined, args: unknown[]) => {
-  const p = (params && typeof params === 'object') ? { ...(params as any) } : {}
-  ;(p as any).args = args
-  return p
 }
 
 /**
@@ -167,7 +158,7 @@ export class AsaMetadataRegistryAvmRead {
 
   async arc89_get_metadata_registry_parameters(args?: { simulate?: SimulateOptions; params?: unknown }): Promise<RegistryParameters> {
     const value = await this.simulate_one((c) => c.arc89GetMetadataRegistryParameters(withArgs(args?.params, [])), { simulate: args?.simulate })
-    return toRegistryParameters(value)
+    return parseRegistryParameters(value)
   }
 
   async arc89_get_metadata_partial_uri(args?: { simulate?: SimulateOptions; params?: unknown }): Promise<string> {
@@ -180,7 +171,7 @@ export class AsaMetadataRegistryAvmRead {
       (c) => c.arc89GetMetadataMbrDelta(withArgs(args.params, [args.asset_id, args.new_size])),
       { simulate: args.simulate },
     )
-    return toMbrDelta(value)
+    return parseMbrDelta(value)
   }
 
   async arc89_check_metadata_exists(args: { asset_id: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<MetadataExistence> {
@@ -188,7 +179,7 @@ export class AsaMetadataRegistryAvmRead {
       (c) => c.arc89CheckMetadataExists(withArgs(args.params, [args.asset_id])),
       { simulate: args.simulate },
     )
-    return toMetadataExistence(value)
+    return parseMetadataExistence(value)
   }
 
   async arc89_is_metadata_immutable(args: { asset_id: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<boolean> {
@@ -226,7 +217,7 @@ export class AsaMetadataRegistryAvmRead {
       (c) => c.arc89GetMetadataHeader(withArgs(args.params, [args.asset_id])),
       { simulate: args.simulate },
     )
-    return toMetadataHeader(value)
+    return parseMetadataHeader(value)
   }
 
   async arc89_get_metadata_pagination(args: { asset_id: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<Pagination> {
@@ -234,7 +225,7 @@ export class AsaMetadataRegistryAvmRead {
       (c) => c.arc89GetMetadataPagination(withArgs(args.params, [args.asset_id])),
       { simulate: args.simulate },
     )
-    return toPagination(value)
+    return parsePagination(value)
   }
 
   async arc89_get_metadata(args: { asset_id: bigint | number; page: number; simulate?: SimulateOptions; params?: unknown }): Promise<PaginatedMetadata> {
@@ -242,7 +233,7 @@ export class AsaMetadataRegistryAvmRead {
       (c) => c.arc89GetMetadata(withArgs(args.params, [args.asset_id, args.page])),
       { simulate: args.simulate },
     )
-    return toPaginatedMetadata(value)
+    return parsePaginatedMetadata(value)
   }
 
   async arc89_get_metadata_slice(args: { asset_id: bigint | number; offset: number; size: number; simulate?: SimulateOptions; params?: unknown }): Promise<Uint8Array> {
@@ -250,7 +241,7 @@ export class AsaMetadataRegistryAvmRead {
       (c) => c.arc89GetMetadataSlice(withArgs(args.params, [args.asset_id, args.offset, args.size])),
       { simulate: args.simulate },
     )
-    return toUint8Array(value, 'metadata_slice')
+    return coerceBytes(value, 'metadata_slice')
   }
 
   async arc89_get_metadata_header_hash(args: { asset_id: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<Uint8Array> {
@@ -258,7 +249,7 @@ export class AsaMetadataRegistryAvmRead {
       (c) => c.arc89GetMetadataHeaderHash(withArgs(args.params, [args.asset_id])),
       { simulate: args.simulate },
     )
-    return toUint8Array(value, 'header_hash')
+    return coerceBytes(value, 'header_hash')
   }
 
   async arc89_get_metadata_page_hash(args: { asset_id: bigint | number; page: number; simulate?: SimulateOptions; params?: unknown }): Promise<Uint8Array> {
@@ -266,7 +257,7 @@ export class AsaMetadataRegistryAvmRead {
       (c) => c.arc89GetMetadataPageHash(withArgs(args.params, [args.asset_id, args.page])),
       { simulate: args.simulate },
     )
-    return toUint8Array(value, 'page_hash')
+    return coerceBytes(value, 'page_hash')
   }
 
   async arc89_get_metadata_hash(args: { asset_id: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<Uint8Array> {
@@ -274,7 +265,7 @@ export class AsaMetadataRegistryAvmRead {
       (c) => c.arc89GetMetadataHash(withArgs(args.params, [args.asset_id])),
       { simulate: args.simulate },
     )
-    return toUint8Array(value, 'metadata_hash')
+    return coerceBytes(value, 'metadata_hash')
   }
 
   async arc89_get_metadata_string_by_key(args: { asset_id: bigint | number; key: string; simulate?: SimulateOptions; params?: unknown }): Promise<string> {
@@ -312,6 +303,6 @@ export class AsaMetadataRegistryAvmRead {
       (c) => c.arc89GetMetadataB64BytesByKey(withArgs(args.params, [args.asset_id, args.key, args.b64_encoding])),
       { simulate: args.simulate },
     )
-    return toUint8Array(value, 'b64_bytes')
+    return coerceBytes(value, 'b64_bytes')
   }
 }
