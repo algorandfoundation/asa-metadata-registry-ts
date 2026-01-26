@@ -1,9 +1,7 @@
 /**
- * Reconstruct ARC-89 getter outputs from box contents (Algod).
- *
+ * ARC-89 box reader.
+ * 
  * Ported from Python `asa_metadata_registry/read/box.py`.
- *
- * This reader is **fast** (direct box read) and does not require transactions.
  * All methods that touch Algod are async.
  */
 
@@ -26,7 +24,9 @@ type JsonObject = Record<string, unknown>
 const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
 /**
- * Box-based reader.
+ * Reconstruct ARC-89 getter outputs from box contents (Algod).
+ *
+ * This reader is **fast** (direct box read) and does not require transactions.
  */
 export class AsaMetadataRegistryBoxRead {
   public readonly algod: AlgodBoxReader
