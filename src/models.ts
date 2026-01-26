@@ -11,7 +11,7 @@ import { BoxParseError, InvalidPageIndexError, MetadataHashMismatchError } from 
 import { computeHeaderHash, computeMetadataHash, computePageHash } from './hashing'
 import { decodeMetadataJson, encodeMetadataJson, validateArc3Schema } from './validation'
 import { asBigInt, asNumber, asUint8, MAX_UINT8 } from './internal/numbers'
-import { bytesEqual, coerceBytes, readUint64BE, uint64ToBytesBE } from './internal/bytes'
+import { bytesEqual, toBytes, readUint64BE, uint64ToBytesBE } from './internal/bytes'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -457,7 +457,7 @@ export class MetadataHeader {
     const identifiers = asUint8(v0, 'identifiers')
     const rev = asUint8(v1, 'reversibleFlags')
     const irr = asUint8(v2, 'irreversibleFlags')
-    const metadataHash = coerceBytes(v3, 'metadataHash')
+    const metadataHash = toBytes(v3, 'metadataHash')
     if (metadataHash.length !== 32) throw new Error('metadataHash must be 32 bytes')
 
     const lastModifiedRound = asBigInt(v4 as bigint | number, 'lastModifiedRound')
@@ -583,7 +583,7 @@ export class PaginatedMetadata {
     const [v0, v1, v2] = value
     if (typeof v0 !== 'boolean') throw new TypeError('hasNextPage must be bool')
     const lmr = asBigInt(v1 as bigint | number, 'lastModifiedRound')
-    const pageContent = coerceBytes(v2, 'pageContent')
+    const pageContent = toBytes(v2, 'pageContent')
     return new PaginatedMetadata({ hasNextPage: v0, lastModifiedRound: lmr, pageContent })
   }
 }

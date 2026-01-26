@@ -7,11 +7,11 @@ export const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean => {
 }
 
 /**
- * Coerce common byte-like inputs into a Uint8Array.
+ * Convert common byte-like inputs to a Uint8Array.
  * Accepts Uint8Array, ArrayBuffer, Buffer (Node), other typed array views, or an array of byte ints.
  * @throws {TypeError} when the value cannot be interpreted as bytes.
  */
-export const coerceBytes = (v: unknown, name: string): Uint8Array => {
+export const toBytes = (v: unknown, name: string): Uint8Array => {
   if (v instanceof Uint8Array) return v
   if (v instanceof ArrayBuffer) return new Uint8Array(v)
 

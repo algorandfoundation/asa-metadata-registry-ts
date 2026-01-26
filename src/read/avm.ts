@@ -8,7 +8,7 @@ import { AsaMetadataRegistryClient } from '../generated'
 import type { RawSimulateOptions, SkipSignaturesSimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
 import { MissingAppClientError } from '../errors'
 import { asNumber, asUint8, asUint64BigInt } from '../internal/numbers'
-import { coerceBytes } from '../internal/bytes'
+import { toBytes } from '../internal/bytes'
 import {
   MbrDelta,
   MetadataExistence,
@@ -92,7 +92,7 @@ const parseMetadataHeader = (v: unknown): MetadataHeader => {
   return new MetadataHeader({
     identifiers: asUint8(o.identifiers, 'identifiers'),
     flags: MetadataFlags.fromBytes(asUint8(o.reversibleFlags, 'reversibleFlags'), asUint8(o.irreversibleFlags, 'irreversibleFlags')),
-    metadataHash: coerceBytes(o.hash, 'hash'),
+    metadataHash: toBytes(o.hash, 'hash'),
     lastModifiedRound: asUint64BigInt(o.lastModifiedRound, 'last_modified_round'),
     deprecatedBy: asUint64BigInt(o.deprecatedBy, 'deprecated_by'),
   })
@@ -116,7 +116,7 @@ const parsePaginatedMetadata = (v: unknown): PaginatedMetadata => {
   return new PaginatedMetadata({
     hasNextPage: Boolean(o.hasNextPage),
     lastModifiedRound: asUint64BigInt(o.lastModifiedRound, 'last_modified_round'),
-    pageContent: coerceBytes(o.pageContent, 'page_content'),
+    pageContent: toBytes(o.pageContent, 'page_content'),
   })
 }
 
@@ -241,7 +241,7 @@ export class AsaMetadataRegistryAvmRead {
       (c) => c.arc89GetMetadataSlice(withArgs(args.params, [args.asset_id, args.offset, args.size])),
       { simulate: args.simulate },
     )
-    return coerceBytes(value, 'metadata_slice')
+    return toBytes(value, 'metadata_slice')
   }
 
   async arc89_get_metadata_header_hash(args: { asset_id: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<Uint8Array> {
@@ -249,7 +249,7 @@ export class AsaMetadataRegistryAvmRead {
       (c) => c.arc89GetMetadataHeaderHash(withArgs(args.params, [args.asset_id])),
       { simulate: args.simulate },
     )
-    return coerceBytes(value, 'header_hash')
+    return toBytes(value, 'header_hash')
   }
 
   async arc89_get_metadata_page_hash(args: { asset_id: bigint | number; page: number; simulate?: SimulateOptions; params?: unknown }): Promise<Uint8Array> {
@@ -257,7 +257,7 @@ export class AsaMetadataRegistryAvmRead {
       (c) => c.arc89GetMetadataPageHash(withArgs(args.params, [args.asset_id, args.page])),
       { simulate: args.simulate },
     )
-    return coerceBytes(value, 'page_hash')
+    return toBytes(value, 'page_hash')
   }
 
   async arc89_get_metadata_hash(args: { asset_id: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<Uint8Array> {
@@ -265,7 +265,7 @@ export class AsaMetadataRegistryAvmRead {
       (c) => c.arc89GetMetadataHash(withArgs(args.params, [args.asset_id])),
       { simulate: args.simulate },
     )
-    return coerceBytes(value, 'metadata_hash')
+    return toBytes(value, 'metadata_hash')
   }
 
   async arc89_get_metadata_string_by_key(args: { asset_id: bigint | number; key: string; simulate?: SimulateOptions; params?: unknown }): Promise<string> {
@@ -303,6 +303,6 @@ export class AsaMetadataRegistryAvmRead {
       (c) => c.arc89GetMetadataB64BytesByKey(withArgs(args.params, [args.asset_id, args.key, args.b64_encoding])),
       { simulate: args.simulate },
     )
-    return coerceBytes(value, 'b64_bytes')
+    return toBytes(value, 'b64_bytes')
   }
 }
