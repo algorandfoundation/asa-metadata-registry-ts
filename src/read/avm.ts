@@ -5,6 +5,7 @@
  */
 
 import { AsaMetadataRegistryClient } from '../generated'
+import type { RawSimulateOptions, SkipSignaturesSimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
 import { MissingAppClientError } from '../errors'
 import {
   MbrDelta,
@@ -18,51 +19,8 @@ import {
 
 /**
  * Options passed through to AlgoKit's `TransactionComposer.simulate()`.
- *
- * For DX parity with Python, both snake_case and camelCase spellings are accepted.
  */
-export interface SimulateOptions {
-  allow_more_logs?: boolean | null
-  allowMoreLogs?: boolean | null
-
-  allow_empty_signatures?: boolean | null
-  allowEmptySignatures?: boolean | null
-
-  allow_unnamed_resources?: boolean | null
-  allowUnnamedResources?: boolean | null
-
-  extra_opcode_budget?: number | null
-  extraOpcodeBudget?: number | null
-
-  exec_trace_config?: unknown | null
-  execTraceConfig?: unknown | null
-
-  simulation_round?: number | null
-  simulationRound?: number | null
-
-  skip_signatures?: boolean | null
-  skipSignatures?: boolean | null
-}
-
-const coalesce = <T>(...values: Array<T | null | undefined>): T | undefined => {
-  for (const v of values) if (v !== null && v !== undefined) return v
-  return undefined
-}
-
-const normalizeSimulateOptions = (opts?: SimulateOptions) => {
-  const allowEmptySignatures = coalesce(opts?.allowEmptySignatures, opts?.allow_empty_signatures, true)
-  const skipSignatures = coalesce(opts?.skipSignatures, opts?.skip_signatures, true)
-
-  return {
-    allowMoreLogs: coalesce(opts?.allowMoreLogs, opts?.allow_more_logs),
-    allowEmptySignatures,
-    allowUnnamedResources: coalesce(opts?.allowUnnamedResources, opts?.allow_unnamed_resources),
-    extraOpcodeBudget: coalesce(opts?.extraOpcodeBudget, opts?.extra_opcode_budget),
-    execTraceConfig: coalesce(opts?.execTraceConfig, opts?.exec_trace_config),
-    simulationRound: coalesce(opts?.simulationRound, opts?.simulation_round),
-    skipSignatures,
-  }
-}
+export type SimulateOptions = RawSimulateOptions | SkipSignaturesSimulateOptions
 
 const returnValues = (results: unknown): unknown[] => {
   if (!results || typeof results !== 'object') return []
@@ -191,7 +149,9 @@ export class AsaMetadataRegistryAvmRead {
   async simulate_many(buildGroup: (composer: any) => void, args?: { simulate?: SimulateOptions }): Promise<unknown[]> {
     const composer = this.client.newGroup()
     buildGroup(composer)
-    const results = await composer.simulate(normalizeSimulateOptions(args?.simulate))
+    const results = args?.simulate
+      ? await composer.simulate(args.simulate)
+      : await composer.simulate()
     return returnValues(results)
   }
 
