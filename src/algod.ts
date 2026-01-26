@@ -7,7 +7,8 @@
  */
 
 import type { Algodv2, modelsv2 } from 'algosdk'
-import { Arc90Uri, assetIdToBoxName, completePartialAssetUrl, toBigInt } from './codec'
+import { Arc90Uri, assetIdToBoxName, completePartialAssetUrl } from './codec'
+import { toBigInt } from './internal/numbers'
 import { AsaNotFoundError, BoxNotFoundError, InvalidArc90UriError } from './errors'
 import { AssetMetadataBox, AssetMetadataRecord, RegistryParameters, getDefaultRegistryParams } from './models'
 

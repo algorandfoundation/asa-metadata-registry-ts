@@ -24,6 +24,9 @@ export * from './models'
 export * from './algod'
 export * from './read/box'
 
+// AVM-parity reads (simulate)
+export * from './read/avm'
+
 // Also expose the modules as namespaces (similar to Python's `import asa_metadata_registry.constants`).
 export * as constants from './constants'
 export * as flags from './flags'
@@ -38,6 +41,8 @@ export * as models from './models'
 
 export * as algod from './algod'
 export * as boxRead from './read/box'
+
+export * as avmRead from './read/avm'
 
 // Generated ARC-56 client (excluded from translation; wrapped in later phases)
 // IMPORTANT: we only export it as a namespace to avoid name collisions with the SDK's domain models.
