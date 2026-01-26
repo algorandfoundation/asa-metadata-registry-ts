@@ -24,7 +24,7 @@ export * from './models'
 export * from './algod'
 export * from './read/box'
 
-// Phase 6: AVM-parity reads (simulate)
+// AVM-parity reads (simulate)
 export * from './read/avm'
 
 // Also expose the modules as namespaces (similar to Python's `import asa_metadata_registry.constants`).

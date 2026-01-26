@@ -1,10 +1,7 @@
 /**
- * AVM-parity ARC-89 getters via the AlgoKit-generated AppClient.
+ * ARC-89 AVM reader
  *
  * Ported from Python `asa_metadata_registry/read/avm.py`.
- *
- * These methods use `simulate()` (not `send()`) to mirror the smart-contract
- * behavior without broadcasting transactions.
  */
 
 import { AsaMetadataRegistryClient } from '../generated'
@@ -173,6 +170,12 @@ const withArgs = (params: unknown | undefined, args: unknown[]) => {
   return p
 }
 
+/**
+ * AVM-parity ARC-89 getters via the AlgoKit-generated AppClient.
+ *
+ * These methods use `simulate()` (not `send()`) to mirror the smart-contract
+ * behavior without broadcasting transactions.
+ */
 export class AsaMetadataRegistryAvmRead {
   public readonly client: AsaMetadataRegistryClient
 
