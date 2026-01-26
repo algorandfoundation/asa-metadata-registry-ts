@@ -7,6 +7,7 @@
 import { AsaMetadataRegistryClient } from '../generated'
 import type { RawSimulateOptions, SkipSignaturesSimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
 import { MissingAppClientError } from '../errors'
+import { toUint64BigInt } from '../internal/numbers'
 import {
   MbrDelta,
   MetadataExistence,
@@ -22,6 +23,9 @@ import {
  */
 export type SimulateOptions = RawSimulateOptions | SkipSignaturesSimulateOptions
 
+/**
+ * Extract `.returns[*].value` from AlgoKit composer results, tolerating minor shape differences.
+ */
 const returnValues = (results: unknown): unknown[] => {
   if (!results || typeof results !== 'object') return []
   const returns = (results as any).returns
@@ -33,13 +37,6 @@ const returnValues = (results: unknown): unknown[] => {
     }
     return r
   })
-}
-
-const toBigInt = (v: unknown, label: string): bigint => {
-  if (typeof v === 'bigint') return v
-  if (typeof v === 'number' && Number.isFinite(v)) return BigInt(Math.trunc(v))
-  if (typeof v === 'string' && /^\d+$/.test(v)) return BigInt(v)
-  throw new TypeError(`${label} must be uint64 (bigint)`)
 }
 
 const toUint8Array = (v: unknown, label: string): Uint8Array => {
@@ -99,8 +96,8 @@ const toMetadataHeader = (v: unknown): MetadataHeader => {
     identifiers: Number(o.identifiers),
     flags: MetadataFlags.fromBytes(Number(o.reversibleFlags), Number(o.irreversibleFlags)),
     metadataHash: toUint8Array(o.hash, 'hash'),
-    lastModifiedRound: toBigInt(o.lastModifiedRound, 'last_modified_round'),
-    deprecatedBy: toBigInt(o.deprecatedBy, 'deprecated_by'),
+    lastModifiedRound: toUint64BigInt(o.lastModifiedRound, 'last_modified_round'),
+    deprecatedBy: toUint64BigInt(o.deprecatedBy, 'deprecated_by'),
   })
 }
 
@@ -117,7 +114,7 @@ const toPaginatedMetadata = (v: unknown): PaginatedMetadata => {
   const o = v as any
   return new PaginatedMetadata({
     hasNextPage: Boolean(o.hasNextPage),
-    lastModifiedRound: toBigInt(o.lastModifiedRound, 'last_modified_round'),
+    lastModifiedRound: toUint64BigInt(o.lastModifiedRound, 'last_modified_round'),
     pageContent: toUint8Array(o.pageContent, 'page_content'),
   })
 }
@@ -206,16 +203,16 @@ export class AsaMetadataRegistryAvmRead {
 
     // Generated client returns either a tuple or struct; normalize to (bool, uint64).
     if (Array.isArray(value)) {
-      return [Boolean(value[0]), toBigInt(value[1], 'last_modified_round')]
+      return [Boolean(value[0]), toUint64BigInt(value[1], 'last_modified_round')]
     }
     if (value && typeof value === 'object' && 'lastModifiedRound' in (value as any) && 'flag' in (value as any)) {
       // This would be MutableFlag shape; tolerate it defensively.
       const o = value as any
-      return [Boolean(o.flag), toBigInt(o.lastModifiedRound, 'last_modified_round')]
+      return [Boolean(o.flag), toUint64BigInt(o.lastModifiedRound, 'last_modified_round')]
     }
     if (value && typeof value === 'object' && '0' in (value as any) && '1' in (value as any)) {
       const o = value as any
-      return [Boolean(o[0]), toBigInt(o[1], 'last_modified_round')]
+      return [Boolean(o[0]), toUint64BigInt(o[1], 'last_modified_round')]
     }
     throw new TypeError('Unexpected return type for arc89_is_metadata_short')
   }
@@ -289,7 +286,7 @@ export class AsaMetadataRegistryAvmRead {
       (c) => c.arc89GetMetadataUint64ByKey(withArgs(args.params, [args.asset_id, args.key])),
       { simulate: args.simulate },
     )
-    return toBigInt(value, 'uint64')
+    return toUint64BigInt(value, 'uint64')
   }
 
   async arc89_get_metadata_object_by_key(args: { asset_id: bigint | number; key: string; simulate?: SimulateOptions; params?: unknown }): Promise<string> {

@@ -10,7 +10,8 @@ import * as consts from './constants'
 import { BoxParseError, InvalidPageIndexError, MetadataHashMismatchError } from './errors'
 import { computeHeaderHash, computeMetadataHash, computePageHash } from './hashing'
 import { decodeMetadataJson, encodeMetadataJson, validateArc3Schema } from './validation'
-import { toNonNegativeBigInt } from './codec'
+import { asBigInt, asNumber, asUint8, MAX_UINT8 } from './internal/numbers'
+import { bytesEqual, coerceBytes, readUint64BE, uint64ToBytesBE } from './internal/bytes'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,80 +32,12 @@ export type AbiValue = bigint | number | boolean | Uint8Array | readonly number[
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-const MAX_UINT8 = 0xff
-
-const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean => {
-  if (a.length !== b.length) return false
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
-  return true
-}
-
-const asBigInt = (v: bigint | number, name: string): bigint => {
-  try {
-    return toNonNegativeBigInt(v)
-  } catch (e) {
-    if (e instanceof Error) {
-      throw new Error(`${name}: ${e.message}`)
-    }
-    throw e
-  }
-}
-
-const asNumber = (v: unknown, name: string): number => {
-  if (typeof v === 'number') {
-    if (!Number.isFinite(v)) throw new TypeError(`${name} must be a finite number`)
-    return v
-  }
-  if (typeof v === 'bigint') {
-    const n = Number(v)
-    if (!Number.isFinite(n) || BigInt(n) !== v) throw new RangeError(`${name} is too large for JS number`)
-    return n
-  }
-  throw new TypeError(`${name} must be a number or bigint`)
-}
-
-const asUint8 = (v: unknown, name: string): number => {
-  const n = asNumber(v, name)
-  if (!Number.isInteger(n) || n < 0 || n > MAX_UINT8) throw new RangeError(`${name} must fit in uint8`)
-  return n
-}
-
 const setBit = (args: { bits: number; mask: number; value: boolean }): number => {
   const { bits, mask, value } = args
   return value ? (bits | mask) : (bits & ~mask & 0xff)
 }
 
-const coerceBytes = (v: unknown, name: string): Uint8Array => {
-  if (v instanceof Uint8Array) return v
-  if (Array.isArray(v)) {
-    // Best-effort: if this isn't a sequence of byte values, we'll error.
-    const out = new Uint8Array(v.length)
-    for (let i = 0; i < v.length; i++) {
-      const n = v[i]
-      if (typeof n !== 'number' || !Number.isInteger(n) || n < 0 || n > 255) {
-        throw new TypeError(`${name} must be bytes or a sequence of ints`)
-      }
-      out[i] = n
-    }
-    return out
-  }
-  throw new TypeError(`${name} must be bytes or a sequence of ints`)
-}
-
 const isNonzero32 = (am: Uint8Array): boolean => am.length === 32 && am.some((b) => b !== 0)
-
-const readUint64BE = (data: Uint8Array, offset: number): bigint => {
-  if (offset < 0 || offset + 8 > data.length) throw new RangeError('uint64 out of range')
-  const view = new DataView(data.buffer, data.byteOffset + offset, 8)
-  return view.getBigUint64(0, false)
-}
-
-const uint64ToBytesBE = (n: bigint): Uint8Array => {
-  const buf = new ArrayBuffer(8)
-  const view = new DataView(buf)
-  view.setBigUint64(0, n, false)
-  return new Uint8Array(buf)
-}
 
 const chunkMetadataPayload = (args: { data: Uint8Array; headMaxSize: number; extraMaxSize: number }): Uint8Array[] => {
   const { data, headMaxSize, extraMaxSize } = args
