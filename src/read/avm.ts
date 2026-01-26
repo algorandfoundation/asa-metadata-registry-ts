@@ -7,7 +7,7 @@
 import { AsaMetadataRegistryClient } from '../generated'
 import type { RawSimulateOptions, SkipSignaturesSimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
 import { MissingAppClientError } from '../errors'
-import { toUint64BigInt } from '../internal/numbers'
+import { asNumber, asUint8, asUint64BigInt } from '../internal/numbers'
 import {
   MbrDelta,
   MetadataExistence,
@@ -61,16 +61,16 @@ const toRegistryParameters = (v: unknown): RegistryParameters => {
   if (!v || typeof v !== 'object') throw new TypeError('RegistryParameters must be a tuple or struct')
   const o = v as any
   return new RegistryParameters({
-    keySize: Number(o.keySize),
-    headerSize: Number(o.headerSize),
-    maxMetadataSize: Number(o.maxMetadataSize),
-    shortMetadataSize: Number(o.shortMetadataSize),
-    pageSize: Number(o.pageSize),
-    firstPayloadMaxSize: Number(o.firstPayloadMaxSize),
-    extraPayloadMaxSize: Number(o.extraPayloadMaxSize),
-    replacePayloadMaxSize: Number(o.replacePayloadMaxSize),
-    flatMbr: Number(o.flatMbr),
-    byteMbr: Number(o.byteMbr),
+    keySize: asNumber(o.keySize, 'keySize'),
+    headerSize: asNumber(o.headerSize, 'headerSize'),
+    maxMetadataSize: asNumber(o.maxMetadataSize, 'maxMetadataSize'),
+    shortMetadataSize: asNumber(o.shortMetadataSize, 'shortMetadataSize'),
+    pageSize: asNumber(o.pageSize, 'pageSize'),
+    firstPayloadMaxSize: asNumber(o.firstPayloadMaxSize, 'firstPayloadMaxSize'),
+    extraPayloadMaxSize: asNumber(o.extraPayloadMaxSize, 'extraPayloadMaxSize'),
+    replacePayloadMaxSize: asNumber(o.replacePayloadMaxSize, 'replacePayloadMaxSize'),
+    flatMbr: asNumber(o.flatMbr, 'flatMbr'),
+    byteMbr: asNumber(o.byteMbr, 'byteMbr'),
   })
 }
 
@@ -78,7 +78,7 @@ const toMbrDelta = (v: unknown): MbrDelta => {
   if (Array.isArray(v)) return MbrDelta.fromTuple(v as any)
   if (!v || typeof v !== 'object') throw new TypeError('MbrDelta must be a tuple or struct')
   const o = v as any
-  return new MbrDelta({ sign: Number(o.sign), amount: Number(o.amount) })
+  return new MbrDelta({ sign: asUint8(o.sign, 'sign'), amount: asNumber(o.amount, 'amount') })
 }
 
 const toMetadataExistence = (v: unknown): MetadataExistence => {
@@ -93,11 +93,11 @@ const toMetadataHeader = (v: unknown): MetadataHeader => {
   if (!v || typeof v !== 'object') throw new TypeError('MetadataHeader must be a tuple or struct')
   const o = v as any
   return new MetadataHeader({
-    identifiers: Number(o.identifiers),
-    flags: MetadataFlags.fromBytes(Number(o.reversibleFlags), Number(o.irreversibleFlags)),
+    identifiers: asUint8(o.identifiers, 'identifiers'),
+    flags: MetadataFlags.fromBytes(asUint8(o.reversibleFlags, 'reversibleFlags'), asUint8(o.irreversibleFlags, 'irreversibleFlags')),
     metadataHash: toUint8Array(o.hash, 'hash'),
-    lastModifiedRound: toUint64BigInt(o.lastModifiedRound, 'last_modified_round'),
-    deprecatedBy: toUint64BigInt(o.deprecatedBy, 'deprecated_by'),
+    lastModifiedRound: asUint64BigInt(o.lastModifiedRound, 'last_modified_round'),
+    deprecatedBy: asUint64BigInt(o.deprecatedBy, 'deprecated_by'),
   })
 }
 
@@ -105,7 +105,11 @@ const toPagination = (v: unknown): Pagination => {
   if (Array.isArray(v)) return Pagination.fromTuple(v as any)
   if (!v || typeof v !== 'object') throw new TypeError('Pagination must be a tuple or struct')
   const o = v as any
-  return new Pagination({ metadataSize: Number(o.metadataSize), pageSize: Number(o.pageSize), totalPages: Number(o.totalPages) })
+  return new Pagination({
+    metadataSize: asNumber(o.metadataSize, 'metadataSize'),
+    pageSize: asNumber(o.pageSize, 'pageSize'),
+    totalPages: asUint8(o.totalPages, 'totalPages'),
+  })
 }
 
 const toPaginatedMetadata = (v: unknown): PaginatedMetadata => {
@@ -114,7 +118,7 @@ const toPaginatedMetadata = (v: unknown): PaginatedMetadata => {
   const o = v as any
   return new PaginatedMetadata({
     hasNextPage: Boolean(o.hasNextPage),
-    lastModifiedRound: toUint64BigInt(o.lastModifiedRound, 'last_modified_round'),
+    lastModifiedRound: asUint64BigInt(o.lastModifiedRound, 'last_modified_round'),
     pageContent: toUint8Array(o.pageContent, 'page_content'),
   })
 }
@@ -203,16 +207,16 @@ export class AsaMetadataRegistryAvmRead {
 
     // Generated client returns either a tuple or struct; normalize to (bool, uint64).
     if (Array.isArray(value)) {
-      return [Boolean(value[0]), toUint64BigInt(value[1], 'last_modified_round')]
+      return [Boolean(value[0]), asUint64BigInt(value[1], 'last_modified_round')]
     }
     if (value && typeof value === 'object' && 'lastModifiedRound' in (value as any) && 'flag' in (value as any)) {
       // This would be MutableFlag shape; tolerate it defensively.
       const o = value as any
-      return [Boolean(o.flag), toUint64BigInt(o.lastModifiedRound, 'last_modified_round')]
+      return [Boolean(o.flag), asUint64BigInt(o.lastModifiedRound, 'last_modified_round')]
     }
     if (value && typeof value === 'object' && '0' in (value as any) && '1' in (value as any)) {
       const o = value as any
-      return [Boolean(o[0]), toUint64BigInt(o[1], 'last_modified_round')]
+      return [Boolean(o[0]), asUint64BigInt(o[1], 'last_modified_round')]
     }
     throw new TypeError('Unexpected return type for arc89_is_metadata_short')
   }
@@ -286,7 +290,7 @@ export class AsaMetadataRegistryAvmRead {
       (c) => c.arc89GetMetadataUint64ByKey(withArgs(args.params, [args.asset_id, args.key])),
       { simulate: args.simulate },
     )
-    return toUint64BigInt(value, 'uint64')
+    return asUint64BigInt(value, 'uint64')
   }
 
   async arc89_get_metadata_object_by_key(args: { asset_id: bigint | number; key: string; simulate?: SimulateOptions; params?: unknown }): Promise<string> {
