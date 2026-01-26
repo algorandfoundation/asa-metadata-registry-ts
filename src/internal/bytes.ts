@@ -6,32 +6,42 @@ export const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean => {
   return true
 }
 
+/**
+ * Coerce common byte-like inputs into a Uint8Array.
+ * Accepts Uint8Array, ArrayBuffer, Buffer (Node), other typed array views, or an array of byte ints.
+ * @throws {TypeError} when the value cannot be interpreted as bytes.
+ */
 export const coerceBytes = (v: unknown, name: string): Uint8Array => {
   if (v instanceof Uint8Array) return v
   if (v instanceof ArrayBuffer) return new Uint8Array(v)
- 
+
   const B = (globalThis as any).Buffer
-  if (B && typeof B.isBuffer === 'function' && B.isBuffer(v)) return new Uint8Array(v as ArrayLike<number>)
- 
-  // TypedArray / DataView
-  if (v && typeof v === 'object' && 'buffer' in (v as any) && (v as any).buffer instanceof ArrayBuffer) {
+  if (B?.isBuffer?.(v)) return new Uint8Array(v as ArrayLike<number>)
+
+  if (v && typeof v === 'object') {
     const view = v as any
-    return new Uint8Array(view.buffer, view.byteOffset ?? 0, view.byteLength ?? view.length)
-  }
-  if (Array.isArray(v)) {
-    // Best-effort: if this isn't a sequence of byte values, we'll error.
-    const out = new Uint8Array(v.length)
-    for (let i = 0; i < v.length; i++) {
-      const n = v[i]
-      if (typeof n !== 'number' || !Number.isInteger(n) || n < 0 || n > MAX_UINT8) {
-        throw new TypeError(`${name} must be bytes or a sequence of ints`)
-      }
-      out[i] = n
+
+    // TypedArray / DataView / buffer-like object
+    if (view.buffer instanceof ArrayBuffer) {
+      return new Uint8Array(view.buffer, view.byteOffset ?? 0, view.byteLength ?? view.length)
     }
-    return out
+
+    if (Array.isArray(view)) {
+      const out = new Uint8Array(view.length)
+      for (let i = 0; i < view.length; i++) {
+        const n = view[i]
+        if (typeof n !== 'number' || !Number.isInteger(n) || n < 0 || n > MAX_UINT8) {
+          throw new TypeError(`${name} must be bytes or a sequence of ints`)
+        }
+        out[i] = n
+      }
+      return out
+    }
   }
+
   throw new TypeError(`${name} must be bytes or a sequence of ints`)
 }
+
 
 export const readUint64BE = (data: Uint8Array, offset: number): bigint => {
   if (offset < 0 || offset + 8 > data.length) throw new RangeError('uint64 out of range')
