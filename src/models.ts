@@ -239,37 +239,37 @@ export class RegistryParameters {
   static fromTuple(value: readonly (number | bigint)[]): RegistryParameters {
     if (value.length !== 10) throw new Error('Expected 10-tuple of registry parameters')
     return new RegistryParameters({
-      keySize: asNumber(value[0], 'key_size'),
-      headerSize: asNumber(value[1], 'header_size'),
-      maxMetadataSize: asNumber(value[2], 'max_metadata_size'),
-      shortMetadataSize: asNumber(value[3], 'short_metadata_size'),
-      pageSize: asNumber(value[4], 'page_size'),
-      firstPayloadMaxSize: asNumber(value[5], 'first_payload_max_size'),
-      extraPayloadMaxSize: asNumber(value[6], 'extra_payload_max_size'),
-      replacePayloadMaxSize: asNumber(value[7], 'replace_payload_max_size'),
-      flatMbr: asNumber(value[8], 'flat_mbr'),
-      byteMbr: asNumber(value[9], 'byte_mbr'),
+      keySize: asNumber(value[0], 'keySize'),
+      headerSize: asNumber(value[1], 'headerSize'),
+      maxMetadataSize: asNumber(value[2], 'maxMetadataSize'),
+      shortMetadataSize: asNumber(value[3], 'shortMetadataSize'),
+      pageSize: asNumber(value[4], 'pageSize'),
+      firstPayloadMaxSize: asNumber(value[5], 'firstPayloadMaxSize'),
+      extraPayloadMaxSize: asNumber(value[6], 'extraPayloadMaxSize'),
+      replacePayloadMaxSize: asNumber(value[7], 'replacePayloadMaxSize'),
+      flatMbr: asNumber(value[8], 'flatMbr'),
+      byteMbr: asNumber(value[9], 'byteMbr'),
     })
   }
 
   /** Compute the minimum balance requirement for a metadata box holding `metadataSize` bytes. */
   mbrForBox(metadataSize: number): number {
-    if (!Number.isInteger(metadataSize) || metadataSize < 0) throw new RangeError('metadata_size must be non-negative')
+    if (!Number.isInteger(metadataSize) || metadataSize < 0) throw new RangeError('metadataSize must be non-negative')
     return this.flatMbr + this.byteMbr * (this.keySize + this.headerSize + metadataSize)
   }
 
   /** Compute MBR delta from old->new box size using the registry MBR parameters. */
   mbrDelta(args: { oldMetadataSize: number | null; newMetadataSize: number; delete?: boolean }): MbrDelta {
     const { oldMetadataSize, newMetadataSize, delete: del } = args
-    if (!Number.isInteger(newMetadataSize) || newMetadataSize < 0) throw new RangeError('new_metadata_size must be non-negative')
+    if (!Number.isInteger(newMetadataSize) || newMetadataSize < 0) throw new RangeError('newMetadataSize must be non-negative')
 
     const oldMbr = oldMetadataSize === null ? 0 : this.mbrForBox(oldMetadataSize)
     const newMbr = this.mbrForBox(newMetadataSize)
     let delta = newMbr - oldMbr
 
     if (del) {
-      if (oldMetadataSize === null) throw new Error('old_metadata_size must be provided when delete=true')
-      if (newMetadataSize !== 0) throw new Error('new_metadata_size must be 0 when delete=true')
+      if (oldMetadataSize === null) throw new Error('oldMetadataSize must be provided when delete=true')
+      if (newMetadataSize !== 0) throw new Error('newMetadataSize must be 0 when delete=true')
       delta = -this.mbrForBox(oldMetadataSize)
     }
 
@@ -289,7 +289,7 @@ export class MetadataExistence {
   }
 
   static fromTuple(value: readonly boolean[]): MetadataExistence {
-    if (value.length !== 2) throw new Error('Expected (asa_exists, metadata_exists)')
+    if (value.length !== 2) throw new Error('Expected (asaExists, metadataExists)')
     return new MetadataExistence({ asaExists: Boolean(value[0]), metadataExists: Boolean(value[1]) })
   }
 }
@@ -522,13 +522,13 @@ export class MetadataHeader {
     const [v0, v1, v2, v3, v4, v5] = value
 
     const identifiers = asUint8(v0, 'identifiers')
-    const rev = asUint8(v1, 'reversible_flags')
-    const irr = asUint8(v2, 'irreversible_flags')
-    const metadataHash = coerceBytes(v3, 'metadata_hash')
-    if (metadataHash.length !== 32) throw new Error('metadata_hash must be 32 bytes')
+    const rev = asUint8(v1, 'reversibleFlags')
+    const irr = asUint8(v2, 'irreversibleFlags')
+    const metadataHash = coerceBytes(v3, 'metadataHash')
+    if (metadataHash.length !== 32) throw new Error('metadataHash must be 32 bytes')
 
-    const lastModifiedRound = asBigInt(v4 as bigint | number, 'last_modified_round')
-    const deprecatedBy = asBigInt(v5 as bigint | number, 'deprecated_by')
+    const lastModifiedRound = asBigInt(v4 as bigint | number, 'lastModifiedRound')
+    const deprecatedBy = asBigInt(v5 as bigint | number, 'deprecatedBy')
 
     return new MetadataHeader({
       identifiers,
@@ -571,7 +571,7 @@ export class MetadataBody {
   }
 
   getPage(pageIndex: number, params?: RegistryParameters): Uint8Array {
-    if (!Number.isInteger(pageIndex) || pageIndex < 0) throw new InvalidPageIndexError('page_index must be non-negative')
+    if (!Number.isInteger(pageIndex) || pageIndex < 0) throw new InvalidPageIndexError('pageIndex must be non-negative')
     const total = this.totalPages(params)
     if (pageIndex >= total) {
       throw new InvalidPageIndexError(`Page index ${pageIndex} out of range (total pages: ${total})`)
@@ -625,11 +625,11 @@ export class Pagination {
   }
 
   static fromTuple(value: readonly (number | bigint)[]): Pagination {
-    if (value.length !== 3) throw new Error('Expected (metadata_size, page_size, total_pages)')
+    if (value.length !== 3) throw new Error('Expected (metadataSize, pageSize, totalPages)')
     return new Pagination({
-      metadataSize: asNumber(value[0], 'metadata_size'),
-      pageSize: asNumber(value[1], 'page_size'),
-      totalPages: asNumber(value[2], 'total_pages'),
+      metadataSize: asNumber(value[0], 'metadataSize'),
+      pageSize: asNumber(value[1], 'pageSize'),
+      totalPages: asNumber(value[2], 'totalPages'),
     })
   }
 }
@@ -641,16 +641,16 @@ export class PaginatedMetadata {
 
   constructor(args: { hasNextPage: boolean; lastModifiedRound: bigint | number; pageContent: Uint8Array }) {
     this.hasNextPage = args.hasNextPage
-    this.lastModifiedRound = asBigInt(args.lastModifiedRound, 'last_modified_round')
+    this.lastModifiedRound = asBigInt(args.lastModifiedRound, 'lastModifiedRound')
     this.pageContent = args.pageContent
   }
 
   static fromTuple(value: readonly AbiValue[]): PaginatedMetadata {
-    if (value.length !== 3) throw new Error('Expected (has_next_page, last_modified_round, page_content)')
+    if (value.length !== 3) throw new Error('Expected (hasNextPage, lastModifiedRound, pageContent)')
     const [v0, v1, v2] = value
-    if (typeof v0 !== 'boolean') throw new TypeError('has_next_page must be bool')
-    const lmr = asBigInt(v1 as bigint | number, 'last_modified_round')
-    const pageContent = coerceBytes(v2, 'page_content')
+    if (typeof v0 !== 'boolean') throw new TypeError('hasNextPage must be bool')
+    const lmr = asBigInt(v1 as bigint | number, 'lastModifiedRound')
+    const pageContent = coerceBytes(v2, 'pageContent')
     return new PaginatedMetadata({ hasNextPage: v0, lastModifiedRound: lmr, pageContent })
   }
 }
@@ -661,7 +661,7 @@ export class AssetMetadataBox {
   public readonly body: MetadataBody
 
   constructor(args: { assetId: bigint | number; header: MetadataHeader; body: MetadataBody }) {
-    this.assetId = asBigInt(args.assetId, 'asset_id')
+    this.assetId = asBigInt(args.assetId, 'assetId')
     this.header = args.header
     this.body = args.body
   }
@@ -702,10 +702,10 @@ export class AssetMetadataBox {
       throw new BoxParseError('Failed to parse ARC-89 metadata header', { cause: e })
     }
 
-    if (metadataHash.length !== 32) throw new BoxParseError('Invalid metadata_hash length')
+    if (metadataHash.length !== 32) throw new BoxParseError('Invalid metadataHash length')
 
     const bodyBytes = args.value.slice(headerSize)
-    if (bodyBytes.length > maxMetadataSize) throw new BoxParseError('Metadata exceeds max_metadata_size')
+    if (bodyBytes.length > maxMetadataSize) throw new BoxParseError('Metadata exceeds maxMetadataSize')
 
     const header = new MetadataHeader({
       identifiers,
@@ -789,8 +789,8 @@ export class AssetMetadataRecord {
   public readonly body: MetadataBody
 
   constructor(args: { appId: bigint | number; assetId: bigint | number; header: MetadataHeader; body: MetadataBody }) {
-    this.appId = asBigInt(args.appId, 'app_id')
-    this.assetId = asBigInt(args.assetId, 'asset_id')
+    this.appId = asBigInt(args.appId, 'appId')
+    this.assetId = asBigInt(args.assetId, 'assetId')
     this.header = args.header
     this.body = args.body
   }
@@ -832,10 +832,10 @@ export class AssetMetadata {
   public readonly deprecatedBy: bigint
 
   constructor(args: { assetId: bigint | number; body: MetadataBody; flags: MetadataFlags; deprecatedBy?: bigint | number }) {
-    this.assetId = asBigInt(args.assetId, 'asset_id')
+    this.assetId = asBigInt(args.assetId, 'assetId')
     this.body = args.body
     this.flags = args.flags
-    this.deprecatedBy = args.deprecatedBy === undefined ? 0n : asBigInt(args.deprecatedBy, 'deprecated_by')
+    this.deprecatedBy = args.deprecatedBy === undefined ? 0n : asBigInt(args.deprecatedBy, 'deprecatedBy')
   }
 
   get isEmpty(): boolean {
