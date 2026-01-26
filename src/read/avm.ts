@@ -93,8 +93,8 @@ const parseMetadataHeader = (v: unknown): MetadataHeader => {
     identifiers: asUint8(o.identifiers, 'identifiers'),
     flags: MetadataFlags.fromBytes(asUint8(o.reversibleFlags, 'reversibleFlags'), asUint8(o.irreversibleFlags, 'irreversibleFlags')),
     metadataHash: toBytes(o.hash, 'hash'),
-    lastModifiedRound: asUint64BigInt(o.lastModifiedRound, 'last_modified_round'),
-    deprecatedBy: asUint64BigInt(o.deprecatedBy, 'deprecated_by'),
+    lastModifiedRound: asUint64BigInt(o.lastModifiedRound, 'lastModifiedRound'),
+    deprecatedBy: asUint64BigInt(o.deprecatedBy, 'deprecatedBy'),
   })
 }
 
@@ -115,8 +115,8 @@ const parsePaginatedMetadata = (v: unknown): PaginatedMetadata => {
   const o = v as any
   return new PaginatedMetadata({
     hasNextPage: Boolean(o.hasNextPage),
-    lastModifiedRound: asUint64BigInt(o.lastModifiedRound, 'last_modified_round'),
-    pageContent: toBytes(o.pageContent, 'page_content'),
+    lastModifiedRound: asUint64BigInt(o.lastModifiedRound, 'lastModifiedRound'),
+    pageContent: toBytes(o.pageContent, 'pageContent'),
   })
 }
 
@@ -138,7 +138,7 @@ export class AsaMetadataRegistryAvmRead {
   // Internal helpers
   // ------------------------------------------------------------------
 
-  async simulate_many(buildGroup: (composer: any) => void, args?: { simulate?: SimulateOptions }): Promise<unknown[]> {
+  async simulateMany(buildGroup: (composer: any) => void, args?: { simulate?: SimulateOptions }): Promise<unknown[]> {
     const composer = this.client.newGroup()
     buildGroup(composer)
     const results = args?.simulate
@@ -147,8 +147,8 @@ export class AsaMetadataRegistryAvmRead {
     return returnValues(results)
   }
 
-  async simulate_one(buildGroup: (composer: any) => void, args?: { simulate?: SimulateOptions }): Promise<unknown> {
-    const values = await this.simulate_many(buildGroup, args)
+  async simulateOne(buildGroup: (composer: any) => void, args?: { simulate?: SimulateOptions }): Promise<unknown> {
+    const values = await this.simulateMany(buildGroup, args)
     return values.length ? values[0] : undefined
   }
 
@@ -156,153 +156,153 @@ export class AsaMetadataRegistryAvmRead {
   // ARC-89 getters (AVM parity)
   // ------------------------------------------------------------------
 
-  async arc89_get_metadata_registry_parameters(args?: { simulate?: SimulateOptions; params?: unknown }): Promise<RegistryParameters> {
-    const value = await this.simulate_one((c) => c.arc89GetMetadataRegistryParameters(withArgs(args?.params, [])), { simulate: args?.simulate })
+  async arc89GetMetadataRegistryParameters(args?: { simulate?: SimulateOptions; params?: unknown }): Promise<RegistryParameters> {
+    const value = await this.simulateOne((c) => c.arc89GetMetadataRegistryParameters(withArgs(args?.params, [])), { simulate: args?.simulate })
     return parseRegistryParameters(value)
   }
 
-  async arc89_get_metadata_partial_uri(args?: { simulate?: SimulateOptions; params?: unknown }): Promise<string> {
-    const value = await this.simulate_one((c) => c.arc89GetMetadataPartialUri(withArgs(args?.params, [])), { simulate: args?.simulate })
+  async arc89GetMetadataPartialUri(args?: { simulate?: SimulateOptions; params?: unknown }): Promise<string> {
+    const value = await this.simulateOne((c) => c.arc89GetMetadataPartialUri(withArgs(args?.params, [])), { simulate: args?.simulate })
     return String(value)
   }
 
-  async arc89_get_metadata_mbr_delta(args: { asset_id: bigint | number; new_size: number; simulate?: SimulateOptions; params?: unknown }): Promise<MbrDelta> {
-    const value = await this.simulate_one(
-      (c) => c.arc89GetMetadataMbrDelta(withArgs(args.params, [args.asset_id, args.new_size])),
+  async arc89GetMetadataMbrDelta(args: { assetId: bigint | number; newSize: number; simulate?: SimulateOptions; params?: unknown }): Promise<MbrDelta> {
+    const value = await this.simulateOne(
+      (c) => c.arc89GetMetadataMbrDelta(withArgs(args.params, [args.assetId, args.newSize])),
       { simulate: args.simulate },
     )
     return parseMbrDelta(value)
   }
 
-  async arc89_check_metadata_exists(args: { asset_id: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<MetadataExistence> {
-    const value = await this.simulate_one(
-      (c) => c.arc89CheckMetadataExists(withArgs(args.params, [args.asset_id])),
+  async arc89CheckMetadataExists(args: { assetId: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<MetadataExistence> {
+    const value = await this.simulateOne(
+      (c) => c.arc89CheckMetadataExists(withArgs(args.params, [args.assetId])),
       { simulate: args.simulate },
     )
     return parseMetadataExistence(value)
   }
 
-  async arc89_is_metadata_immutable(args: { asset_id: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<boolean> {
-    const value = await this.simulate_one(
-      (c) => c.arc89IsMetadataImmutable(withArgs(args.params, [args.asset_id])),
+  async arc89IsMetadataImmutable(args: { assetId: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<boolean> {
+    const value = await this.simulateOne(
+      (c) => c.arc89IsMetadataImmutable(withArgs(args.params, [args.assetId])),
       { simulate: args.simulate },
     )
     return Boolean(value)
   }
 
-  async arc89_is_metadata_short(args: { asset_id: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<readonly [boolean, bigint]> {
-    const value = await this.simulate_one(
-      (c) => c.arc89IsMetadataShort(withArgs(args.params, [args.asset_id])),
+  async arc89IsMetadataShort(args: { assetId: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<readonly [boolean, bigint]> {
+    const value = await this.simulateOne(
+      (c) => c.arc89IsMetadataShort(withArgs(args.params, [args.assetId])),
       { simulate: args.simulate },
     )
 
     // Generated client returns either a tuple or struct; normalize to (bool, uint64).
     if (Array.isArray(value)) {
-      return [Boolean(value[0]), asUint64BigInt(value[1], 'last_modified_round')]
+      return [Boolean(value[0]), asUint64BigInt(value[1], 'lastModifiedRound')]
     }
     if (value && typeof value === 'object' && 'lastModifiedRound' in (value as any) && 'flag' in (value as any)) {
       // This would be MutableFlag shape; tolerate it defensively.
       const o = value as any
-      return [Boolean(o.flag), asUint64BigInt(o.lastModifiedRound, 'last_modified_round')]
+      return [Boolean(o.flag), asUint64BigInt(o.lastModifiedRound, 'lastModifiedRound')]
     }
     if (value && typeof value === 'object' && '0' in (value as any) && '1' in (value as any)) {
       const o = value as any
-      return [Boolean(o[0]), asUint64BigInt(o[1], 'last_modified_round')]
+      return [Boolean(o[0]), asUint64BigInt(o[1], 'lastModifiedRound')]
     }
-    throw new TypeError('Unexpected return type for arc89_is_metadata_short')
+    throw new TypeError('Unexpected return type for arc89IsMetadataShort')
   }
 
-  async arc89_get_metadata_header(args: { asset_id: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<MetadataHeader> {
-    const value = await this.simulate_one(
-      (c) => c.arc89GetMetadataHeader(withArgs(args.params, [args.asset_id])),
+  async arc89GetMetadataHeader(args: { assetId: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<MetadataHeader> {
+    const value = await this.simulateOne(
+      (c) => c.arc89GetMetadataHeader(withArgs(args.params, [args.assetId])),
       { simulate: args.simulate },
     )
     return parseMetadataHeader(value)
   }
 
-  async arc89_get_metadata_pagination(args: { asset_id: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<Pagination> {
-    const value = await this.simulate_one(
-      (c) => c.arc89GetMetadataPagination(withArgs(args.params, [args.asset_id])),
+  async arc89GetMetadataPagination(args: { assetId: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<Pagination> {
+    const value = await this.simulateOne(
+      (c) => c.arc89GetMetadataPagination(withArgs(args.params, [args.assetId])),
       { simulate: args.simulate },
     )
     return parsePagination(value)
   }
 
-  async arc89_get_metadata(args: { asset_id: bigint | number; page: number; simulate?: SimulateOptions; params?: unknown }): Promise<PaginatedMetadata> {
-    const value = await this.simulate_one(
-      (c) => c.arc89GetMetadata(withArgs(args.params, [args.asset_id, args.page])),
+  async arc89GetMetadata(args: { assetId: bigint | number; page: number; simulate?: SimulateOptions; params?: unknown }): Promise<PaginatedMetadata> {
+    const value = await this.simulateOne(
+      (c) => c.arc89GetMetadata(withArgs(args.params, [args.assetId, args.page])),
       { simulate: args.simulate },
     )
     return parsePaginatedMetadata(value)
   }
 
-  async arc89_get_metadata_slice(args: { asset_id: bigint | number; offset: number; size: number; simulate?: SimulateOptions; params?: unknown }): Promise<Uint8Array> {
-    const value = await this.simulate_one(
-      (c) => c.arc89GetMetadataSlice(withArgs(args.params, [args.asset_id, args.offset, args.size])),
+  async arc89GetMetadataSlice(args: { assetId: bigint | number; offset: number; size: number; simulate?: SimulateOptions; params?: unknown }): Promise<Uint8Array> {
+    const value = await this.simulateOne(
+      (c) => c.arc89GetMetadataSlice(withArgs(args.params, [args.assetId, args.offset, args.size])),
       { simulate: args.simulate },
     )
-    return toBytes(value, 'metadata_slice')
+    return toBytes(value, 'metadataSlice')
   }
 
-  async arc89_get_metadata_header_hash(args: { asset_id: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<Uint8Array> {
-    const value = await this.simulate_one(
-      (c) => c.arc89GetMetadataHeaderHash(withArgs(args.params, [args.asset_id])),
+  async arc89GetMetadataHeaderHash(args: { assetId: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<Uint8Array> {
+    const value = await this.simulateOne(
+      (c) => c.arc89GetMetadataHeaderHash(withArgs(args.params, [args.assetId])),
       { simulate: args.simulate },
     )
-    return toBytes(value, 'header_hash')
+    return toBytes(value, 'headerHash')
   }
 
-  async arc89_get_metadata_page_hash(args: { asset_id: bigint | number; page: number; simulate?: SimulateOptions; params?: unknown }): Promise<Uint8Array> {
-    const value = await this.simulate_one(
-      (c) => c.arc89GetMetadataPageHash(withArgs(args.params, [args.asset_id, args.page])),
+  async arc89GetMetadataPageHash(args: { assetId: bigint | number; page: number; simulate?: SimulateOptions; params?: unknown }): Promise<Uint8Array> {
+    const value = await this.simulateOne(
+      (c) => c.arc89GetMetadataPageHash(withArgs(args.params, [args.assetId, args.page])),
       { simulate: args.simulate },
     )
-    return toBytes(value, 'page_hash')
+    return toBytes(value, 'pageHash')
   }
 
-  async arc89_get_metadata_hash(args: { asset_id: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<Uint8Array> {
-    const value = await this.simulate_one(
-      (c) => c.arc89GetMetadataHash(withArgs(args.params, [args.asset_id])),
+  async arc89GetMetadataHash(args: { assetId: bigint | number; simulate?: SimulateOptions; params?: unknown }): Promise<Uint8Array> {
+    const value = await this.simulateOne(
+      (c) => c.arc89GetMetadataHash(withArgs(args.params, [args.assetId])),
       { simulate: args.simulate },
     )
-    return toBytes(value, 'metadata_hash')
+    return toBytes(value, 'metadataHash')
   }
 
-  async arc89_get_metadata_string_by_key(args: { asset_id: bigint | number; key: string; simulate?: SimulateOptions; params?: unknown }): Promise<string> {
-    const value = await this.simulate_one(
-      (c) => c.arc89GetMetadataStringByKey(withArgs(args.params, [args.asset_id, args.key])),
+  async arc89GetMetadataStringByKey(args: { assetId: bigint | number; key: string; simulate?: SimulateOptions; params?: unknown }): Promise<string> {
+    const value = await this.simulateOne(
+      (c) => c.arc89GetMetadataStringByKey(withArgs(args.params, [args.assetId, args.key])),
       { simulate: args.simulate },
     )
     return String(value)
   }
 
-  async arc89_get_metadata_uint64_by_key(args: { asset_id: bigint | number; key: string; simulate?: SimulateOptions; params?: unknown }): Promise<bigint> {
-    const value = await this.simulate_one(
-      (c) => c.arc89GetMetadataUint64ByKey(withArgs(args.params, [args.asset_id, args.key])),
+  async arc89GetMetadataUint64ByKey(args: { assetId: bigint | number; key: string; simulate?: SimulateOptions; params?: unknown }): Promise<bigint> {
+    const value = await this.simulateOne(
+      (c) => c.arc89GetMetadataUint64ByKey(withArgs(args.params, [args.assetId, args.key])),
       { simulate: args.simulate },
     )
     return asUint64BigInt(value, 'uint64')
   }
 
-  async arc89_get_metadata_object_by_key(args: { asset_id: bigint | number; key: string; simulate?: SimulateOptions; params?: unknown }): Promise<string> {
-    const value = await this.simulate_one(
-      (c) => c.arc89GetMetadataObjectByKey(withArgs(args.params, [args.asset_id, args.key])),
+  async arc89GetMetadataObjectByKey(args: { assetId: bigint | number; key: string; simulate?: SimulateOptions; params?: unknown }): Promise<string> {
+    const value = await this.simulateOne(
+      (c) => c.arc89GetMetadataObjectByKey(withArgs(args.params, [args.assetId, args.key])),
       { simulate: args.simulate },
     )
     return String(value)
   }
 
-  async arc89_get_metadata_b64_bytes_by_key(args: {
-    asset_id: bigint | number
+  async arc89GetMetadataB64BytesByKey(args: {
+    assetId: bigint | number
     key: string
-    b64_encoding: number
+    b64Encoding: number
     simulate?: SimulateOptions
     params?: unknown
   }): Promise<Uint8Array> {
-    const value = await this.simulate_one(
-      (c) => c.arc89GetMetadataB64BytesByKey(withArgs(args.params, [args.asset_id, args.key, args.b64_encoding])),
+    const value = await this.simulateOne(
+      (c) => c.arc89GetMetadataB64BytesByKey(withArgs(args.params, [args.assetId, args.key, args.b64Encoding])),
       { simulate: args.simulate },
     )
-    return toBytes(value, 'b64_bytes')
+    return toBytes(value, 'b64Bytes')
   }
 }
