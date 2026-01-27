@@ -227,7 +227,7 @@ export class AsaMetadataRegistryWrite {
     }
 
     if (args.metadata.body.size <= currentSize) {
-      return await this._buildReplaceSmallerOrEqual({
+      return await this.buildReplaceSmallerOrEqual({
         assetManager: args.assetManager,
         metadata: args.metadata,
         options: opt,
@@ -235,10 +235,10 @@ export class AsaMetadataRegistryWrite {
       })
     }
 
-    return await this._buildReplaceLarger({ assetManager: args.assetManager, metadata: args.metadata, options: opt })
+    return await this.buildReplaceLarger({ assetManager: args.assetManager, metadata: args.metadata, options: opt })
   }
 
-  private async _buildReplaceSmallerOrEqual(args: {
+  private async buildReplaceSmallerOrEqual(args: {
     assetManager: SigningAccount
     metadata: AssetMetadata
     options: WriteOptions
@@ -278,7 +278,7 @@ export class AsaMetadataRegistryWrite {
     return composer
   }
 
-  private async _buildReplaceLarger(args: {
+  private async buildReplaceLarger(args: {
     assetManager: SigningAccount
     metadata: AssetMetadata
     options: WriteOptions
@@ -413,7 +413,7 @@ export class AsaMetadataRegistryWrite {
   // High-level send helpers
   // ------------------------------------------------------------------
 
-  private static async _sendGroup(args: {
+  private static async sendGroup(args: {
     composer: any
     simulateBeforeSend: boolean
     simulateOptions?: SimulateOptions | null
@@ -443,7 +443,7 @@ export class AsaMetadataRegistryWrite {
       metadata: args.metadata,
       options: args.options,
     })
-    const result = await AsaMetadataRegistryWrite._sendGroup({
+    const result = await AsaMetadataRegistryWrite.sendGroup({
       composer,
       simulateBeforeSend: Boolean(args.simulateBeforeSend),
       simulateOptions: args.simulateOptions,
@@ -470,7 +470,7 @@ export class AsaMetadataRegistryWrite {
       options: args.options,
       assumeCurrentSize: args.assumeCurrentSize,
     })
-    const result = await AsaMetadataRegistryWrite._sendGroup({
+    const result = await AsaMetadataRegistryWrite.sendGroup({
       composer,
       simulateBeforeSend: Boolean(args.simulateBeforeSend),
       simulateOptions: args.simulateOptions,
@@ -498,7 +498,7 @@ export class AsaMetadataRegistryWrite {
       payload: args.payload,
       options: args.options,
     })
-    await AsaMetadataRegistryWrite._sendGroup({
+    await AsaMetadataRegistryWrite.sendGroup({
       composer,
       simulateBeforeSend: Boolean(args.simulateBeforeSend),
       simulateOptions: args.simulateOptions,
@@ -520,7 +520,7 @@ export class AsaMetadataRegistryWrite {
       assetId: args.assetId,
       options: args.options,
     })
-    const result = await AsaMetadataRegistryWrite._sendGroup({
+    const result = await AsaMetadataRegistryWrite.sendGroup({
       composer,
       simulateBeforeSend: Boolean(args.simulateBeforeSend),
       simulateOptions: args.simulateOptions,
