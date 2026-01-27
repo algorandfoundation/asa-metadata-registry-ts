@@ -55,3 +55,15 @@ export const uint64ToBytesBE = (n: bigint): Uint8Array => {
   view.setBigUint64(0, n, false)
   return new Uint8Array(buf)
 }
+
+export const concatBytes = (chunks: Uint8Array[]): Uint8Array => {
+  let total = 0
+  for (const c of chunks) total += c.length
+  const out = new Uint8Array(total)
+  let off = 0
+  for (const c of chunks) {
+    out.set(c, off)
+    off += c.length
+  }
+  return out
+}
