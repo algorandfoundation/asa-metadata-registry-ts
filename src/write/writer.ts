@@ -28,6 +28,7 @@ import { toBytes } from '../internal/bytes'
 import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '../generated'
 import { AsaMetadataRegistryAvmRead, SimulateOptions } from '../read/avm'
 import { parseMbrDelta, returnValues } from '../read/utils'
+import { AlgoAmount } from '@algorandfoundation/algokit-utils/types/amount'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,17 +55,12 @@ export type SigningAccount = {
  *   to cover opcode budget inner transaction (related to metadata total pages).
  */
 export interface WriteOptions {
-  extraResources?: number
-  feePaddingTxns?: number
-  coverAppCallInnerTransactionFees?: boolean
+  extraResources: number
+  feePaddingTxns: number
+  coverAppCallInnerTransactionFees: boolean
 }
 
-const normalizeWriteOptions = (opt?: WriteOptions) => {
-  const extraResources = opt?.extraResources ?? 0
-  const feePaddingTxns = opt?.feePaddingTxns ?? 0
-  const coverAppCallInnerTransactionFees = opt?.coverAppCallInnerTransactionFees ?? true
-  return { extraResources, feePaddingTxns, coverAppCallInnerTransactionFees }
-}
+const writeOptionsDefault: WriteOptions = {extraResources: 0, feePaddingTxns: 0, coverAppCallInnerTransactionFees: true}
 
 // ---------------------------------------------------------------------------
 // Internal helpers (runtime-tolerant duck typing)
@@ -114,12 +110,9 @@ const appendExtraResources = (composer: any, args: { count: number; sender: stri
   }
 }
 
-const defaultSendParams = (coverAppCallInnerTransactionFees: boolean) => {
-  return {
-    coverAppCallInnerTransactionFees,
-    cover_app_call_inner_transaction_fees: coverAppCallInnerTransactionFees,
-  }
-}
+const defaultSendParams = (coverAppCallInnerTransactionFees: boolean) => ({
+  coverAppCallInnerTransactionFees,
+})
 
 // ---------------------------------------------------------------------------
 // Writer
@@ -165,7 +158,7 @@ export class AsaMetadataRegistryWrite {
     metadata: AssetMetadata
     options?: WriteOptions
   }): Promise<AsaMetadataRegistryComposer> {
-    const opt = normalizeWriteOptions(args.options)
+    const opt = args.options ?? writeOptionsDefault
     const chunks = args.metadata.body.chunkedPayload()
 
     const avm = new AsaMetadataRegistryAvmRead({ client: this.client })
@@ -201,7 +194,7 @@ export class AsaMetadataRegistryWrite {
       },
       sender: args.asset_manager.address,
       signer: args.asset_manager.signer,
-      staticFee: feePool,
+      staticFee: new AlgoAmount({ microAlgos: feePool }),
     })
 
     appendExtraPayload(composer as any, {
@@ -225,7 +218,7 @@ export class AsaMetadataRegistryWrite {
     options?: WriteOptions
     assume_current_size?: number | null
   }): Promise<AsaMetadataRegistryComposer> {
-    const opt = normalizeWriteOptions(args.options)
+    const opt = args.options ?? writeOptionsDefault
     const avm = new AsaMetadataRegistryAvmRead({ client: this.client })
 
     let currentSize = args.assume_current_size ?? null
@@ -249,7 +242,7 @@ export class AsaMetadataRegistryWrite {
   private async _build_replace_smaller_or_equal(args: {
     asset_manager: SigningAccount
     metadata: AssetMetadata
-    options: ReturnType<typeof normalizeWriteOptions>
+    options: WriteOptions
     equal_size: boolean
   }): Promise<AsaMetadataRegistryComposer> {
     const chunks = args.metadata.body.chunkedPayload()
@@ -269,7 +262,7 @@ export class AsaMetadataRegistryWrite {
       },
       sender: args.asset_manager.address,
       signer: args.asset_manager.signer,
-      staticFee: feePool,
+      staticFee: new AlgoAmount({ microAlgos: feePool }),
     })
 
     appendExtraPayload(composer as any, {
@@ -289,7 +282,7 @@ export class AsaMetadataRegistryWrite {
   private async _build_replace_larger(args: {
     asset_manager: SigningAccount
     metadata: AssetMetadata
-    options: ReturnType<typeof normalizeWriteOptions>
+    options: WriteOptions
   }): Promise<AsaMetadataRegistryComposer> {
     const chunks = args.metadata.body.chunkedPayload()
 
@@ -321,7 +314,7 @@ export class AsaMetadataRegistryWrite {
       },
       sender: args.asset_manager.address,
       signer: args.asset_manager.signer,
-      staticFee: feePool,
+      staticFee: new AlgoAmount({ microAlgos: feePool }),
     })
 
     appendExtraPayload(composer as any, {
@@ -346,7 +339,7 @@ export class AsaMetadataRegistryWrite {
     payload: Uint8Array | ArrayBuffer | number[]
     options?: WriteOptions
   }): Promise<AsaMetadataRegistryComposer> {
-    const opt = normalizeWriteOptions(args.options)
+    const opt = args.options ?? writeOptionsDefault
     const params = await this._params()
     const payloadBytes = toBytes(args.payload as any, 'payload')
 
@@ -363,7 +356,7 @@ export class AsaMetadataRegistryWrite {
       args: { assetId: args.asset_id, offset: args.offset, payload: chunks[0] ?? new Uint8Array() },
       sender: args.asset_manager.address,
       signer: args.asset_manager.signer,
-      staticFee: feePool,
+      staticFee: new AlgoAmount({ microAlgos: feePool }),
     })
 
     for (let i = 1; i < chunks.length; i++) {
@@ -375,7 +368,7 @@ export class AsaMetadataRegistryWrite {
         },
         sender: args.asset_manager.address,
         signer: args.asset_manager.signer,
-        staticFee: 0,
+        staticFee: new AlgoAmount({ microAlgos: 0 }),
       })
     }
 
@@ -393,7 +386,7 @@ export class AsaMetadataRegistryWrite {
     asset_id: bigint | number
     options?: WriteOptions
   }): Promise<AsaMetadataRegistryComposer> {
-    const opt = normalizeWriteOptions(args.options)
+    const opt = args.options ?? writeOptionsDefault
     const sp = await this.client.algorand.getSuggestedParams()
     const minFee = toNumber(sp.minFee)
     const txnCount = 1 + 1 + opt.extraResources
@@ -404,7 +397,7 @@ export class AsaMetadataRegistryWrite {
       args: { assetId: args.asset_id },
       sender: args.asset_manager.address,
       signer: args.asset_manager.signer,
-      staticFee: feePool,
+      staticFee: new AlgoAmount({ microAlgos: feePool }),
     })
     appendExtraResources(composer as any, {
       count: opt.extraResources,
@@ -430,7 +423,7 @@ export class AsaMetadataRegistryWrite {
       await args.composer.simulate(sim)
     }
 
-    const opt = normalizeWriteOptions(args.options ?? undefined)
+    const opt = args.options ?? writeOptionsDefault
     const sendParams = args.send_params ?? defaultSendParams(opt.coverAppCallInnerTransactionFees)
     return await args.composer.send(sendParams)
   }
@@ -551,7 +544,7 @@ export class AsaMetadataRegistryWrite {
     if (!(flagConsts.REV_FLG_ARC20 <= args.flag_index && args.flag_index <= flagConsts.REV_FLG_RESERVED_7)) {
       throw new InvalidFlagIndexError(`Invalid reversible flag index: ${args.flag_index}, must be in [0, 7]`)
     }
-    const opt = normalizeWriteOptions(args.options)
+    const opt = args.options ?? writeOptionsDefault
     const sp = await this.client.algorand.getSuggestedParams()
     const minFee = toNumber(sp.minFee)
     const feePool = (1 + opt.extraResources + opt.feePaddingTxns) * minFee
@@ -561,7 +554,7 @@ export class AsaMetadataRegistryWrite {
       args: { assetId: args.asset_id, flag: args.flag_index, value: args.value },
       sender: args.asset_manager.address,
       signer: args.asset_manager.signer,
-      staticFee: feePool,
+      staticFee: new AlgoAmount({ microAlgos: feePool }),
     })
     appendExtraResources(composer as any, {
       count: opt.extraResources,
@@ -585,7 +578,7 @@ export class AsaMetadataRegistryWrite {
         `Invalid irreversible flag index: ${args.flag_index}, must be in [2, 7]. Flags 0, 1 are creation only.`,
       )
     }
-    const opt = normalizeWriteOptions(args.options)
+    const opt = args.options ?? writeOptionsDefault
     const sp = await this.client.algorand.getSuggestedParams()
     const minFee = toNumber(sp.minFee)
     const feePool = (1 + opt.extraResources + opt.feePaddingTxns) * minFee
@@ -595,7 +588,7 @@ export class AsaMetadataRegistryWrite {
       args: { assetId: args.asset_id, flag: args.flag_index },
       sender: args.asset_manager.address,
       signer: args.asset_manager.signer,
-      staticFee: feePool,
+      staticFee: new AlgoAmount({ microAlgos: feePool }),
     })
     appendExtraResources(composer as any, {
       count: opt.extraResources,
@@ -613,7 +606,7 @@ export class AsaMetadataRegistryWrite {
     options?: WriteOptions
     send_params?: any | null
   }): Promise<void> {
-    const opt = normalizeWriteOptions(args.options)
+    const opt = args.options ?? writeOptionsDefault
     const sp = await this.client.algorand.getSuggestedParams()
     const minFee = toNumber(sp.minFee)
     const feePool = (1 + opt.extraResources + opt.feePaddingTxns) * minFee
@@ -623,7 +616,7 @@ export class AsaMetadataRegistryWrite {
       args: { assetId: args.asset_id },
       sender: args.asset_manager.address,
       signer: args.asset_manager.signer,
-      staticFee: feePool,
+      staticFee: new AlgoAmount({ microAlgos: feePool }),
     })
     appendExtraResources(composer as any, {
       count: opt.extraResources,
@@ -641,7 +634,7 @@ export class AsaMetadataRegistryWrite {
     options?: WriteOptions
     send_params?: any | null
   }): Promise<void> {
-    const opt = normalizeWriteOptions(args.options)
+    const opt = args.options ?? writeOptionsDefault
     const sp = await this.client.algorand.getSuggestedParams()
     const minFee = toNumber(sp.minFee)
     const feePool = (1 + opt.extraResources + opt.feePaddingTxns) * minFee
@@ -651,7 +644,7 @@ export class AsaMetadataRegistryWrite {
       args: { assetId: args.asset_id, newRegistryId: args.new_registry_id },
       sender: args.asset_manager.address,
       signer: args.asset_manager.signer,
-      staticFee: feePool,
+      staticFee: new AlgoAmount({ microAlgos: feePool }),
     })
     appendExtraResources(composer as any, {
       count: opt.extraResources,
