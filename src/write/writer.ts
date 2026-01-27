@@ -18,8 +18,8 @@ import {
   RegistryParameters,
   getDefaultRegistryParams,
 } from '../models'
-import { asBigInt, toNumber } from '../internal/numbers'
-import { toBytes } from '../internal/bytes'
+import { asBigInt, asUint64BigInt, toNumber } from '../internal/numbers'
+import { toBytes, uint64ToBytesBE } from '../internal/bytes'
 import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '../generated'
 import { AsaMetadataRegistryAvmRead, SimulateOptions } from '../read/avm'
 import { parseMbrDelta, returnValues } from '../internal/avm'
@@ -62,12 +62,7 @@ const writeOptionsDefault: WriteOptions = {extraResources: 0, feePaddingTxns: 0,
 // ---------------------------------------------------------------------------
 
 const noteU64 = (n: number): Uint8Array => {
-  if (!Number.isInteger(n) || n < 0) throw new RangeError('note index must be a non-negative integer')
-  const out = new Uint8Array(8)
-  const view = new DataView(out.buffer)
-  // Big-endian uint64
-  view.setBigUint64(0, BigInt(n), false)
-  return out
+  return uint64ToBytesBE(asUint64BigInt(n, 'note index'))
 }
 
 const chunksForSlice = (payload: Uint8Array, maxSize: number): Uint8Array[] => {
