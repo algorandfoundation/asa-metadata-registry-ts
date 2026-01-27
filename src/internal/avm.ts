@@ -1,5 +1,5 @@
-import { toBytes } from '../internal/bytes'
-import { asNumber, asUint64BigInt, asUint8 } from '../internal/numbers'
+import { toBytes } from './bytes'
+import { asNumber, asUint64BigInt, asUint8 } from './numbers'
 import { MbrDelta, PaginatedMetadata } from '../models'
 
 export const withArgs = (params: unknown | undefined, args: unknown[]) => {

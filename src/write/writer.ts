@@ -22,7 +22,7 @@ import { asBigInt, toNumber } from '../internal/numbers'
 import { toBytes } from '../internal/bytes'
 import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '../generated'
 import { AsaMetadataRegistryAvmRead, SimulateOptions } from '../read/avm'
-import { parseMbrDelta, returnValues } from '../read/utils'
+import { parseMbrDelta, returnValues } from '../internal/avm'
 import { AlgoAmount } from '@algorandfoundation/algokit-utils/types/amount'
 
 // ---------------------------------------------------------------------------
