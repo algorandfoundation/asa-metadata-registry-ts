@@ -1,12 +1,7 @@
 /**
  * ARC-89 write helpers.
- *
+ * 
  * Ported from Python `asa_metadata_registry/write/writer.py`.
- *
- * This module wraps the AlgoKit-generated ARC-56 AppClient to:
- * - split metadata into payload chunks
- * - build atomic groups (create/replace/delete + extra payload)
- * - optionally simulate before sending
  *
  * Notes:
  * - The Python SDK is synchronous; this TypeScript port is async.
@@ -63,7 +58,7 @@ export interface WriteOptions {
 const writeOptionsDefault: WriteOptions = {extraResources: 0, feePaddingTxns: 0, coverAppCallInnerTransactionFees: true}
 
 // ---------------------------------------------------------------------------
-// Internal helpers (runtime-tolerant duck typing)
+// Internal helpers
 // ---------------------------------------------------------------------------
 
 const noteU64 = (n: number): Uint8Array => {
@@ -121,7 +116,7 @@ const defaultSendParams = (coverAppCallInnerTransactionFees: boolean) => ({
 /*
  * Write API for ARC-89.
  *
- * This wraps the generated AlgoKit AppClient to:
+ * This wraps the generated AlgoKit-generated ARC-56 AppClient to:
  *   - split metadata into payload chunks
  *   - build atomic groups (create/replace/delete + extra payload)
  *   - optionally simulate before sending
@@ -152,7 +147,7 @@ export class AsaMetadataRegistryWrite {
 
   /** Build (but do not send) an ARC-89 create metadata group. 
    * @returns The generated client's composer, so callers can `.simulate()` or `.send()`. 
-  */
+   */
   async build_create_metadata_group(args: {
     asset_manager: SigningAccount
     metadata: AssetMetadata
@@ -211,7 +206,11 @@ export class AsaMetadataRegistryWrite {
     return composer
   }
 
-  /** Build a replace group, automatically choosing `replace_metadata` or `replace_metadata_larger`. */
+  /** Build a replace group, automatically choosing `replace_metadata` or `replace_metadata_larger`. 
+   *  If you already know the current on-chain metadata size, pass `assume_current_size` to avoid
+   *  an extra simulate read.
+   * @returns The generated client's composer, so callers can `.simulate()` or `.send()`. 
+   */
   async build_replace_metadata_group(args: {
     asset_manager: SigningAccount
     metadata: AssetMetadata
@@ -331,7 +330,10 @@ export class AsaMetadataRegistryWrite {
     return composer
   }
 
-  /** Build a group that replaces a slice of the on-chain metadata. */
+  /** Build a group that replaces a slice of the on-chain metadata. 
+   * If `payload` exceeds the registry's replace payload limit, this builds multiple
+   * `arc89_replace_metadata_slice` calls in one group, adjusting the offset for each chunk.
+  */
   async build_replace_metadata_slice_group(args: {
     asset_manager: SigningAccount
     asset_id: bigint | number
