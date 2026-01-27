@@ -13,8 +13,7 @@
  * - The generated AppClient is *not* re-implemented here; it is used as-is.
  */
 
-import algosdk, { TransactionSigner } from 'algosdk'
-
+import { TransactionSigner, makePaymentTxnWithSuggestedParamsFromObject } from 'algosdk'
 import * as flagConsts from '../flags'
 import { InvalidFlagIndexError, MissingAppClientError } from '../errors'
 import {
@@ -23,6 +22,8 @@ import {
   RegistryParameters,
   getDefaultRegistryParams,
 } from '../models'
+import { asBigInt } from '../internal/numbers'
+import { toBytes } from '../internal/bytes'
 import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '../generated'
 import { AsaMetadataRegistryAvmRead, SimulateOptions } from '../read/avm'
 
@@ -51,42 +52,21 @@ export type SigningAccount = {
  *   to cover opcode budget inner transaction (related to metadata total pages).
  */
 export interface WriteOptions {
-  // snake_case (Python parity)
-  extra_resources?: number
-  fee_padding_txns?: number
-  cover_app_call_inner_transaction_fees?: boolean
-
-  // camelCase (TypeScript ergonomics)
   extraResources?: number
   feePaddingTxns?: number
   coverAppCallInnerTransactionFees?: boolean
 }
 
 const normalizeWriteOptions = (opt?: WriteOptions) => {
-  const extraResources = opt?.extraResources ?? opt?.extra_resources ?? 0
-  const feePaddingTxns = opt?.feePaddingTxns ?? opt?.fee_padding_txns ?? 0
-  const coverAppCallInnerTransactionFees =
-    opt?.coverAppCallInnerTransactionFees ?? opt?.cover_app_call_inner_transaction_fees ?? true
+  const extraResources = opt?.extraResources ?? 0
+  const feePaddingTxns = opt?.feePaddingTxns ?? 0
+  const coverAppCallInnerTransactionFees = opt?.coverAppCallInnerTransactionFees ?? true
   return { extraResources, feePaddingTxns, coverAppCallInnerTransactionFees }
 }
 
 // ---------------------------------------------------------------------------
 // Internal helpers (runtime-tolerant duck typing)
 // ---------------------------------------------------------------------------
-
-const asBigInt = (v: bigint | number, label: string): bigint => {
-  if (typeof v === 'bigint') return v
-  if (typeof v === 'number' && Number.isFinite(v)) return BigInt(Math.trunc(v))
-  throw new TypeError(`${label} must be bigint | number`)
-}
-
-const toUint8Array = (v: Uint8Array | ArrayBuffer | number[] | null | undefined, label: string): Uint8Array => {
-  if (v instanceof Uint8Array) return v
-  if (v instanceof ArrayBuffer) return new Uint8Array(v)
-  if (Array.isArray(v)) return Uint8Array.from(v)
-  if (v === null || v === undefined) return new Uint8Array()
-  throw new TypeError(`${label} must be bytes (Uint8Array)`)
-}
 
 const noteU64 = (n: number): Uint8Array => {
   if (!Number.isInteger(n) || n < 0) throw new RangeError('note index must be a non-negative integer')
@@ -97,31 +77,9 @@ const noteU64 = (n: number): Uint8Array => {
   return out
 }
 
-const coalesce = <T>(...values: Array<T | null | undefined>): T | undefined => {
-  for (const v of values) if (v !== null && v !== undefined) return v
-  return undefined
-}
-
-const normalizeSimulateOptions = (opts?: SimulateOptions) => {
-  const allowEmptySignatures = coalesce(opts?.allowEmptySignatures, opts?.allow_empty_signatures, true)
-  const skipSignatures = coalesce(opts?.skipSignatures, opts?.skip_signatures, true)
-  return {
-    allowMoreLogs: coalesce(opts?.allowMoreLogs, opts?.allow_more_logs),
-    allowEmptySignatures,
-    allowUnnamedResources: coalesce(opts?.allowUnnamedResources, opts?.allow_unnamed_resources),
-    extraOpcodeBudget: coalesce(opts?.extraOpcodeBudget, opts?.extra_opcode_budget),
-    execTraceConfig: coalesce(opts?.execTraceConfig, opts?.exec_trace_config),
-    simulationRound: coalesce(opts?.simulationRound, opts?.simulation_round),
-    skipSignatures,
-  }
-}
-
+// FIXME:
 const getSuggestedParams = async (algorand: any): Promise<any> => {
-  // AlgoKit v9+ (common)
   if (typeof algorand?.getSuggestedParams === 'function') return await algorand.getSuggestedParams()
-  // Older / snake_case
-  if (typeof algorand?.get_suggested_params === 'function') return await algorand.get_suggested_params()
-  // Reach into algod client
   const algod = algorand?.client?.algod ?? algorand?.algod
   if (algod?.getTransactionParams && typeof algod.getTransactionParams === 'function') {
     const req = algod.getTransactionParams()
@@ -130,6 +88,7 @@ const getSuggestedParams = async (algorand: any): Promise<any> => {
   throw new Error('Unable to obtain suggested params from AlgorandClient')
 }
 
+// FIXME:
 const getMinFee = (suggestedParams: any): number => {
   const minFee = suggestedParams?.minFee ?? suggestedParams?.min_fee
   if (typeof minFee === 'number' && Number.isFinite(minFee) && minFee > 0) return minFee
@@ -169,7 +128,7 @@ const makeMbrPaymentArg = async (args: {
 
   // Manual construction via algosdk
   const sp = await getSuggestedParams(algorand)
-  const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+  const txn = makePaymentTxnWithSuggestedParamsFromObject({
     from: args.assetManager.address,
     to: args.client.appAddress,
     amount: Number(asBigInt(args.amountMicroAlgos as any, 'amount_micro_algos')),
@@ -235,6 +194,14 @@ const defaultSendParams = (coverAppCallInnerTransactionFees: boolean) => {
 // Writer
 // ---------------------------------------------------------------------------
 
+/*
+ * Write API for ARC-89.
+ *
+ * This wraps the generated AlgoKit AppClient to:
+ *   - split metadata into payload chunks
+ *   - build atomic groups (create/replace/delete + extra payload)
+ *   - optionally simulate before sending
+ */
 export class AsaMetadataRegistryWrite {
   public readonly client: AsaMetadataRegistryClient
   public readonly params: RegistryParameters | null
@@ -249,7 +216,7 @@ export class AsaMetadataRegistryWrite {
     if (this.params) return this.params
     // Prefer on-chain registry parameters (simulate).
     try {
-      return await new AsaMetadataRegistryAvmRead({ client: this.client }).arc89_get_metadata_registry_parameters()
+      return await new AsaMetadataRegistryAvmRead({ client: this.client }).arc89GetMetadataRegistryParameters()
     } catch {
       return getDefaultRegistryParams()
     }
@@ -259,7 +226,9 @@ export class AsaMetadataRegistryWrite {
   // Group builders
   // ------------------------------------------------------------------
 
-  /** Build (but do not send) an ARC-89 create metadata group. */
+  /** Build (but do not send) an ARC-89 create metadata group. 
+   * @returns The generated client's composer, so callers can `.simulate()` or `.send()`. 
+  */
   async build_create_metadata_group(args: {
     asset_manager: SigningAccount
     metadata: AssetMetadata
@@ -269,9 +238,9 @@ export class AsaMetadataRegistryWrite {
     const chunks = args.metadata.body.chunkedPayload()
 
     const avm = new AsaMetadataRegistryAvmRead({ client: this.client })
-    const mbrDelta = await avm.arc89_get_metadata_mbr_delta({
-      asset_id: args.metadata.assetId,
-      new_size: args.metadata.body.size,
+    const mbrDelta = await avm.arc89GetMetadataMbrDelta({
+      assetId: args.metadata.assetId,
+      newSize: args.metadata.body.size,
     })
     const payAmount = mbrDelta.isPositive ? BigInt(mbrDelta.amount) : 0n
     const mbrPayment = await makeMbrPaymentArg({ client: this.client, assetManager: args.asset_manager, amountMicroAlgos: payAmount })
@@ -325,7 +294,7 @@ export class AsaMetadataRegistryWrite {
 
     let currentSize = args.assume_current_size ?? null
     if (currentSize === null || currentSize === undefined) {
-      const pagination = await avm.arc89_get_metadata_pagination({ asset_id: args.metadata.assetId })
+      const pagination = await avm.arc89GetMetadataPagination({ assetId: args.metadata.assetId })
       currentSize = pagination.metadataSize
     }
 
@@ -389,9 +358,9 @@ export class AsaMetadataRegistryWrite {
     const chunks = args.metadata.body.chunkedPayload()
 
     const avm = new AsaMetadataRegistryAvmRead({ client: this.client })
-    const mbrDelta = await avm.arc89_get_metadata_mbr_delta({
-      asset_id: args.metadata.assetId,
-      new_size: args.metadata.body.size,
+    const mbrDelta = await avm.arc89GetMetadataMbrDelta({
+      assetId: args.metadata.assetId,
+      newSize: args.metadata.body.size,
     })
     const payAmount = mbrDelta.isPositive ? BigInt(mbrDelta.amount) : 0n
     const mbrPayment = await makeMbrPaymentArg({ client: this.client, assetManager: args.asset_manager, amountMicroAlgos: payAmount })
@@ -438,7 +407,7 @@ export class AsaMetadataRegistryWrite {
   }): Promise<AsaMetadataRegistryComposer> {
     const opt = normalizeWriteOptions(args.options)
     const params = await this._params()
-    const payloadBytes = toUint8Array(args.payload as any, 'payload')
+    const payloadBytes = toBytes(args.payload as any, 'payload')
 
     const chunks = chunksForSlice(payloadBytes, params.replacePayloadMaxSize)
 
@@ -517,7 +486,7 @@ export class AsaMetadataRegistryWrite {
   }): Promise<any> {
     if (args.simulate_before_send) {
       const sim = args.simulate_options ?? ({ allowEmptySignatures: true, skipSignatures: true } as SimulateOptions)
-      await args.composer.simulate(normalizeSimulateOptions(sim))
+      await args.composer.simulate(sim)
     }
 
     const opt = normalizeWriteOptions(args.options ?? undefined)
