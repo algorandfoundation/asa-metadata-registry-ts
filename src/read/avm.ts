@@ -18,6 +18,7 @@ import {
   Pagination,
   RegistryParameters,
 } from '../models'
+import * as enums from '../enums'
 
 /**
  * Options passed through to AlgoKit's `TransactionComposer.simulate()`.
@@ -295,7 +296,7 @@ export class AsaMetadataRegistryAvmRead {
   async arc89GetMetadataB64BytesByKey(args: {
     assetId: bigint | number
     key: string
-    b64Encoding: number
+    b64Encoding: typeof enums.B64_STD_ENCODING | typeof enums.B64_URL_ENCODING
     simulate?: SimulateOptions
     params?: unknown
   }): Promise<Uint8Array> {

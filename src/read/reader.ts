@@ -2,10 +2,6 @@
  * Unified read dispatcher for ARC-89.
  *
  * Ported from Python `asa_metadata_registry/read/reader.py`.
- *
- * - AUTO prefers BOX (fast, direct box reads) when Algod is available; otherwise AVM (simulate).
- * - BOX reconstructs getter results from box values.
- * - AVM uses the generated AppClient + simulate for smart-contract parity.
  */
 
 import { AlgodBoxReader } from '../algod'
@@ -27,15 +23,10 @@ import {
   RegistryParameters,
   getDefaultRegistryParams,
 } from '../models'
+import * as enums from '../enums'
+import { asBigInt } from '../internal/numbers'
 import { AsaMetadataRegistryAvmRead, SimulateOptions } from './avm'
 import { AsaMetadataRegistryBoxRead } from './box'
-
-const asBigInt = (v: bigint | number | null | undefined, label: string): bigint => {
-  if (v === null || v === undefined) throw new TypeError(`${label} is required`)
-  if (typeof v === 'bigint') return v
-  if (typeof v === 'number' && Number.isFinite(v)) return BigInt(Math.trunc(v))
-  throw new TypeError(`${label} must be bigint | number`)
-}
 
 const toBigInt = (v: unknown, label: string): bigint => {
   if (typeof v === 'bigint') return v
@@ -89,17 +80,26 @@ const withArgs = (params: unknown | undefined, args: unknown[]) => {
   return p
 }
 
+/**
+ * Where reads should come from.
+ *
+ * - AUTO: prefer BOX when possible (fast), otherwise AVM (simulate)
+ * - BOX: reconstruct from box value using Algod
+ * - AVM: use the generated AppClient + simulate for smart-contract parity
+ */
 export enum MetadataSource {
-  /** Prefer BOX when possible, otherwise AVM. */
   AUTO = 'auto',
-  /** Reconstruct from box value using Algod. */
   BOX = 'box',
-  /** Use the generated AppClient + simulate for contract parity. */
   AVM = 'avm',
 }
 
 /**
  * Unified read API for ARC-89.
+ *
+ * Exposes:
+ * - `.box` for fast Algod box reconstruction
+ * - `.avm` for AVM-parity getters via simulate (if configured)
+ * - dispatcher methods that accept `source=...`
  */
 export class AsaMetadataRegistryRead {
   public readonly appId: bigint | null
@@ -151,7 +151,7 @@ export class AsaMetadataRegistryRead {
 
   /** BOX reader bound to the configured registry app id. */
   get box(): AsaMetadataRegistryBoxRead {
-    if (!this.algod) throw new RuntimeError('BOX reader requires an algod client')
+    if (!this.algod) throw new Error('BOX reader requires an algod client')
     const params = this.paramsCache ?? getDefaultRegistryParams()
     return new AsaMetadataRegistryBoxRead({ algod: this.algod, appId: this.requireAppId(), params })
   }
@@ -171,6 +171,12 @@ export class AsaMetadataRegistryRead {
 
   /**
    * Resolve the ARC-90 URI for an asset from either an explicit URI or the ASA's `url` field.
+   *
+   * If `metadataUri` is provided, it's parsed and returned.
+   *
+   * If only `assetId` is provided, the SDK attempts:
+   * 1) ASA url -> ARC-89 partial URI completion (requires algod)
+   * 2) configured `appId` (if present)
    */
   async resolveArc90Uri(args: {
     assetId?: bigint | number | null
@@ -215,6 +221,8 @@ export class AsaMetadataRegistryRead {
 
   /**
    * Fetch a full ARC-89 metadata record (header + metadata bytes).
+   *
+   * When `source=AUTO`, the SDK prefers BOX reads (fast) if algod is available; otherwise AVM.
    */
   async getAssetMetadata(args: {
     assetId?: bigint | number | null
@@ -281,7 +289,7 @@ export class AsaMetadataRegistryRead {
     }
 
     if (source === MetadataSource.BOX) {
-      if (!this.algod) throw new RuntimeError('BOX source selected but algod is not configured')
+      if (!this.algod) throw new Error('BOX source selected but algod is not configured')
       const params = await this.getParams()
       return await this.algod.getAssetMetadataRecord({ appId: args.appId, assetId: args.assetId, params })
     }
@@ -586,7 +594,7 @@ export class AsaMetadataRegistryRead {
   async arc89GetMetadataB64BytesByKey(args: {
     assetId: bigint | number
     key: string
-    b64Encoding: number
+    b64Encoding: typeof enums.B64_STD_ENCODING | typeof enums.B64_URL_ENCODING
     source?: MetadataSource
     simulate?: SimulateOptions
   }): Promise<Uint8Array> {
@@ -604,5 +612,3 @@ export class AsaMetadataRegistryRead {
     return await this.box.getB64BytesByKey({ assetId: args.assetId, key: args.key, b64Encoding: args.b64Encoding })
   }
 }
-
-class RuntimeError extends Error {}
