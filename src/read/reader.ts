@@ -25,60 +25,10 @@ import {
 } from '../models'
 import * as enums from '../enums'
 import { asBigInt } from '../internal/numbers'
+import { concatBytes } from '../internal/bytes'
 import { AsaMetadataRegistryAvmRead, SimulateOptions } from './avm'
 import { AsaMetadataRegistryBoxRead } from './box'
-
-const toBigInt = (v: unknown, label: string): bigint => {
-  if (typeof v === 'bigint') return v
-  if (typeof v === 'number' && Number.isFinite(v)) return BigInt(Math.trunc(v))
-  if (typeof v === 'string' && /^\d+$/.test(v)) return BigInt(v)
-  throw new TypeError(`${label} must be uint64 (bigint)`)
-}
-
-const toUint8Array = (v: unknown, label: string): Uint8Array => {
-  if (v instanceof Uint8Array) return v
-  if (v instanceof ArrayBuffer) return new Uint8Array(v)
-  if (Array.isArray(v)) return Uint8Array.from(v)
-
-  const B = (globalThis as any).Buffer
-  if (B && typeof B.isBuffer === 'function' && B.isBuffer(v)) return new Uint8Array(v)
-
-  if (v && typeof v === 'object' && 'buffer' in (v as any) && (v as any).buffer instanceof ArrayBuffer) {
-    const view = v as any
-    return new Uint8Array(view.buffer, view.byteOffset ?? 0, view.byteLength ?? view.length)
-  }
-
-  throw new TypeError(`${label} must be bytes (Uint8Array)`)
-}
-
-const toPaginatedMetadata = (v: unknown): PaginatedMetadata => {
-  if (Array.isArray(v)) return PaginatedMetadata.fromTuple(v as any)
-  if (!v || typeof v !== 'object') throw new TypeError('PaginatedMetadata must be a tuple or struct')
-  const o = v as any
-  return new PaginatedMetadata({
-    hasNextPage: Boolean(o.hasNextPage),
-    lastModifiedRound: toBigInt(o.lastModifiedRound, 'lastModifiedRound'),
-    pageContent: toUint8Array(o.pageContent, 'pageContent'),
-  })
-}
-
-const concatBytes = (chunks: Uint8Array[]): Uint8Array => {
-  let total = 0
-  for (const c of chunks) total += c.length
-  const out = new Uint8Array(total)
-  let off = 0
-  for (const c of chunks) {
-    out.set(c, off)
-    off += c.length
-  }
-  return out
-}
-
-const withArgs = (params: unknown | undefined, args: unknown[]) => {
-  const p = params && typeof params === 'object' ? { ...(params as any) } : {}
-  ;(p as any).args = args
-  return p
-}
+import { parsePaginatedMetadata, withArgs } from './utils'
 
 /**
  * Where reads should come from.
@@ -318,7 +268,7 @@ export class AsaMetadataRegistryRead {
         )
 
         for (const v of values) {
-          const paged = toPaginatedMetadata(v)
+          const paged = parsePaginatedMetadata(v)
           if (lastRound === null) lastRound = paged.lastModifiedRound
           else if (paged.lastModifiedRound !== lastRound) {
             throw new MetadataDriftError('Metadata changed between simulated page reads')
