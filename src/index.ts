@@ -51,7 +51,7 @@ export * as boxRead from './read/box'
 export * as avmRead from './read/avm'
 export * as reader from './read/reader'
 
-export * as write from './write'
+export * as writer from './write/writer'
 
 // Generated ARC-56 client (excluded from translation; wrapped in later phases)
 // IMPORTANT: we only export it as a namespace to avoid name collisions with the SDK's domain models.
