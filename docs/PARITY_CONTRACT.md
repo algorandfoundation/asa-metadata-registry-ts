@@ -1,4 +1,4 @@
-# Python → TypeScript Port Parity Contract (Phases 0–6)
+# Python → TypeScript Port Parity Contract (Phases 0–7)
 
 This repository is the TypeScript port of the **ASA Metadata Registry Python SDK**.
 
@@ -43,7 +43,7 @@ Stubs created in Phase 1 (to be implemented later):
 The following symbols are exported by the Python SDK today. TS will export the
 same conceptual symbols, with async adaptations where needed.
 
-### Implemented in Phases 0–6
+### Implemented in Phases 0–7
 
 - Modules:
   - `constants`, `flags`, `enums`, `bitmasks`
@@ -96,12 +96,13 @@ same conceptual symbols, with async adaptations where needed.
   - `SimulateOptions`
   - `AsaMetadataRegistryAvmRead`
 
+- Read:
+  - `AsaMetadataRegistryRead`, `MetadataSource`
+
 ### Planned (stubs in Phase 1)
 
 - Facade:
   - `AsaMetadataRegistry`, `RegistryConfig`
-- Read:
-  - `AsaMetadataRegistryRead`, `MetadataSource`
 - Write:
   - `AsaMetadataRegistryWrite`, `WriteOptions`
 
