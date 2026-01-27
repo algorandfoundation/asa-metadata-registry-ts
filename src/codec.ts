@@ -6,12 +6,7 @@
 
 import * as constants from './constants'
 import { InvalidArc90UriError } from './errors'
-import { asBigInt } from './internal/numbers'
-
-// ---------------------------------------------------------------------------
-// Conversion utilities
-// ---------------------------------------------------------------------------
-
+import { asBigInt, toBigInt } from './internal/numbers'
 
 // ---------------------------------------------------------------------------
 // Internal helpers

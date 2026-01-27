@@ -16,7 +16,7 @@ import {
   Pagination,
   RegistryParameters,
 } from '../models'
-import { asBigInt } from '../internal/numbers'
+import { asBigInt, toBigInt } from '../internal/numbers'
 import { AsaNotFoundError, BoxNotFoundError } from '../errors'
 
 type JsonObject = Record<string, unknown>
