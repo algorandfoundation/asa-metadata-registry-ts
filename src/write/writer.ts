@@ -88,7 +88,7 @@ const appendExtraPayload = (composer: any, args: { assetId: bigint | number; chu
       sender: args.sender,
       signer: args.signer,
       note: noteU64(i),
-      staticFee: 0,
+      staticFee: new AlgoAmount({ microAlgos: 0 }),
     })
   }
 }
@@ -100,7 +100,7 @@ const appendExtraResources = (composer: any, args: { count: number; sender: stri
       sender: args.sender,
       signer: args.signer,
       note: noteU64(i),
-      staticFee: 0,
+      staticFee: new AlgoAmount({ microAlgos: 0 }),
     })
   }
 }
@@ -145,7 +145,9 @@ export class AsaMetadataRegistryWrite {
   // Group builders
   // ------------------------------------------------------------------
 
-  /** Build (but do not send) an ARC-89 create metadata group. 
+  /** 
+   * Build (but do not send) an ARC-89 create metadata group. 
+   * 
    * @returns The generated client's composer, so callers can `.simulate()` or `.send()`. 
    */
   async buildCreateMetadataGroup(args: {
@@ -206,9 +208,12 @@ export class AsaMetadataRegistryWrite {
     return composer
   }
 
-  /** Build a replace group, automatically choosing `replaceMetadata` or `replaceMetadataLarger`. 
-   *  If you already know the current on-chain metadata size, pass `assumeCurrentSize` to avoid
-   *  an extra simulate read.
+  /** 
+   * Build a replace group, automatically choosing `replaceMetadata` or `replaceMetadataLarger`. 
+   * 
+   * If you already know the current on-chain metadata size, pass `assumeCurrentSize` to avoid
+   * an extra simulate read.
+   * 
    * @returns The generated client's composer, so callers can `.simulate()` or `.send()`. 
    */
   async buildReplaceMetadataGroup(args: {
@@ -330,10 +335,14 @@ export class AsaMetadataRegistryWrite {
     return composer
   }
 
-  /** Build a group that replaces a slice of the on-chain metadata. 
+  /** 
+   * Build a group that replaces a slice of the on-chain metadata. 
+   * 
    * If `payload` exceeds the registry's replace payload limit, this builds multiple
    * `arc89ReplaceMetadataSlice` calls in one group, adjusting the offset for each chunk.
-  */
+   * 
+   * @returns The generated client's composer, so callers can `.simulate()` or `.send()`. 
+   */
   async buildReplaceMetadataSliceGroup(args: {
     assetManager: SigningAccount
     assetId: bigint | number
@@ -343,7 +352,7 @@ export class AsaMetadataRegistryWrite {
   }): Promise<AsaMetadataRegistryComposer> {
     const opt = args.options ?? writeOptionsDefault
     const params = await this._params()
-    const payloadBytes = toBytes(args.payload as any, 'payload')
+    const payloadBytes = toBytes(args.payload, 'payload')
 
     const chunks = chunksForSlice(payloadBytes, params.replacePayloadMaxSize)
 
