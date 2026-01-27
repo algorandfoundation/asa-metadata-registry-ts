@@ -95,6 +95,9 @@ same conceptual symbols, with async adaptations where needed.
   - `SimulateOptions`
   - `AsaMetadataRegistryAvmRead`
 
+- Read:
+  - `AsaMetadataRegistryRead`, `MetadataSource`
+
 - Write:
   - `AsaMetadataRegistryWrite` (group builders + send helpers)
   - `WriteOptions`
