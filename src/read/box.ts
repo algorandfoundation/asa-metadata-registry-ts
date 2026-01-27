@@ -16,7 +16,7 @@ import {
   Pagination,
   RegistryParameters,
 } from '../models'
-import { toBigInt } from '../internal/numbers'
+import { asBigInt } from '../internal/numbers'
 import { AsaNotFoundError, BoxNotFoundError } from '../errors'
 
 type JsonObject = Record<string, unknown>
@@ -35,7 +35,7 @@ export class AsaMetadataRegistryBoxRead {
 
   constructor(args: { algod: AlgodBoxReader; appId: bigint | number; params: RegistryParameters }) {
     this.algod = args.algod
-    this.appId = toBigInt(args.appId)
+    this.appId = asBigInt(args.appId, 'appId')
     this.params = args.params
   }
 

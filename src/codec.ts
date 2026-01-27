@@ -6,7 +6,7 @@
 
 import * as constants from './constants'
 import { InvalidArc90UriError } from './errors'
-import { toBigInt } from './internal/numbers'
+import { asBigInt } from './internal/numbers'
 
 // ---------------------------------------------------------------------------
 // Conversion utilities
@@ -223,7 +223,7 @@ export class Arc90Uri {
     compliance?: Arc90Compliance
   }) {
     this.netauth = args.netauth
-    this.appId = toBigInt(args.appId)
+    this.appId = asBigInt(args.appId, 'appId')
     this.boxName = args.boxName
     this.compliance = args.compliance ?? new Arc90Compliance([])
   }
