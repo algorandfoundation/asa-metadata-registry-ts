@@ -66,8 +66,8 @@ const toPaginatedMetadata = (v: unknown): PaginatedMetadata => {
   const o = v as any
   return new PaginatedMetadata({
     hasNextPage: Boolean(o.hasNextPage),
-    lastModifiedRound: toBigInt(o.lastModifiedRound, 'last_modified_round'),
-    pageContent: toUint8Array(o.pageContent, 'page_content'),
+    lastModifiedRound: toBigInt(o.lastModifiedRound, 'lastModifiedRound'),
+    pageContent: toUint8Array(o.pageContent, 'pageContent'),
   })
 }
 
@@ -106,34 +106,34 @@ export class AsaMetadataRegistryRead {
   public readonly algod: AlgodBoxReader | null
   public readonly avmFactory: ((appId: bigint) => AsaMetadataRegistryAvmRead) | null
 
-  private _paramsCache: RegistryParameters | null = null
+  private paramsCache: RegistryParameters | null = null
 
   constructor(args: {
     appId?: bigint | number | null
     algod?: AlgodBoxReader | null
     avmFactory?: ((appId: bigint) => AsaMetadataRegistryAvmRead) | null
   }) {
-    this.appId = args.appId === undefined || args.appId === null ? null : asBigInt(args.appId, 'app_id')
+    this.appId = args.appId === undefined || args.appId === null ? null : asBigInt(args.appId, 'appId')
     this.algod = args.algod ?? null
     this.avmFactory = args.avmFactory ?? null
   }
 
-  private _requireAppId(appId?: bigint | number | null): bigint {
-    const resolved = appId === undefined || appId === null ? this.appId : asBigInt(appId, 'app_id')
+  private requireAppId(appId?: bigint | number | null): bigint {
+    const resolved = appId === undefined || appId === null ? this.appId : asBigInt(appId, 'appId')
     if (resolved === null) {
-      throw new RegistryResolutionError('Registry app_id is not configured and was not provided')
+      throw new RegistryResolutionError('Registry appId is not configured and was not provided')
     }
     return resolved
   }
 
-  private async _getParams(): Promise<RegistryParameters> {
-    if (this._paramsCache) return this._paramsCache
+  private async getParams(): Promise<RegistryParameters> {
+    if (this.paramsCache) return this.paramsCache
 
     // Prefer on-chain params if AVM access is available.
     if (this.avmFactory !== null && this.appId !== null) {
       try {
-        const p = await this.avm({ app_id: this.appId }).arc89_get_metadata_registry_parameters()
-        this._paramsCache = p
+        const p = await this.avm({ appId: this.appId }).arc89GetMetadataRegistryParameters()
+        this.paramsCache = p
         return p
       } catch {
         // Fall back to defaults.
@@ -141,7 +141,7 @@ export class AsaMetadataRegistryRead {
     }
 
     const p = getDefaultRegistryParams()
-    this._paramsCache = p
+    this.paramsCache = p
     return p
   }
 
@@ -152,13 +152,13 @@ export class AsaMetadataRegistryRead {
   /** BOX reader bound to the configured registry app id. */
   get box(): AsaMetadataRegistryBoxRead {
     if (!this.algod) throw new RuntimeError('BOX reader requires an algod client')
-    const params = this._paramsCache ?? getDefaultRegistryParams()
-    return new AsaMetadataRegistryBoxRead({ algod: this.algod, appId: this._requireAppId(), params })
+    const params = this.paramsCache ?? getDefaultRegistryParams()
+    return new AsaMetadataRegistryBoxRead({ algod: this.algod, appId: this.requireAppId(), params })
   }
 
   /** AVM reader bound to the requested registry app id (defaults to configured app id). */
-  avm(args?: { app_id?: bigint | number | null }): AsaMetadataRegistryAvmRead {
-    const resolved = this._requireAppId(args?.app_id ?? null)
+  avm(args?: { appId?: bigint | number | null }): AsaMetadataRegistryAvmRead {
+    const resolved = this.requireAppId(args?.appId ?? null)
     if (!this.avmFactory) {
       throw new MissingAppClientError('AVM reader requires a generated AppClient (avmFactory)')
     }
@@ -172,13 +172,13 @@ export class AsaMetadataRegistryRead {
   /**
    * Resolve the ARC-90 URI for an asset from either an explicit URI or the ASA's `url` field.
    */
-  async resolve_arc90_uri(args: {
-    asset_id?: bigint | number | null
-    metadata_uri?: string | null
-    app_id?: bigint | number | null
+  async resolveArc90Uri(args: {
+    assetId?: bigint | number | null
+    metadataUri?: string | null
+    appId?: bigint | number | null
   }): Promise<Arc90Uri> {
-    const metadataUri = args.metadata_uri ?? null
-    const assetId = args.asset_id ?? null
+    const metadataUri = args.metadataUri ?? null
+    const assetId = args.assetId ?? null
 
     if (metadataUri) {
       const parsed = Arc90Uri.parse(metadataUri)
@@ -189,7 +189,7 @@ export class AsaMetadataRegistryRead {
     }
 
     if (assetId === null) {
-      throw new RegistryResolutionError('Either asset_id or metadata_uri must be provided')
+      throw new RegistryResolutionError('Either assetId or metadataUri must be provided')
     }
 
     // Best UX: try resolving from the ASA url (if algod is configured).
@@ -201,9 +201,9 @@ export class AsaMetadataRegistryRead {
       }
     }
 
-    const resolvedAppId = args.app_id ?? this.appId
+    const resolvedAppId = args.appId ?? this.appId
     if (resolvedAppId === null || resolvedAppId === undefined) {
-      throw new RegistryResolutionError('Cannot resolve registry app_id from inputs or ASA url')
+      throw new RegistryResolutionError('Cannot resolve registry appId from inputs or ASA url')
     }
 
     return new Arc90Uri({ netauth: null, appId: resolvedAppId, boxName: null }).withAssetId(assetId)
@@ -216,23 +216,23 @@ export class AsaMetadataRegistryRead {
   /**
    * Fetch a full ARC-89 metadata record (header + metadata bytes).
    */
-  async get_asset_metadata(args: {
-    asset_id?: bigint | number | null
-    metadata_uri?: string | null
-    app_id?: bigint | number | null
+  async getAssetMetadata(args: {
+    assetId?: bigint | number | null
+    metadataUri?: string | null
+    appId?: bigint | number | null
     source?: MetadataSource
-    follow_deprecation?: boolean
-    max_deprecation_hops?: number
+    followDeprecation?: boolean
+    maxDeprecationHops?: number
     simulate?: SimulateOptions
   }): Promise<AssetMetadataRecord> {
     const source = args.source ?? MetadataSource.AUTO
-    const followDep = args.follow_deprecation ?? true
-    const maxHops = args.max_deprecation_hops ?? 5
+    const followDep = args.followDeprecation ?? true
+    const maxHops = args.maxDeprecationHops ?? 5
 
-    const uri = await this.resolve_arc90_uri({
-      asset_id: args.asset_id ?? null,
-      metadata_uri: args.metadata_uri ?? null,
-      app_id: args.app_id ?? null,
+    const uri = await this.resolveArc90Uri({
+      assetId: args.assetId ?? null,
+      metadataUri: args.metadataUri ?? null,
+      appId: args.appId ?? null,
     })
 
     if (uri.assetId === null) throw new RegistryResolutionError('Resolved URI is partial (no asset id)')
@@ -243,9 +243,9 @@ export class AsaMetadataRegistryRead {
     let record: AssetMetadataRecord | null = null
 
     for (let hop = 0; hop <= maxHops; hop++) {
-      record = await this._get_asset_metadata_once({
-        app_id: currentAppId,
-        asset_id: currentAssetId,
+      record = await this.getAssetMetadataOnce({
+        appId: currentAppId,
+        assetId: currentAssetId,
         source,
         simulate: args.simulate,
       })
@@ -266,9 +266,9 @@ export class AsaMetadataRegistryRead {
     return record
   }
 
-  private async _get_asset_metadata_once(args: {
-    app_id: bigint
-    asset_id: bigint
+  private async getAssetMetadataOnce(args: {
+    appId: bigint
+    assetId: bigint
     source: MetadataSource
     simulate?: SimulateOptions
   }): Promise<AssetMetadataRecord> {
@@ -282,14 +282,14 @@ export class AsaMetadataRegistryRead {
 
     if (source === MetadataSource.BOX) {
       if (!this.algod) throw new RuntimeError('BOX source selected but algod is not configured')
-      const params = await this._getParams()
-      return await this.algod.getAssetMetadataRecord({ appId: args.app_id, assetId: args.asset_id, params })
+      const params = await this.getParams()
+      return await this.algod.getAssetMetadataRecord({ appId: args.appId, assetId: args.assetId, params })
     }
 
     if (source === MetadataSource.AVM) {
-      const avm = this.avm({ app_id: args.app_id })
-      const header = await avm.arc89_get_metadata_header({ asset_id: args.asset_id, simulate: args.simulate })
-      const pagination = await avm.arc89_get_metadata_pagination({ asset_id: args.asset_id, simulate: args.simulate })
+      const avm = this.avm({ appId: args.appId })
+      const header = await avm.arc89GetMetadataHeader({ assetId: args.assetId, simulate: args.simulate })
+      const pagination = await avm.arc89GetMetadataPagination({ assetId: args.assetId, simulate: args.simulate })
 
       const totalPages = pagination.totalPages
       const batchSize = 10
@@ -300,10 +300,10 @@ export class AsaMetadataRegistryRead {
       for (let start = 0; start < totalPages; start += batchSize) {
         const end = Math.min(totalPages, start + batchSize)
 
-        const values = await avm.simulate_many(
+        const values = await avm.simulateMany(
           (c) => {
             for (let i = start; i < end; i++) {
-              c.arc89GetMetadata(withArgs(undefined, [args.asset_id, i]))
+              c.arc89GetMetadata(withArgs(undefined, [args.assetId, i]))
             }
           },
           { simulate: args.simulate },
@@ -322,7 +322,7 @@ export class AsaMetadataRegistryRead {
       const bodyRaw = concatBytes(chunks)
       const body = new MetadataBody(bodyRaw.slice(0, pagination.metadataSize))
 
-      return new AssetMetadataRecord({ appId: args.app_id, assetId: args.asset_id, header, body })
+      return new AssetMetadataRecord({ appId: args.appId, assetId: args.assetId, header, body })
     }
 
     throw new Error(`Unknown MetadataSource: ${String(source)}`)
@@ -332,122 +332,122 @@ export class AsaMetadataRegistryRead {
   // Dispatcher versions of contract getters
   // ------------------------------------------------------------------
 
-  async arc89_get_metadata_registry_parameters(args?: {
+  async arc89GetMetadataRegistryParameters(args?: {
     source?: MetadataSource
     simulate?: SimulateOptions
   }): Promise<RegistryParameters> {
     const source = args?.source ?? MetadataSource.AUTO
 
     if ((source === MetadataSource.AUTO || source === MetadataSource.AVM) && this.avmFactory && this.appId !== null) {
-      const p = await this.avm({ app_id: this.appId }).arc89_get_metadata_registry_parameters({ simulate: args?.simulate })
-      this._paramsCache = p
+      const p = await this.avm({ appId: this.appId }).arc89GetMetadataRegistryParameters({ simulate: args?.simulate })
+      this.paramsCache = p
       return p
     }
 
-    return await this._getParams()
+    return await this.getParams()
   }
 
-  async arc89_get_metadata_partial_uri(args?: {
+  async arc89GetMetadataPartialUri(args?: {
     source?: MetadataSource
     simulate?: SimulateOptions
   }): Promise<string> {
     const source = args?.source ?? MetadataSource.AUTO
 
     if ((source === MetadataSource.AUTO || source === MetadataSource.AVM) && this.avmFactory && this.appId !== null) {
-      return await this.avm({ app_id: this.appId }).arc89_get_metadata_partial_uri({ simulate: args?.simulate })
+      return await this.avm({ appId: this.appId }).arc89GetMetadataPartialUri({ simulate: args?.simulate })
     }
 
-    throw new MissingAppClientError('get_metadata_partial_uri requires AVM access (simulate)')
+    throw new MissingAppClientError('getMetadataPartialUri requires AVM access (simulate)')
   }
 
-  async arc89_get_metadata_mbr_delta(args: {
-    asset_id: bigint | number
-    new_size: number
+  async arc89GetMetadataMbrDelta(args: {
+    assetId: bigint | number
+    newSize: number
     source?: MetadataSource
     simulate?: SimulateOptions
   }): Promise<MbrDelta> {
     const source = args.source ?? MetadataSource.AVM
     if (source !== MetadataSource.AVM) throw new Error('MBR delta getter is AVM-only; use AVM source')
-    return await this.avm({ app_id: this._requireAppId() }).arc89_get_metadata_mbr_delta({
-      asset_id: args.asset_id,
-      new_size: args.new_size,
+    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataMbrDelta({
+      assetId: args.assetId,
+      newSize: args.newSize,
       simulate: args.simulate,
     })
   }
 
-  async arc89_check_metadata_exists(args: {
-    asset_id: bigint | number
+  async arc89CheckMetadataExists(args: {
+    assetId: bigint | number
     source?: MetadataSource
     simulate?: SimulateOptions
   }): Promise<MetadataExistence> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      const [asaExists, metadataExists] = await this.box.arc89_check_metadata_exists({ asset_id: args.asset_id })
+      const [asaExists, metadataExists] = await this.box.arc89CheckMetadataExists({ assetId: args.assetId })
       return new MetadataExistence({ asaExists, metadataExists })
     }
 
-    return await this.avm({ app_id: this._requireAppId() }).arc89_check_metadata_exists({ asset_id: args.asset_id, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89CheckMetadataExists({ assetId: args.assetId, simulate: args.simulate })
   }
 
-  async arc89_is_metadata_immutable(args: {
-    asset_id: bigint | number
+  async arc89IsMetadataImmutable(args: {
+    assetId: bigint | number
     source?: MetadataSource
     simulate?: SimulateOptions
   }): Promise<boolean> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89_is_metadata_immutable({ asset_id: args.asset_id })
+      return await this.box.arc89IsMetadataImmutable({ assetId: args.assetId })
     }
 
-    return await this.avm({ app_id: this._requireAppId() }).arc89_is_metadata_immutable({ asset_id: args.asset_id, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89IsMetadataImmutable({ assetId: args.assetId, simulate: args.simulate })
   }
 
-  async arc89_is_metadata_short(args: {
-    asset_id: bigint | number
+  async arc89IsMetadataShort(args: {
+    assetId: bigint | number
     source?: MetadataSource
     simulate?: SimulateOptions
   }): Promise<readonly [boolean, bigint]> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89_is_metadata_short({ asset_id: args.asset_id })
+      return await this.box.arc89IsMetadataShort({ assetId: args.assetId })
     }
 
-    return await this.avm({ app_id: this._requireAppId() }).arc89_is_metadata_short({ asset_id: args.asset_id, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89IsMetadataShort({ assetId: args.assetId, simulate: args.simulate })
   }
 
-  async arc89_get_metadata_header(args: {
-    asset_id: bigint | number
+  async arc89GetMetadataHeader(args: {
+    assetId: bigint | number
     source?: MetadataSource
     simulate?: SimulateOptions
   }): Promise<MetadataHeader> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89_get_metadata_header({ asset_id: args.asset_id })
+      return await this.box.arc89GetMetadataHeader({ assetId: args.assetId })
     }
 
-    return await this.avm({ app_id: this._requireAppId() }).arc89_get_metadata_header({ asset_id: args.asset_id, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataHeader({ assetId: args.assetId, simulate: args.simulate })
   }
 
-  async arc89_get_metadata_pagination(args: {
-    asset_id: bigint | number
+  async arc89GetMetadataPagination(args: {
+    assetId: bigint | number
     source?: MetadataSource
     simulate?: SimulateOptions
   }): Promise<Pagination> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89_get_metadata_pagination({ asset_id: args.asset_id })
+      return await this.box.arc89GetMetadataPagination({ assetId: args.assetId })
     }
 
-    return await this.avm({ app_id: this._requireAppId() }).arc89_get_metadata_pagination({ asset_id: args.asset_id, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataPagination({ assetId: args.assetId, simulate: args.simulate })
   }
 
-  async arc89_get_metadata(args: {
-    asset_id: bigint | number
+  async arc89GetMetadata(args: {
+    assetId: bigint | number
     page: number
     source?: MetadataSource
     simulate?: SimulateOptions
@@ -455,14 +455,14 @@ export class AsaMetadataRegistryRead {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89_get_metadata({ asset_id: args.asset_id, page: args.page })
+      return await this.box.arc89GetMetadata({ assetId: args.assetId, page: args.page })
     }
 
-    return await this.avm({ app_id: this._requireAppId() }).arc89_get_metadata({ asset_id: args.asset_id, page: args.page, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadata({ assetId: args.assetId, page: args.page, simulate: args.simulate })
   }
 
-  async arc89_get_metadata_slice(args: {
-    asset_id: bigint | number
+  async arc89GetMetadataSlice(args: {
+    assetId: bigint | number
     offset: number
     size: number
     source?: MetadataSource
@@ -471,33 +471,33 @@ export class AsaMetadataRegistryRead {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89_get_metadata_slice({ asset_id: args.asset_id, offset: args.offset, size: args.size })
+      return await this.box.arc89GetMetadataSlice({ assetId: args.assetId, offset: args.offset, size: args.size })
     }
 
-    return await this.avm({ app_id: this._requireAppId() }).arc89_get_metadata_slice({
-      asset_id: args.asset_id,
+    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataSlice({
+      assetId: args.assetId,
       offset: args.offset,
       size: args.size,
       simulate: args.simulate,
     })
   }
 
-  async arc89_get_metadata_header_hash(args: {
-    asset_id: bigint | number
+  async arc89GetMetadataHeaderHash(args: {
+    assetId: bigint | number
     source?: MetadataSource
     simulate?: SimulateOptions
   }): Promise<Uint8Array> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89_get_metadata_header_hash({ asset_id: args.asset_id })
+      return await this.box.arc89GetMetadataHeaderHash({ assetId: args.assetId })
     }
 
-    return await this.avm({ app_id: this._requireAppId() }).arc89_get_metadata_header_hash({ asset_id: args.asset_id, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataHeaderHash({ assetId: args.assetId, simulate: args.simulate })
   }
 
-  async arc89_get_metadata_page_hash(args: {
-    asset_id: bigint | number
+  async arc89GetMetadataPageHash(args: {
+    assetId: bigint | number
     page: number
     source?: MetadataSource
     simulate?: SimulateOptions
@@ -505,28 +505,28 @@ export class AsaMetadataRegistryRead {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89_get_metadata_page_hash({ asset_id: args.asset_id, page: args.page })
+      return await this.box.arc89GetMetadataPageHash({ assetId: args.assetId, page: args.page })
     }
 
-    return await this.avm({ app_id: this._requireAppId() }).arc89_get_metadata_page_hash({ asset_id: args.asset_id, page: args.page, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataPageHash({ assetId: args.assetId, page: args.page, simulate: args.simulate })
   }
 
-  async arc89_get_metadata_hash(args: {
-    asset_id: bigint | number
+  async arc89GetMetadataHash(args: {
+    assetId: bigint | number
     source?: MetadataSource
     simulate?: SimulateOptions
   }): Promise<Uint8Array> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89_get_metadata_hash({ asset_id: args.asset_id })
+      return await this.box.arc89GetMetadataHash({ assetId: args.assetId })
     }
 
-    return await this.avm({ app_id: this._requireAppId() }).arc89_get_metadata_hash({ asset_id: args.asset_id, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataHash({ assetId: args.assetId, simulate: args.simulate })
   }
 
-  async arc89_get_metadata_string_by_key(args: {
-    asset_id: bigint | number
+  async arc89GetMetadataStringByKey(args: {
+    assetId: bigint | number
     key: string
     source?: MetadataSource
     simulate?: SimulateOptions
@@ -535,18 +535,18 @@ export class AsaMetadataRegistryRead {
 
     // AUTO: prefer AVM for parity, but fall back to off-chain JSON if AVM is not configured.
     if (source === MetadataSource.AVM || (source === MetadataSource.AUTO && this.avmFactory !== null)) {
-      return await this.avm({ app_id: this._requireAppId() }).arc89_get_metadata_string_by_key({
-        asset_id: args.asset_id,
+      return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataStringByKey({
+        assetId: args.assetId,
         key: args.key,
         simulate: args.simulate,
       })
     }
 
-    return await this.box.get_string_by_key({ asset_id: args.asset_id, key: args.key })
+    return await this.box.getStringByKey({ assetId: args.assetId, key: args.key })
   }
 
-  async arc89_get_metadata_uint64_by_key(args: {
-    asset_id: bigint | number
+  async arc89GetMetadataUint64ByKey(args: {
+    assetId: bigint | number
     key: string
     source?: MetadataSource
     simulate?: SimulateOptions
@@ -554,18 +554,18 @@ export class AsaMetadataRegistryRead {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.AVM || (source === MetadataSource.AUTO && this.avmFactory !== null)) {
-      return await this.avm({ app_id: this._requireAppId() }).arc89_get_metadata_uint64_by_key({
-        asset_id: args.asset_id,
+      return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataUint64ByKey({
+        assetId: args.assetId,
         key: args.key,
         simulate: args.simulate,
       })
     }
 
-    return await this.box.get_uint64_by_key({ asset_id: args.asset_id, key: args.key })
+    return await this.box.getUint64ByKey({ assetId: args.assetId, key: args.key })
   }
 
-  async arc89_get_metadata_object_by_key(args: {
-    asset_id: bigint | number
+  async arc89GetMetadataObjectByKey(args: {
+    assetId: bigint | number
     key: string
     source?: MetadataSource
     simulate?: SimulateOptions
@@ -573,35 +573,35 @@ export class AsaMetadataRegistryRead {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.AVM || (source === MetadataSource.AUTO && this.avmFactory !== null)) {
-      return await this.avm({ app_id: this._requireAppId() }).arc89_get_metadata_object_by_key({
-        asset_id: args.asset_id,
+      return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataObjectByKey({
+        assetId: args.assetId,
         key: args.key,
         simulate: args.simulate,
       })
     }
 
-    return await this.box.get_object_by_key({ asset_id: args.asset_id, key: args.key })
+    return await this.box.getObjectByKey({ assetId: args.assetId, key: args.key })
   }
 
-  async arc89_get_metadata_b64_bytes_by_key(args: {
-    asset_id: bigint | number
+  async arc89GetMetadataB64BytesByKey(args: {
+    assetId: bigint | number
     key: string
-    b64_encoding: number
+    b64Encoding: number
     source?: MetadataSource
     simulate?: SimulateOptions
   }): Promise<Uint8Array> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.AVM || (source === MetadataSource.AUTO && this.avmFactory !== null)) {
-      return await this.avm({ app_id: this._requireAppId() }).arc89_get_metadata_b64_bytes_by_key({
-        asset_id: args.asset_id,
+      return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataB64BytesByKey({
+        assetId: args.assetId,
         key: args.key,
-        b64_encoding: args.b64_encoding,
+        b64Encoding: args.b64Encoding,
         simulate: args.simulate,
       })
     }
 
-    return await this.box.get_b64_bytes_by_key({ asset_id: args.asset_id, key: args.key, b64_encoding: args.b64_encoding as any })
+    return await this.box.getB64BytesByKey({ assetId: args.assetId, key: args.key, b64Encoding: args.b64Encoding })
   }
 }
 
