@@ -28,7 +28,7 @@ import { asBigInt } from '../internal/numbers'
 import { concatBytes } from '../internal/bytes'
 import { AsaMetadataRegistryAvmRead, SimulateOptions } from './avm'
 import { AsaMetadataRegistryBoxRead } from './box'
-import { parsePaginatedMetadata, withArgs } from './utils'
+import { parsePaginatedMetadata, withArgs } from '../internal/avm'
 
 /**
  * Where reads should come from.

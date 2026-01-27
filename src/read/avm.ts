@@ -19,7 +19,7 @@ import {
   RegistryParameters,
 } from '../models'
 import * as enums from '../enums'
-import { parseMbrDelta, parsePaginatedMetadata, returnValues, withArgs } from './utils'
+import { parseMbrDelta, parsePaginatedMetadata, returnValues, withArgs } from '../internal/avm'
 
 /**
  * Options passed through to AlgoKit's `TransactionComposer.simulate()`.
