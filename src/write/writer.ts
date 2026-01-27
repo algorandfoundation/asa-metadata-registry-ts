@@ -13,7 +13,8 @@
  * - The generated AppClient is *not* re-implemented here; it is used as-is.
  */
 
-import { TransactionSigner, makePaymentTxnWithSuggestedParamsFromObject } from 'algosdk'
+import { microAlgo } from '@algorandfoundation/algokit-utils'
+import { TransactionSigner } from 'algosdk'
 import * as flagConsts from '../flags'
 import { InvalidFlagIndexError, MissingAppClientError } from '../errors'
 import {
@@ -22,10 +23,11 @@ import {
   RegistryParameters,
   getDefaultRegistryParams,
 } from '../models'
-import { asBigInt } from '../internal/numbers'
+import { asBigInt, toNumber } from '../internal/numbers'
 import { toBytes } from '../internal/bytes'
 import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '../generated'
 import { AsaMetadataRegistryAvmRead, SimulateOptions } from '../read/avm'
+import { parseMbrDelta, returnValues } from '../read/utils'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -75,77 +77,6 @@ const noteU64 = (n: number): Uint8Array => {
   // Big-endian uint64
   view.setBigUint64(0, BigInt(n), false)
   return out
-}
-
-// FIXME:
-const getSuggestedParams = async (algorand: any): Promise<any> => {
-  if (typeof algorand?.getSuggestedParams === 'function') return await algorand.getSuggestedParams()
-  const algod = algorand?.client?.algod ?? algorand?.algod
-  if (algod?.getTransactionParams && typeof algod.getTransactionParams === 'function') {
-    const req = algod.getTransactionParams()
-    if (req?.do && typeof req.do === 'function') return await req.do()
-  }
-  throw new Error('Unable to obtain suggested params from AlgorandClient')
-}
-
-// FIXME:
-const getMinFee = (suggestedParams: any): number => {
-  const minFee = suggestedParams?.minFee ?? suggestedParams?.min_fee
-  if (typeof minFee === 'number' && Number.isFinite(minFee) && minFee > 0) return minFee
-  // Algod suggested params sometimes expose `fee` (already min fee) rather than `minFee`.
-  const fee = suggestedParams?.fee
-  if (typeof fee === 'number' && Number.isFinite(fee) && fee > 0) return fee
-  // Reasonable default (currently 1000 microAlgos), but we prefer on-chain when available.
-  return 1000
-}
-
-const makeMbrPaymentArg = async (args: {
-  client: AsaMetadataRegistryClient
-  assetManager: SigningAccount
-  amountMicroAlgos: bigint | number
-}) => {
-  const algorand: any = (args.client as any).algorand
-
-  // Prefer AlgoKit helper if present (it may return a TransactionWithSigner already).
-  const createTx = algorand?.createTransaction ?? algorand?.create_transaction
-  if (createTx?.payment && typeof createTx.payment === 'function') {
-    // Try the most common param shapes; we keep this untyped to remain tolerant
-    // across algokit-utils versions.
-    const payParams: any = {
-      sender: args.assetManager.address,
-      receiver: args.client.appAddress,
-      amount: args.amountMicroAlgos,
-      // fee pooled: 0
-      staticFee: 0,
-      static_fee: 0,
-    }
-    try {
-      return await createTx.payment(payParams)
-    } catch {
-      // fall back to manual construction below
-    }
-  }
-
-  // Manual construction via algosdk
-  const sp = await getSuggestedParams(algorand)
-  const txn = makePaymentTxnWithSuggestedParamsFromObject({
-    from: args.assetManager.address,
-    to: args.client.appAddress,
-    amount: Number(asBigInt(args.amountMicroAlgos as any, 'amount_micro_algos')),
-    suggestedParams: { ...sp, fee: 0, flatFee: true },
-  })
-  return { txn, signer: args.assetManager.signer }
-}
-
-const mbrDeltaFromReturn = (ret: unknown): MbrDelta => {
-  // Generated client maps ABI tuple -> struct `{sign, amount}`.
-  if (Array.isArray(ret)) return MbrDelta.fromTuple(ret as any)
-  if (ret && typeof ret === 'object' && 'sign' in (ret as any) && 'amount' in (ret as any)) {
-    const sign = Number((ret as any).sign)
-    const amount = Number((ret as any).amount)
-    return new MbrDelta({ sign: sign as any, amount })
-  }
-  throw new TypeError('Unexpected MBR delta return value')
 }
 
 const chunksForSlice = (payload: Uint8Array, maxSize: number): Uint8Array[] => {
@@ -243,10 +174,15 @@ export class AsaMetadataRegistryWrite {
       newSize: args.metadata.body.size,
     })
     const payAmount = mbrDelta.isPositive ? BigInt(mbrDelta.amount) : 0n
-    const mbrPayment = await makeMbrPaymentArg({ client: this.client, assetManager: args.asset_manager, amountMicroAlgos: payAmount })
+    const mbrPayment = await this.client.algorand.createTransaction.payment({
+      sender: args.asset_manager.address,
+      receiver: this.client.appAddress,
+      amount: microAlgo(asBigInt(payAmount, 'amount_micro_algos')),
+      staticFee: microAlgo(0n),
+    })
 
-    const sp = await getSuggestedParams((this.client as any).algorand)
-    const minFee = getMinFee(sp)
+    const sp = await this.client.algorand.getSuggestedParams()
+    const minFee = toNumber(sp.minFee)
 
     // Fee pooling
     let baseTxnCount = 1 + (chunks.length - 1) + 1 + opt.extraResources
@@ -317,8 +253,8 @@ export class AsaMetadataRegistryWrite {
     equal_size: boolean
   }): Promise<AsaMetadataRegistryComposer> {
     const chunks = args.metadata.body.chunkedPayload()
-    const sp = await getSuggestedParams((this.client as any).algorand)
-    const minFee = getMinFee(sp)
+    const sp = await this.client.algorand.getSuggestedParams()
+    const minFee = toNumber(sp.minFee)
 
     let baseTxnCount = 1 + (chunks.length - 1) + args.options.extraResources
     if (!args.equal_size) baseTxnCount += 1 // MBR refund inner payment
@@ -363,10 +299,15 @@ export class AsaMetadataRegistryWrite {
       newSize: args.metadata.body.size,
     })
     const payAmount = mbrDelta.isPositive ? BigInt(mbrDelta.amount) : 0n
-    const mbrPayment = await makeMbrPaymentArg({ client: this.client, assetManager: args.asset_manager, amountMicroAlgos: payAmount })
+    const mbrPayment = await this.client.algorand.createTransaction.payment({
+      sender: args.asset_manager.address,
+      receiver: this.client.appAddress,
+      amount: microAlgo(asBigInt(payAmount, 'amount_micro_algos')),
+      staticFee: microAlgo(0n),
+    })
 
-    const sp = await getSuggestedParams((this.client as any).algorand)
-    const minFee = getMinFee(sp)
+    const sp = await this.client.algorand.getSuggestedParams()
+    const minFee = toNumber(sp.minFee)
     const txnCount = 1 + (chunks.length - 1) + 1 + args.options.extraResources
     const feePool = (txnCount + args.options.feePaddingTxns) * minFee
 
@@ -411,8 +352,8 @@ export class AsaMetadataRegistryWrite {
 
     const chunks = chunksForSlice(payloadBytes, params.replacePayloadMaxSize)
 
-    const sp = await getSuggestedParams((this.client as any).algorand)
-    const minFee = getMinFee(sp)
+    const sp = await this.client.algorand.getSuggestedParams()
+    const minFee = toNumber(sp.minFee)
     const txnCount = chunks.length + opt.extraResources
     const feePool = (txnCount + opt.feePaddingTxns) * minFee
 
@@ -453,8 +394,8 @@ export class AsaMetadataRegistryWrite {
     options?: WriteOptions
   }): Promise<AsaMetadataRegistryComposer> {
     const opt = normalizeWriteOptions(args.options)
-    const sp = await getSuggestedParams((this.client as any).algorand)
-    const minFee = getMinFee(sp)
+    const sp = await this.client.algorand.getSuggestedParams()
+    const minFee = toNumber(sp.minFee)
     const txnCount = 1 + 1 + opt.extraResources
     const feePool = (txnCount + opt.feePaddingTxns) * minFee
 
@@ -515,8 +456,8 @@ export class AsaMetadataRegistryWrite {
       options: args.options,
     })
 
-    const ret = result?.returns?.[0]
-    return mbrDeltaFromReturn(ret)
+    const [ret] = returnValues(result)
+    return parseMbrDelta(ret)
   }
 
   async replace_metadata(args: {
@@ -541,8 +482,8 @@ export class AsaMetadataRegistryWrite {
       send_params: args.send_params,
       options: args.options,
     })
-    const ret = result?.returns?.[0]
-    return mbrDeltaFromReturn(ret)
+    const [ret] = returnValues(result)
+    return parseMbrDelta(ret)
   }
 
   async replace_metadata_slice(args: {
@@ -591,8 +532,8 @@ export class AsaMetadataRegistryWrite {
       send_params: args.send_params,
       options: args.options,
     })
-    const ret = result?.returns?.[0]
-    return mbrDeltaFromReturn(ret)
+    const [ret] = returnValues(result)
+    return parseMbrDelta(ret)
   }
 
   // ------------------------------------------------------------------
@@ -611,8 +552,8 @@ export class AsaMetadataRegistryWrite {
       throw new InvalidFlagIndexError(`Invalid reversible flag index: ${args.flag_index}, must be in [0, 7]`)
     }
     const opt = normalizeWriteOptions(args.options)
-    const sp = await getSuggestedParams((this.client as any).algorand)
-    const minFee = getMinFee(sp)
+    const sp = await this.client.algorand.getSuggestedParams()
+    const minFee = toNumber(sp.minFee)
     const feePool = (1 + opt.extraResources + opt.feePaddingTxns) * minFee
 
     const composer = this.client.newGroup()
@@ -645,8 +586,8 @@ export class AsaMetadataRegistryWrite {
       )
     }
     const opt = normalizeWriteOptions(args.options)
-    const sp = await getSuggestedParams((this.client as any).algorand)
-    const minFee = getMinFee(sp)
+    const sp = await this.client.algorand.getSuggestedParams()
+    const minFee = toNumber(sp.minFee)
     const feePool = (1 + opt.extraResources + opt.feePaddingTxns) * minFee
 
     const composer = this.client.newGroup()
@@ -673,8 +614,8 @@ export class AsaMetadataRegistryWrite {
     send_params?: any | null
   }): Promise<void> {
     const opt = normalizeWriteOptions(args.options)
-    const sp = await getSuggestedParams((this.client as any).algorand)
-    const minFee = getMinFee(sp)
+    const sp = await this.client.algorand.getSuggestedParams()
+    const minFee = toNumber(sp.minFee)
     const feePool = (1 + opt.extraResources + opt.feePaddingTxns) * minFee
 
     const composer = this.client.newGroup()
@@ -701,8 +642,8 @@ export class AsaMetadataRegistryWrite {
     send_params?: any | null
   }): Promise<void> {
     const opt = normalizeWriteOptions(args.options)
-    const sp = await getSuggestedParams((this.client as any).algorand)
-    const minFee = getMinFee(sp)
+    const sp = await this.client.algorand.getSuggestedParams()
+    const minFee = toNumber(sp.minFee)
     const feePool = (1 + opt.extraResources + opt.feePaddingTxns) * minFee
 
     const composer = this.client.newGroup()

@@ -19,28 +19,12 @@ import {
   RegistryParameters,
 } from '../models'
 import * as enums from '../enums'
-import { parsePaginatedMetadata, withArgs } from './utils'
+import { parseMbrDelta, parsePaginatedMetadata, returnValues, withArgs } from './utils'
 
 /**
  * Options passed through to AlgoKit's `TransactionComposer.simulate()`.
  */
 export type SimulateOptions = RawSimulateOptions | SkipSignaturesSimulateOptions
-
-/**
- * Extract `.returns[*].value` from AlgoKit composer results, tolerating minor shape differences.
- */
-const returnValues = (results: unknown): unknown[] => {
-  if (!results || typeof results !== 'object') return []
-  const returns = (results as any).returns
-  if (!Array.isArray(returns)) return []
-  return returns.map((r: any) => {
-    if (r && typeof r === 'object') {
-      if ('value' in r) return (r as any).value
-      if ('returnValue' in r) return (r as any).returnValue
-    }
-    return r
-  })
-}
 
 // ------------------------------------------------------------------
 // Decode helpers (simulate return values)
@@ -62,13 +46,6 @@ const parseRegistryParameters = (v: unknown): RegistryParameters => {
     flatMbr: asNumber(o.flatMbr, 'flatMbr'),
     byteMbr: asNumber(o.byteMbr, 'byteMbr'),
   })
-}
-
-const parseMbrDelta = (v: unknown): MbrDelta => {
-  if (Array.isArray(v)) return MbrDelta.fromTuple(v as any)
-  if (!v || typeof v !== 'object') throw new TypeError('MbrDelta must be a tuple or struct')
-  const o = v as any
-  return new MbrDelta({ sign: asUint8(o.sign, 'sign'), amount: asNumber(o.amount, 'amount') })
 }
 
 const parseMetadataExistence = (v: unknown): MetadataExistence => {
