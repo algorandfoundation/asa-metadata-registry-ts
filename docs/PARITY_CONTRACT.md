@@ -33,6 +33,7 @@ Mirrors the Python SDK layout (names kept as close as possible):
 - `src/deployments.ts` – known deployments (data-only)
 
 Stubs created in Phase 1 (to be implemented later):
+
 - `src/registry.ts`
 - `src/read/reader.ts`
 - `src/write/*`
