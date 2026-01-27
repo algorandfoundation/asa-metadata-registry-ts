@@ -30,6 +30,9 @@ export * from './read/avm'
 // Unified Algod-AVM read dispatcher
 export * from './read/reader'
 
+// Writes (AVM) + send helpers
+export * from './write/writer'
+
 // Also expose the modules as namespaces (similar to Python's `import asa_metadata_registry.constants`).
 export * as constants from './constants'
 export * as flags from './flags'
@@ -47,6 +50,8 @@ export * as boxRead from './read/box'
 
 export * as avmRead from './read/avm'
 export * as reader from './read/reader'
+
+export * as write from './write'
 
 // Generated ARC-56 client (excluded from translation; wrapped in later phases)
 // IMPORTANT: we only export it as a namespace to avoid name collisions with the SDK's domain models.
