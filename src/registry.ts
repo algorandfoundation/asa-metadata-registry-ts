@@ -13,6 +13,17 @@ import { AsaMetadataRegistryWrite } from './write/writer'
 import { AsaMetadataRegistryClient } from './generated'
 import { asUint64BigInt } from './internal/numbers'
 
+const asUint64BigIntOrNull = (
+  v: bigint | number | null | undefined,
+  name: string,
+  allowZero = true,
+): bigint | null => {
+  if (v === null || v === undefined) return null
+  const val = asUint64BigInt(v, name)
+  if (!allowZero && val === 0n) return null
+  return val
+}
+
 /**
  * Configuration for an ASA Metadata Registry singleton instance.
  *
@@ -27,7 +38,7 @@ export class RegistryConfig {
     appId?: bigint | number | null
     netauth?: string | null
   }) {
-    this.appId = args?.appId ? asUint64BigInt(args.appId, 'appId') : null
+    this.appId = asUint64BigIntOrNull(args?.appId, 'appId')
     this.netauth = args?.netauth ?? null
   }
 }
@@ -112,9 +123,9 @@ export class AsaMetadataRegistry {
     },
   ): AsaMetadataRegistry {
     // If appId isn't provided, attempt to read it from the generated client's appId.
-    let inferredAppId = args?.appId ? asUint64BigInt(args.appId, 'appId') : null
+    let inferredAppId = asUint64BigIntOrNull(args?.appId, 'appId')
     if (inferredAppId == null && app_client.appClient) {
-      inferredAppId = asUint64BigInt(app_client.appClient.appId, 'appId')
+      inferredAppId = asUint64BigIntOrNull(app_client.appClient.appId, 'appId', false)
     }
 
     return new AsaMetadataRegistry({
@@ -135,7 +146,7 @@ export class AsaMetadataRegistry {
    * the on-chain method, use `read.arc89_get_metadata_partial_uri(source: AVM)`.
    */
   arc90_uri(args: { asset_id: bigint | number; app_id?: bigint | number | null }): Arc90Uri {
-    const resolved_app_id = args?.app_id ? asUint64BigInt(args.app_id, 'app_id') : this.config.appId
+    const resolved_app_id = asUint64BigIntOrNull(args?.app_id, 'app_id') ?? this.config.appId
     if (resolved_app_id === null) {
       throw new RegistryResolutionError('Cannot build ARC-90 URI without app_id')
     }
