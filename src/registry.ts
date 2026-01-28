@@ -16,12 +16,10 @@ import { asUint64BigInt } from './internal/numbers'
 const asUint64BigIntOrNull = (
   v: bigint | number | null | undefined,
   name: string,
-  allowZero = true,
 ): bigint | null => {
   if (v === null || v === undefined) return null
   const val = asUint64BigInt(v, name)
-  if (!allowZero && val === 0n) return null
-  return val
+  return val == 0n ? null : val
 }
 
 /**
@@ -125,7 +123,7 @@ export class AsaMetadataRegistry {
     // If appId isn't provided, attempt to read it from the generated client's appId.
     let inferredAppId = asUint64BigIntOrNull(args?.appId, 'appId')
     if (inferredAppId == null && appClient.appClient) {
-      inferredAppId = asUint64BigIntOrNull(appClient.appClient.appId, 'appId', false)
+      inferredAppId = asUint64BigIntOrNull(appClient.appClient.appId, 'appId')
     }
 
     return new AsaMetadataRegistry({
