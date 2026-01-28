@@ -47,16 +47,16 @@ export class RegistryConfig {
  * Facade over the ARC-89 read/write APIs.
  *
  * Construct using one of:
- * - `AsaMetadataRegistry.from_algod(...)` (read-only, fast box reads)
- * - `AsaMetadataRegistry.from_app_client(...)` (simulate + writes, optionally with algod for box reads)
+ * - `AsaMetadataRegistry.fromAlgod(...)` (read-only, fast box reads)
+ * - `AsaMetadataRegistry.fromAppClient(...)` (simulate + writes, optionally with algod for box reads)
  */
 export class AsaMetadataRegistry {
   public readonly config: RegistryConfig
 
-  private readonly _algod_reader: AlgodBoxReader | null
-  private readonly _base_generated_client: AsaMetadataRegistryClient | null
-  private readonly _generated_client_factory: ((appId: bigint) => AsaMetadataRegistryClient) | null
-  private readonly _avm_reader_factory: ((appId: bigint) => AsaMetadataRegistryAvmRead) | null
+  private readonly algodReader: AlgodBoxReader | null
+  private readonly baseGeneratedClient: AsaMetadataRegistryClient | null
+  private readonly generatedClientFactory: ((appId: bigint) => AsaMetadataRegistryClient) | null
+  private readonly avmReaderFactory: ((appId: bigint) => AsaMetadataRegistryAvmRead) | null
   private readonly _write: AsaMetadataRegistryWrite | null
 
   public readonly read: AsaMetadataRegistryRead
@@ -64,27 +64,27 @@ export class AsaMetadataRegistry {
   constructor(args: {
     config: RegistryConfig
     algod?: AlgodClientSubset | null
-    app_client?: AsaMetadataRegistryClient | null
+    appClient?: AsaMetadataRegistryClient | null
   }) {
     this.config = args.config
 
-    this._algod_reader = args.algod ? new AlgodBoxReader(args.algod) : null
+    this.algodReader = args.algod ? new AlgodBoxReader(args.algod) : null
 
-    this._base_generated_client = args.app_client ?? null
-    this._generated_client_factory = this._base_generated_client
-      ? AsaMetadataRegistry._make_generated_client_factory({ base_client: this._base_generated_client })
+    this.baseGeneratedClient = args.appClient ?? null
+    this.generatedClientFactory = this.baseGeneratedClient
+      ? AsaMetadataRegistry.makeGeneratedClientFactory({ baseClient: this.baseGeneratedClient })
       : null
 
-    this._avm_reader_factory = this._generated_client_factory
-      ? (appId: bigint) => new AsaMetadataRegistryAvmRead({client: this._generated_client_factory!(appId)})
+    this.avmReaderFactory = this.generatedClientFactory
+      ? (appId: bigint) => new AsaMetadataRegistryAvmRead({client: this.generatedClientFactory!(appId)})
       : null
 
-    this._write = this._base_generated_client ? new AsaMetadataRegistryWrite({client: this._base_generated_client}) : null
+    this._write = this.baseGeneratedClient ? new AsaMetadataRegistryWrite({client: this.baseGeneratedClient}) : null
 
     this.read = new AsaMetadataRegistryRead({
       appId: this.config.appId,
-      algod: this._algod_reader,
-      avmFactory: this._avm_reader_factory,
+      algod: this.algodReader,
+      avmFactory: this.avmReaderFactory,
     })
   }
 
@@ -102,11 +102,11 @@ export class AsaMetadataRegistry {
   /**
    * Create a registry facade using only Algod (box reads).
    */
-  static from_algod(args: { algod: AlgodClientSubset; app_id: bigint | number | null }): AsaMetadataRegistry {
+  static fromAlgod(args: { algod: AlgodClientSubset; appId: bigint | number | null }): AsaMetadataRegistry {
     return new AsaMetadataRegistry({
-      config: new RegistryConfig({ appId: args.app_id }),
+      config: new RegistryConfig({ appId: args.appId }),
       algod: args.algod,
-      app_client: null,
+      appClient: null,
     })
   }
 
@@ -114,8 +114,8 @@ export class AsaMetadataRegistry {
    * Create a registry facade using the generated AppClient (simulate + writes),
    * optionally also providing Algod for box reads.
    */
-  static from_app_client(
-    app_client: AsaMetadataRegistryClient,
+  static fromAppClient(
+    appClient: AsaMetadataRegistryClient,
     args?: {
       algod?: AlgodClientSubset | null
       appId?: bigint | number | null
@@ -124,14 +124,14 @@ export class AsaMetadataRegistry {
   ): AsaMetadataRegistry {
     // If appId isn't provided, attempt to read it from the generated client's appId.
     let inferredAppId = asUint64BigIntOrNull(args?.appId, 'appId')
-    if (inferredAppId == null && app_client.appClient) {
-      inferredAppId = asUint64BigIntOrNull(app_client.appClient.appId, 'appId', false)
+    if (inferredAppId == null && appClient.appClient) {
+      inferredAppId = asUint64BigIntOrNull(appClient.appClient.appId, 'appId', false)
     }
 
     return new AsaMetadataRegistry({
       config: new RegistryConfig({ appId: inferredAppId, netauth: args?.netauth ?? null }),
       algod: args?.algod ?? null,
-      app_client,
+      appClient: appClient,
     })
   }
 
@@ -140,17 +140,17 @@ export class AsaMetadataRegistry {
   // ------------------------------------------------------------------
 
   /**
-   * Build a full ARC-90 URI for an asset_id using configured netauth + app_id.
+   * Build a full ARC-90 URI for an assetId using configured netauth + appId.
    *
    * Note: this is an *off-chain* convenience; if you need the exact string returned by
-   * the on-chain method, use `read.arc89_get_metadata_partial_uri(source: AVM)`.
+   * the on-chain method, use `read.arc89GetMetadataPartialUri(source: MetadataSource.AVM)`.
    */
-  arc90_uri(args: { asset_id: bigint | number; app_id?: bigint | number | null }): Arc90Uri {
-    const resolved_app_id = asUint64BigIntOrNull(args?.app_id, 'app_id') ?? this.config.appId
-    if (resolved_app_id === null) {
-      throw new RegistryResolutionError('Cannot build ARC-90 URI without app_id')
+  arc90Uri(args: { assetId: bigint | number; appId?: bigint | number | null }): Arc90Uri {
+    const resolvedAppId = asUint64BigIntOrNull(args?.appId, 'appId') ?? this.config.appId
+    if (resolvedAppId === null) {
+      throw new RegistryResolutionError('Cannot build ARC-90 URI without appId')
     }
-    return new Arc90Uri({ netauth: this.config.netauth, appId: resolved_app_id, boxName: null }).withAssetId(args.asset_id)
+    return new Arc90Uri({ netauth: this.config.netauth, appId: resolvedAppId, boxName: null }).withAssetId(args.assetId)
   }
 
   // ------------------------------------------------------------------
@@ -158,12 +158,12 @@ export class AsaMetadataRegistry {
   // ------------------------------------------------------------------
 
   /**
-   * Create a function that builds a new generated client instance for a given app_id.
+   * Create a function that builds a new generated client instance for a given appId.
    */
-  private static _make_generated_client_factory(args: {
-    base_client: AsaMetadataRegistryClient
+  private static makeGeneratedClientFactory(args: {
+    baseClient: AsaMetadataRegistryClient
   }): (appId: bigint) => AsaMetadataRegistryClient {
-    const base = args.base_client
+    const base = args.baseClient
 
     // The generated TS client supports clone(); this keeps the underlying Algorand client
     // and default sender/signer while changing the app id.
