@@ -1,4 +1,4 @@
-# Python → TypeScript Port Parity Contract (Phases 0–8)
+# Python → TypeScript Port Parity Contract (Phases 0–9)
 
 This repository is the TypeScript port of the **ASA Metadata Registry Python SDK**.
 
@@ -20,30 +20,10 @@ where appropriate.
 - **UInt64:** accept `bigint` (and sometimes `number` where safe); internal logic
   should normalize to `bigint` when correctness matters.
 
-## Intended TS module layout
-
-Mirrors the Python SDK layout (names kept as close as possible):
-
-- `src/index.ts` – public entrypoint
-- `src/constants.ts` – protocol constants
-- `src/flags.ts` – flag bit indices
-- `src/enums.ts` – enum numeric constants
-- `src/bitmasks.ts` – derived masks from flags
-- `src/errors.ts` – SDK error classes
-- `src/deployments.ts` – known deployments (data-only)
-
-Stubs created in Phase 1 (to be implemented later):
-
-- `src/registry.ts`
-- `src/read/reader.ts`
-- `src/write/*`
-
 ## Public API parity checklist
 
 The following symbols are exported by the Python SDK today. TS will export the
 same conceptual symbols, with async adaptations where needed.
-
-### Implemented in Phases 0–7
 
 - Modules:
   - `constants`, `flags`, `enums`, `bitmasks`
@@ -102,8 +82,6 @@ same conceptual symbols, with async adaptations where needed.
 - Write:
   - `AsaMetadataRegistryWrite` (group builders + send helpers)
   - `WriteOptions`
-
-### Planned (stubs in Phase 1)
 
 - Facade:
   - `AsaMetadataRegistry`, `RegistryConfig`
