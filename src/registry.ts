@@ -11,7 +11,7 @@ import { AsaMetadataRegistryAvmRead } from './read/avm'
 import { AsaMetadataRegistryRead } from './read/reader'
 import { AsaMetadataRegistryWrite } from './write/writer'
 import { AsaMetadataRegistryClient } from './generated'
-import { asUint64BigInt } from './internal/numbers'
+import { asNumber, asUint64BigInt } from './internal/numbers'
 
 const asUint64BigIntOrNull = (
   v: bigint | number | null | undefined,
@@ -141,7 +141,7 @@ export class AsaMetadataRegistry {
    * Build a full ARC-90 URI for an assetId using configured netauth + appId.
    *
    * Note: this is an *off-chain* convenience; if you need the exact string returned by
-   * the on-chain method, use `read.arc89GetMetadataPartialUri(source: MetadataSource.AVM)`.
+   * the on-chain method, use `read.arc89GetMetadataPartialUri({ source: MetadataSource.AVM })`.
    */
   arc90Uri(args: { assetId: bigint | number; appId?: bigint | number | null }): Arc90Uri {
     const resolvedAppId = asUint64BigIntOrNull(args?.appId, 'appId') ?? this.config.appId
@@ -170,7 +170,7 @@ export class AsaMetadataRegistry {
     }
 
     return (appId: bigint) => {
-      const id = Number(appId)
+      const id = asNumber(appId, 'appId')
       return (base as any).clone({ appId: id }) as AsaMetadataRegistryClient
     }
   }
