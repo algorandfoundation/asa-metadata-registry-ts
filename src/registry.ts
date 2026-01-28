@@ -2,52 +2,42 @@
  * Facade over the ARC-89 read/write APIs.
  *
  * Ported from Python `asa_metadata_registry/registry.py`.
- *
- * Construct using one of:
- * - `AsaMetadataRegistry.from_algod(...)` (read-only, fast box reads)
- * - `AsaMetadataRegistry.from_app_client(...)` (simulate + writes, optionally with algod for box reads)
  */
 
-import { AlgodBoxReader, type AlgodClientLike } from './algod'
+import { AlgodBoxReader, AlgodClientSubset } from './algod'
 import { Arc90Uri } from './codec'
 import { MissingAppClientError, RegistryResolutionError } from './errors'
 import { AsaMetadataRegistryAvmRead } from './read/avm'
 import { AsaMetadataRegistryRead } from './read/reader'
 import { AsaMetadataRegistryWrite } from './write/writer'
 import { AsaMetadataRegistryClient } from './generated'
-
-const asBigIntOrNull = (v: bigint | number | null | undefined): bigint | null => {
-  if (v === null || v === undefined) return null
-  if (typeof v === 'bigint') return v
-  if (typeof v === 'number' && Number.isFinite(v)) return BigInt(Math.trunc(v))
-  throw new TypeError('app_id must be bigint | number | null')
-}
+import { asUint64BigInt } from './internal/numbers'
 
 /**
  * Configuration for an ASA Metadata Registry singleton instance.
+ *
+ * @property appId - Registry App ID (application id).
+ * @property netauth - ARC-90 netauth, e.g. "net:testnet"; null means mainnet/unspecified.
  */
 export class RegistryConfig {
-  /** Registry App ID (application id). */
-  public readonly app_id: bigint | null
-  /** ARC-90 netauth, e.g. "net:testnet"; null means mainnet/unspecified. */
+  public readonly appId: bigint | null
   public readonly netauth: string | null
 
   constructor(args?: {
-    // snake_case (Python parity)
-    app_id?: bigint | number | null
-    netauth?: string | null
-
-    // camelCase (TS ergonomics)
     appId?: bigint | number | null
+    netauth?: string | null
   }) {
-    const appId = args?.app_id ?? args?.appId
-    this.app_id = asBigIntOrNull(appId)
+    this.appId = args?.appId ? asUint64BigInt(args.appId, 'appId') : null
     this.netauth = args?.netauth ?? null
   }
 }
 
 /**
  * Facade over the ARC-89 read/write APIs.
+ *
+ * Construct using one of:
+ * - `AsaMetadataRegistry.from_algod(...)` (read-only, fast box reads)
+ * - `AsaMetadataRegistry.from_app_client(...)` (simulate + writes, optionally with algod for box reads)
  */
 export class AsaMetadataRegistry {
   public readonly config: RegistryConfig
@@ -62,7 +52,7 @@ export class AsaMetadataRegistry {
 
   constructor(args: {
     config: RegistryConfig
-    algod?: AlgodClientLike | null
+    algod?: AlgodClientSubset | null
     app_client?: AsaMetadataRegistryClient | null
   }) {
     this.config = args.config
@@ -75,19 +65,18 @@ export class AsaMetadataRegistry {
       : null
 
     this._avm_reader_factory = this._generated_client_factory
-      ? (appId: bigint) => new AsaMetadataRegistryAvmRead(this._generated_client_factory!(appId))
+      ? (appId: bigint) => new AsaMetadataRegistryAvmRead({client: this._generated_client_factory!(appId)})
       : null
 
-    this._write = this._base_generated_client ? new AsaMetadataRegistryWrite(this._base_generated_client) : null
+    this._write = this._base_generated_client ? new AsaMetadataRegistryWrite({client: this._base_generated_client}) : null
 
     this.read = new AsaMetadataRegistryRead({
-      appId: this.config.app_id,
+      appId: this.config.appId,
       algod: this._algod_reader,
       avmFactory: this._avm_reader_factory,
     })
   }
 
-  /** Write API (requires a generated AppClient). */
   get write(): AsaMetadataRegistryWrite {
     if (!this._write) {
       throw new MissingAppClientError('Write operations require a generated AppClient')
@@ -102,9 +91,9 @@ export class AsaMetadataRegistry {
   /**
    * Create a registry facade using only Algod (box reads).
    */
-  static from_algod(args: { algod: AlgodClientLike; app_id: bigint | number | null }): AsaMetadataRegistry {
+  static from_algod(args: { algod: AlgodClientSubset; app_id: bigint | number | null }): AsaMetadataRegistry {
     return new AsaMetadataRegistry({
-      config: new RegistryConfig({ app_id: args.app_id }),
+      config: new RegistryConfig({ appId: args.app_id }),
       algod: args.algod,
       app_client: null,
     })
@@ -117,19 +106,19 @@ export class AsaMetadataRegistry {
   static from_app_client(
     app_client: AsaMetadataRegistryClient,
     args?: {
-      algod?: AlgodClientLike | null
-      app_id?: bigint | number | null
-      netauth?: string | null
-
-      // camelCase
+      algod?: AlgodClientSubset | null
       appId?: bigint | number | null
+      netauth?: string | null
     },
   ): AsaMetadataRegistry {
-    const inferred = args?.app_id ?? args?.appId
-    const appId = inferred === undefined || inferred === null ? asBigIntOrNull(app_client.appId as any) : asBigIntOrNull(inferred)
+    // If appId isn't provided, attempt to read it from the generated client's appId.
+    let inferredAppId = args?.appId ? asUint64BigInt(args.appId, 'appId') : null
+    if (inferredAppId == null && app_client.appClient) {
+      inferredAppId = asUint64BigInt(app_client.appClient.appId, 'appId')
+    }
 
     return new AsaMetadataRegistry({
-      config: new RegistryConfig({ app_id: appId, netauth: args?.netauth ?? null }),
+      config: new RegistryConfig({ appId: inferredAppId, netauth: args?.netauth ?? null }),
       algod: args?.algod ?? null,
       app_client,
     })
@@ -146,22 +135,20 @@ export class AsaMetadataRegistry {
    * the on-chain method, use `read.arc89_get_metadata_partial_uri(source: AVM)`.
    */
   arc90_uri(args: { asset_id: bigint | number; app_id?: bigint | number | null }): Arc90Uri {
-    const resolved_app_id = asBigIntOrNull(args.app_id) ?? this.config.app_id
+    const resolved_app_id = args?.app_id ? asUint64BigInt(args.app_id, 'app_id') : this.config.appId
     if (resolved_app_id === null) {
       throw new RegistryResolutionError('Cannot build ARC-90 URI without app_id')
     }
     return new Arc90Uri({ netauth: this.config.netauth, appId: resolved_app_id, boxName: null }).withAssetId(args.asset_id)
   }
 
-  /** camelCase alias for TS ergonomics. */
-  arc90Uri(args: { assetId: bigint | number; appId?: bigint | number | null }): Arc90Uri {
-    return this.arc90_uri({ asset_id: args.assetId, app_id: args.appId })
-  }
-
   // ------------------------------------------------------------------
   // Internals
   // ------------------------------------------------------------------
 
+  /**
+   * Create a function that builds a new generated client instance for a given app_id.
+   */
   private static _make_generated_client_factory(args: {
     base_client: AsaMetadataRegistryClient
   }): (appId: bigint) => AsaMetadataRegistryClient {

@@ -33,7 +33,7 @@ export * from './read/reader'
 // Writes (AVM) + send helpers
 export * from './write/writer'
 
-// Phase 9: facade
+// Facade
 export * from './registry'
 
 // Also expose the modules as namespaces (similar to Python's `import asa_metadata_registry.constants`).
