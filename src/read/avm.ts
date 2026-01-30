@@ -4,7 +4,7 @@
  * Ported from Python `asa_metadata_registry/read/avm.py`.
  */
 
-import { AsaMetadataRegistryClient } from '../generated'
+import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '../generated'
 import type {
   RawSimulateOptions,
   SkipSignaturesSimulateOptions,
@@ -13,6 +13,7 @@ import { MissingAppClientError } from '../errors'
 import { asNumber, asUint8, asUint64BigInt } from '../internal/numbers'
 import { toBytes } from '../internal/bytes'
 import {
+  AbiValue,
   MbrDelta,
   MetadataExistence,
   MetadataFlags,
@@ -34,9 +35,9 @@ export type SimulateOptions = RawSimulateOptions | SkipSignaturesSimulateOptions
 // ------------------------------------------------------------------
 
 const parseRegistryParameters = (v: unknown): RegistryParameters => {
-  if (Array.isArray(v)) return RegistryParameters.fromTuple(v as any)
+  if (Array.isArray(v)) return RegistryParameters.fromTuple(v as readonly (number | bigint)[])
   if (!v || typeof v !== 'object') throw new TypeError('RegistryParameters must be a tuple or struct')
-  const o = v as any
+  const o = v as Record<string, unknown>
   return new RegistryParameters({
     keySize: asNumber(o.keySize, 'keySize'),
     headerSize: asNumber(o.headerSize, 'headerSize'),
@@ -52,16 +53,16 @@ const parseRegistryParameters = (v: unknown): RegistryParameters => {
 }
 
 const parseMetadataExistence = (v: unknown): MetadataExistence => {
-  if (Array.isArray(v)) return MetadataExistence.fromTuple(v as any)
+  if (Array.isArray(v)) return MetadataExistence.fromTuple(v as readonly boolean[])
   if (!v || typeof v !== 'object') throw new TypeError('MetadataExistence must be a tuple or struct')
-  const o = v as any
+  const o = v as Record<string, unknown>
   return new MetadataExistence({ asaExists: Boolean(o.asaExists), metadataExists: Boolean(o.metadataExists) })
 }
 
 const parseMetadataHeader = (v: unknown): MetadataHeader => {
-  if (Array.isArray(v)) return MetadataHeader.fromTuple(v as any)
+  if (Array.isArray(v)) return MetadataHeader.fromTuple(v as readonly AbiValue[])
   if (!v || typeof v !== 'object') throw new TypeError('MetadataHeader must be a tuple or struct')
-  const o = v as any
+  const o = v as Record<string, unknown>
   return new MetadataHeader({
     identifiers: asUint8(o.identifiers, 'identifiers'),
     flags: MetadataFlags.fromBytes(
@@ -75,9 +76,9 @@ const parseMetadataHeader = (v: unknown): MetadataHeader => {
 }
 
 const parsePagination = (v: unknown): Pagination => {
-  if (Array.isArray(v)) return Pagination.fromTuple(v as any)
+  if (Array.isArray(v)) return Pagination.fromTuple(v as readonly (number | bigint)[])
   if (!v || typeof v !== 'object') throw new TypeError('Pagination must be a tuple or struct')
-  const o = v as any
+  const o = v as Record<string, unknown>
   return new Pagination({
     metadataSize: asNumber(o.metadataSize, 'metadataSize'),
     pageSize: asNumber(o.pageSize, 'pageSize'),
@@ -103,14 +104,20 @@ export class AsaMetadataRegistryAvmRead {
   // Internal helpers
   // ------------------------------------------------------------------
 
-  async simulateMany(buildGroup: (composer: any) => void, args?: { simulate?: SimulateOptions }): Promise<unknown[]> {
+  async simulateMany(
+    buildGroup: (composer: AsaMetadataRegistryComposer<unknown[]>) => void,
+    args?: { simulate?: SimulateOptions },
+  ): Promise<unknown[]> {
     const composer = this.client.newGroup()
     buildGroup(composer)
     const results = args?.simulate ? await composer.simulate(args.simulate) : await composer.simulate()
     return returnValues(results)
   }
 
-  async simulateOne(buildGroup: (composer: any) => void, args?: { simulate?: SimulateOptions }): Promise<unknown> {
+  async simulateOne(
+    buildGroup: (composer: AsaMetadataRegistryComposer<unknown[]>) => void,
+    args?: { simulate?: SimulateOptions },
+  ): Promise<unknown> {
     const values = await this.simulateMany(buildGroup, args)
     return values.length ? values[0] : undefined
   }
@@ -184,14 +191,15 @@ export class AsaMetadataRegistryAvmRead {
     if (Array.isArray(value)) {
       return [Boolean(value[0]), asUint64BigInt(value[1], 'lastModifiedRound')]
     }
-    if (value && typeof value === 'object' && 'lastModifiedRound' in (value as any) && 'flag' in (value as any)) {
-      // This would be MutableFlag shape; tolerate it defensively.
-      const o = value as any
-      return [Boolean(o.flag), asUint64BigInt(o.lastModifiedRound, 'lastModifiedRound')]
-    }
-    if (value && typeof value === 'object' && '0' in (value as any) && '1' in (value as any)) {
-      const o = value as any
-      return [Boolean(o[0]), asUint64BigInt(o[1], 'lastModifiedRound')]
+    if (value && typeof value === 'object') {
+      const o = value as Record<string, unknown>
+      if ('lastModifiedRound' in o && 'flag' in o) {
+        // This would be MutableFlag shape; tolerate it defensively.
+        return [Boolean(o.flag), asUint64BigInt(o.lastModifiedRound, 'lastModifiedRound')]
+      }
+      if ('0' in o && '1' in o) {
+        return [Boolean(o[0]), asUint64BigInt(o[1], 'lastModifiedRound')]
+      }
     }
     throw new TypeError('Unexpected return type for arc89IsMetadataShort')
   }

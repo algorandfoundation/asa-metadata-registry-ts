@@ -11,7 +11,7 @@ import { AsaMetadataRegistryAvmRead } from './read/avm'
 import { AsaMetadataRegistryRead } from './read/reader'
 import { AsaMetadataRegistryWrite } from './write/writer'
 import { AsaMetadataRegistryClient } from './generated'
-import { asNumber, asUint64BigInt } from './internal/numbers'
+import { asUint64BigInt } from './internal/numbers'
 
 const asUint64BigIntOrNull = (v: bigint | number | null | undefined, name: string): bigint | null => {
   if (v === null || v === undefined) return null
@@ -159,13 +159,12 @@ export class AsaMetadataRegistry {
 
     // The generated TS client supports clone(); this keeps the underlying Algorand client
     // and default sender/signer while changing the app id.
-    if (typeof (base as any).clone !== 'function') {
+    if (typeof base.clone !== 'function') {
       throw new MissingAppClientError('Generated client does not support clone(); cannot create factory')
     }
 
     return (appId: bigint) => {
-      const id = asNumber(appId, 'appId')
-      return (base as any).clone({ appId: id }) as AsaMetadataRegistryClient
+      return base.clone({ appId })
     }
   }
 }
