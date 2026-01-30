@@ -42,7 +42,6 @@ export const toBytes = (v: unknown, name: string): Uint8Array => {
   throw new TypeError(`${name} must be bytes or a sequence of ints`)
 }
 
-
 export const readUint64BE = (data: Uint8Array, offset: number): bigint => {
   if (offset < 0 || offset + 8 > data.length) throw new RangeError('uint64 out of range')
   const view = new DataView(data.buffer, data.byteOffset + offset, 8)

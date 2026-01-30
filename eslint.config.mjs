@@ -1,22 +1,22 @@
-import js from '@eslint/js';
-import tseslint from '@typescript-eslint/eslint-plugin';
-import tsparser from '@typescript-eslint/parser';
-import prettierPlugin from 'eslint-plugin-prettier';
-import prettierConfig from 'eslint-config-prettier';
-import globals from 'globals';
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
-import fs from 'fs';
+import js from '@eslint/js'
+import tseslint from '@typescript-eslint/eslint-plugin'
+import tsparser from '@typescript-eslint/parser'
+import prettierPlugin from 'eslint-plugin-prettier'
+import prettierConfig from 'eslint-config-prettier'
+import globals from 'globals'
+import { fileURLToPath } from 'url'
+import { dirname, resolve } from 'path'
+import fs from 'fs'
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
 // Source ignored files from prettier to have a single source of truth
 const prettierIgnore = fs
   .readFileSync(resolve(__dirname, '.prettierignore'), 'utf8')
   .split('\n')
   .map((line) => line.trim())
-  .filter((line) => line && !line.startsWith('#'));
+  .filter((line) => line && !line.startsWith('#'))
 
 export default [
   js.configs.recommended,
@@ -30,7 +30,7 @@ export default [
         project: resolve(__dirname, './tsconfig.esm.json'),
         tsconfigRootDir: __dirname,
       },
-      globals: globals.node,   // console, process, Buffer, etc.
+      globals: globals.node, // console, process, Buffer, etc.
     },
     plugins: {
       '@typescript-eslint': tseslint,
@@ -63,5 +63,4 @@ export default [
     ignores: [...prettierIgnore, '*.js'],
   },
   prettierConfig,
-];
-
+]

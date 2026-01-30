@@ -6,12 +6,7 @@
 
 import { AlgodBoxReader } from '../algod'
 import { Arc90Uri } from '../codec'
-import {
-  InvalidArc90UriError,
-  MetadataDriftError,
-  MissingAppClientError,
-  RegistryResolutionError,
-} from '../errors'
+import { InvalidArc90UriError, MetadataDriftError, MissingAppClientError, RegistryResolutionError } from '../errors'
 import {
   AssetMetadataRecord,
   MbrDelta,
@@ -305,10 +300,7 @@ export class AsaMetadataRegistryRead {
     return await this.getParams()
   }
 
-  async arc89GetMetadataPartialUri(args?: {
-    source?: MetadataSource
-    simulate?: SimulateOptions
-  }): Promise<string> {
+  async arc89GetMetadataPartialUri(args?: { source?: MetadataSource; simulate?: SimulateOptions }): Promise<string> {
     const source = args?.source ?? MetadataSource.AUTO
 
     if ((source === MetadataSource.AUTO || source === MetadataSource.AVM) && this.avmFactory && this.appId !== null) {
@@ -345,7 +337,10 @@ export class AsaMetadataRegistryRead {
       return new MetadataExistence({ asaExists, metadataExists })
     }
 
-    return await this.avm({ appId: this.requireAppId() }).arc89CheckMetadataExists({ assetId: args.assetId, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89CheckMetadataExists({
+      assetId: args.assetId,
+      simulate: args.simulate,
+    })
   }
 
   async arc89IsMetadataImmutable(args: {
@@ -359,7 +354,10 @@ export class AsaMetadataRegistryRead {
       return await this.box.arc89IsMetadataImmutable({ assetId: args.assetId })
     }
 
-    return await this.avm({ appId: this.requireAppId() }).arc89IsMetadataImmutable({ assetId: args.assetId, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89IsMetadataImmutable({
+      assetId: args.assetId,
+      simulate: args.simulate,
+    })
   }
 
   async arc89IsMetadataShort(args: {
@@ -373,7 +371,10 @@ export class AsaMetadataRegistryRead {
       return await this.box.arc89IsMetadataShort({ assetId: args.assetId })
     }
 
-    return await this.avm({ appId: this.requireAppId() }).arc89IsMetadataShort({ assetId: args.assetId, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89IsMetadataShort({
+      assetId: args.assetId,
+      simulate: args.simulate,
+    })
   }
 
   async arc89GetMetadataHeader(args: {
@@ -387,7 +388,10 @@ export class AsaMetadataRegistryRead {
       return await this.box.arc89GetMetadataHeader({ assetId: args.assetId })
     }
 
-    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataHeader({ assetId: args.assetId, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataHeader({
+      assetId: args.assetId,
+      simulate: args.simulate,
+    })
   }
 
   async arc89GetMetadataPagination(args: {
@@ -401,7 +405,10 @@ export class AsaMetadataRegistryRead {
       return await this.box.arc89GetMetadataPagination({ assetId: args.assetId })
     }
 
-    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataPagination({ assetId: args.assetId, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataPagination({
+      assetId: args.assetId,
+      simulate: args.simulate,
+    })
   }
 
   async arc89GetMetadata(args: {
@@ -416,7 +423,11 @@ export class AsaMetadataRegistryRead {
       return await this.box.arc89GetMetadata({ assetId: args.assetId, page: args.page })
     }
 
-    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadata({ assetId: args.assetId, page: args.page, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadata({
+      assetId: args.assetId,
+      page: args.page,
+      simulate: args.simulate,
+    })
   }
 
   async arc89GetMetadataSlice(args: {
@@ -451,7 +462,10 @@ export class AsaMetadataRegistryRead {
       return await this.box.arc89GetMetadataHeaderHash({ assetId: args.assetId })
     }
 
-    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataHeaderHash({ assetId: args.assetId, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataHeaderHash({
+      assetId: args.assetId,
+      simulate: args.simulate,
+    })
   }
 
   async arc89GetMetadataPageHash(args: {
@@ -466,7 +480,11 @@ export class AsaMetadataRegistryRead {
       return await this.box.arc89GetMetadataPageHash({ assetId: args.assetId, page: args.page })
     }
 
-    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataPageHash({ assetId: args.assetId, page: args.page, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataPageHash({
+      assetId: args.assetId,
+      page: args.page,
+      simulate: args.simulate,
+    })
   }
 
   async arc89GetMetadataHash(args: {
@@ -480,7 +498,10 @@ export class AsaMetadataRegistryRead {
       return await this.box.arc89GetMetadataHash({ assetId: args.assetId })
     }
 
-    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataHash({ assetId: args.assetId, simulate: args.simulate })
+    return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataHash({
+      assetId: args.assetId,
+      simulate: args.simulate,
+    })
   }
 
   async arc89GetMetadataStringByKey(args: {

@@ -1,6 +1,6 @@
 /**
  * ARC-89 write helpers.
- * 
+ *
  * Ported from Python `asa_metadata_registry/write/writer.py`.
  *
  * Notes:
@@ -12,12 +12,7 @@ import { microAlgo } from '@algorandfoundation/algokit-utils'
 import { TransactionSigner } from 'algosdk'
 import * as flagConsts from '../flags'
 import { InvalidFlagIndexError, MissingAppClientError } from '../errors'
-import {
-  AssetMetadata,
-  MbrDelta,
-  RegistryParameters,
-  getDefaultRegistryParams,
-} from '../models'
+import { AssetMetadata, MbrDelta, RegistryParameters, getDefaultRegistryParams } from '../models'
 import { asBigInt, asUint64BigInt, toNumber } from '../internal/numbers'
 import { toBytes, uint64ToBytesBE } from '../internal/bytes'
 import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '../generated'
@@ -55,7 +50,11 @@ export interface WriteOptions {
   coverAppCallInnerTransactionFees: boolean
 }
 
-const writeOptionsDefault: WriteOptions = {extraResources: 0, feePaddingTxns: 0, coverAppCallInnerTransactionFees: true}
+const writeOptionsDefault: WriteOptions = {
+  extraResources: 0,
+  feePaddingTxns: 0,
+  coverAppCallInnerTransactionFees: true,
+}
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -75,7 +74,10 @@ const chunksForSlice = (payload: Uint8Array, maxSize: number): Uint8Array[] => {
   return out
 }
 
-const appendExtraPayload = (composer: any, args: { assetId: bigint | number; chunks: Uint8Array[]; sender: string; signer: TransactionSigner }) => {
+const appendExtraPayload = (
+  composer: any,
+  args: { assetId: bigint | number; chunks: Uint8Array[]; sender: string; signer: TransactionSigner },
+) => {
   for (let i = 0; i < args.chunks.length - 1; i++) {
     const chunk = args.chunks[i + 1]
     composer.arc89ExtraPayload({
@@ -140,10 +142,10 @@ export class AsaMetadataRegistryWrite {
   // Group builders
   // ------------------------------------------------------------------
 
-  /** 
-   * Build (but do not send) an ARC-89 create metadata group. 
-   * 
-   * @returns The generated client's composer, so callers can `.simulate()` or `.send()`. 
+  /**
+   * Build (but do not send) an ARC-89 create metadata group.
+   *
+   * @returns The generated client's composer, so callers can `.simulate()` or `.send()`.
    */
   async buildCreateMetadataGroup(args: {
     assetManager: SigningAccount
@@ -203,13 +205,13 @@ export class AsaMetadataRegistryWrite {
     return composer
   }
 
-  /** 
-   * Build a replace group, automatically choosing `replaceMetadata` or `replaceMetadataLarger`. 
-   * 
+  /**
+   * Build a replace group, automatically choosing `replaceMetadata` or `replaceMetadataLarger`.
+   *
    * If you already know the current on-chain metadata size, pass `assumeCurrentSize` to avoid
    * an extra simulate read.
-   * 
-   * @returns The generated client's composer, so callers can `.simulate()` or `.send()`. 
+   *
+   * @returns The generated client's composer, so callers can `.simulate()` or `.send()`.
    */
   async buildReplaceMetadataGroup(args: {
     assetManager: SigningAccount
@@ -330,13 +332,13 @@ export class AsaMetadataRegistryWrite {
     return composer
   }
 
-  /** 
-   * Build a group that replaces a slice of the on-chain metadata. 
-   * 
+  /**
+   * Build a group that replaces a slice of the on-chain metadata.
+   *
    * If `payload` exceeds the registry's replace payload limit, this builds multiple
    * `arc89ReplaceMetadataSlice` calls in one group, adjusting the offset for each chunk.
-   * 
-   * @returns The generated client's composer, so callers can `.simulate()` or `.send()`. 
+   *
+   * @returns The generated client's composer, so callers can `.simulate()` or `.send()`.
    */
   async buildReplaceMetadataSliceGroup(args: {
     assetManager: SigningAccount

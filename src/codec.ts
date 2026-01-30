@@ -127,9 +127,7 @@ export const assetIdToBoxName = (assetId: bigint | number): Uint8Array => {
 /** Convert an ARC-89 box key (8-byte big-endian) into an Asset ID (uint64). */
 export const boxNameToAssetId = (boxName: Uint8Array): bigint => {
   if (boxName.length !== constants.ASSET_METADATA_BOX_KEY_SIZE) {
-    throw new RangeError(
-      `box_name must be ${constants.ASSET_METADATA_BOX_KEY_SIZE} bytes, got ${boxName.length}`,
-    )
+    throw new RangeError(`box_name must be ${constants.ASSET_METADATA_BOX_KEY_SIZE} bytes, got ${boxName.length}`)
   }
   return bytesToUint64BE(boxName)
 }

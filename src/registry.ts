@@ -13,10 +13,7 @@ import { AsaMetadataRegistryWrite } from './write/writer'
 import { AsaMetadataRegistryClient } from './generated'
 import { asNumber, asUint64BigInt } from './internal/numbers'
 
-const asUint64BigIntOrNull = (
-  v: bigint | number | null | undefined,
-  name: string,
-): bigint | null => {
+const asUint64BigIntOrNull = (v: bigint | number | null | undefined, name: string): bigint | null => {
   if (v === null || v === undefined) return null
   const val = asUint64BigInt(v, name)
   return val == 0n ? null : val
@@ -32,10 +29,7 @@ export class RegistryConfig {
   public readonly appId: bigint | null
   public readonly netauth: string | null
 
-  constructor(args?: {
-    appId?: bigint | number | null
-    netauth?: string | null
-  }) {
+  constructor(args?: { appId?: bigint | number | null; netauth?: string | null }) {
     this.appId = asUint64BigIntOrNull(args?.appId, 'appId')
     this.netauth = args?.netauth ?? null
   }
@@ -74,10 +68,10 @@ export class AsaMetadataRegistry {
       : null
 
     this.avmReaderFactory = this.generatedClientFactory
-      ? (appId: bigint) => new AsaMetadataRegistryAvmRead({client: this.generatedClientFactory!(appId)})
+      ? (appId: bigint) => new AsaMetadataRegistryAvmRead({ client: this.generatedClientFactory!(appId) })
       : null
 
-    this._write = this.baseGeneratedClient ? new AsaMetadataRegistryWrite({client: this.baseGeneratedClient}) : null
+    this._write = this.baseGeneratedClient ? new AsaMetadataRegistryWrite({ client: this.baseGeneratedClient }) : null
 
     this.read = new AsaMetadataRegistryRead({
       appId: this.config.appId,

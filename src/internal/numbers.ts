@@ -97,7 +97,7 @@ export const toUint8 = (v: unknown): number => {
   return n
 }
 
-/** 
+/**
  * Field-labeled parsing helpers
  *
  * These helpers wrap the corresponding `to*` converters and rethrow errors with
@@ -105,7 +105,6 @@ export const toUint8 = (v: unknown): number => {
  * when parsing structured inputs where you want actionable, field-specific
  * error messages.
  */
-
 
 export const asUint64BigInt = (v: unknown, name: string): bigint => {
   try {
@@ -117,7 +116,6 @@ export const asUint64BigInt = (v: unknown, name: string): bigint => {
     throw e
   }
 }
-
 
 export const asBigInt = (v: bigint | number, name: string): bigint => {
   try {

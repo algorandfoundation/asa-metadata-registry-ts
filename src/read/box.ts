@@ -1,6 +1,6 @@
 /**
  * ARC-89 box reader.
- * 
+ *
  * Ported from Python `asa_metadata_registry/read/box.py`.
  * All methods that touch Algod are async.
  */
@@ -21,7 +21,8 @@ import { AsaNotFoundError, BoxNotFoundError } from '../errors'
 
 type JsonObject = Record<string, unknown>
 
-const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
 
 /**
  * Reconstruct ARC-89 getter outputs from box contents (Algod).
@@ -102,12 +103,20 @@ export class AsaMetadataRegistryBoxRead {
 
     // Keep Python parity: if out of range, return empty content.
     if (args.page < 0 || args.page >= Math.max(1, pages.length)) {
-      return new PaginatedMetadata({ hasNextPage: false, lastModifiedRound: b.header.lastModifiedRound, pageContent: new Uint8Array() })
+      return new PaginatedMetadata({
+        hasNextPage: false,
+        lastModifiedRound: b.header.lastModifiedRound,
+        pageContent: new Uint8Array(),
+      })
     }
 
     const content = pages.length ? pages[args.page]! : new Uint8Array()
     const hasNext = args.page + 1 < pages.length
-    return new PaginatedMetadata({ hasNextPage: hasNext, lastModifiedRound: b.header.lastModifiedRound, pageContent: content })
+    return new PaginatedMetadata({
+      hasNextPage: hasNext,
+      lastModifiedRound: b.header.lastModifiedRound,
+      pageContent: content,
+    })
   }
 
   async arc89GetMetadataSlice(args: { assetId: bigint | number; offset: number; size: number }): Promise<Uint8Array> {

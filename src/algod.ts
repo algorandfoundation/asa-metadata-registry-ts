@@ -78,7 +78,12 @@ export class AlgodBoxReader {
     }
 
     const p = args.params ?? getDefaultRegistryParams()
-    return AssetMetadataBox.parse({ assetId: args.assetId, value, headerSize: p.headerSize, maxMetadataSize: p.maxMetadataSize })
+    return AssetMetadataBox.parse({
+      assetId: args.assetId,
+      value,
+      headerSize: p.headerSize,
+      maxMetadataSize: p.maxMetadataSize,
+    })
   }
 
   /**

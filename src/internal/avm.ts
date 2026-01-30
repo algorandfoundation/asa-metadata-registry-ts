@@ -3,7 +3,7 @@ import { asNumber, asUint64BigInt, asUint8 } from './numbers'
 import { MbrDelta, PaginatedMetadata } from '../models'
 
 export const withArgs = (params: unknown | undefined, args: unknown[]) => {
-  const p = (params && typeof params === 'object') ? { ...(params as any) } : {}
+  const p = params && typeof params === 'object' ? { ...(params as any) } : {}
   ;(p as any).args = args
   return p
 }
@@ -23,7 +23,6 @@ export const returnValues = (results: unknown): unknown[] => {
     return r
   })
 }
-
 
 export const parsePaginatedMetadata = (v: unknown): PaginatedMetadata => {
   if (Array.isArray(v)) return PaginatedMetadata.fromTuple(v as any)
