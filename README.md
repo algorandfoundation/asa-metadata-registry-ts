@@ -19,3 +19,5 @@ pnpm install
 pnpm run format
 pnpm run lint
 ```
+
+This project uses **Husky** and **lint-staged** to automatically lint and format staged files before they are committed.
