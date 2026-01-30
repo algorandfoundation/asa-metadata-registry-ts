@@ -1,1 +1,7 @@
 src/generated/
+node_modules
+dist
+coverage
+**/generated/types.d.ts
+**/generated/types.ts
+arc89/

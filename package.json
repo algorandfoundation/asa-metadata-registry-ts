@@ -22,10 +22,10 @@
     "build": "concurrently 'pnpm run build:cjs' 'pnpm run build:esm'",
     "prepublishOnly": "pnpm run build",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "lint": "eslint src/**/*.ts",
-    "lint:fix": "eslint src/**/*.ts --fix",
-    "format": "prettier --write \"src/**/*.ts\" \"*.json\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"*.json\""
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "repository": {
     "type": "git",
@@ -47,6 +47,8 @@
     "algosdk": "^3.5.2",
     "concurrently": "^9.2.0",
     "eslint": "^9.15.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
     "globals": "^16.4.0",
     "prettier": "^3.3.0",
     "typescript": "^5.9.3"
