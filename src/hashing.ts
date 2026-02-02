@@ -172,14 +172,14 @@ export const computeArc3MetadataHash = (jsonBytes: Uint8Array): Uint8Array => {
   let jsonText: string
   try {
     jsonText = new TextDecoder('utf-8', { fatal: true }).decode(jsonBytes)
-  } catch (e) {
+  } catch {
     throw new Error('Metadata file must be UTF-8 encoded JSON.')
   }
 
   let obj: unknown
   try {
     obj = JSON.parse(jsonText)
-  } catch (e) {
+  } catch {
     throw new Error('Invalid JSON metadata file.')
   }
 

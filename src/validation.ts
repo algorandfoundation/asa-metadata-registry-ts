@@ -112,11 +112,15 @@ export const validateArc3Schema = (obj: Record<string, unknown>): void => {
       }
     } else if (key === 'properties') {
       if (!isPlainObject(value)) {
-        throw new MetadataArc3Error(`ARC-3 field 'properties' must be an object, got ${Array.isArray(value) ? 'array' : typeof value}`)
+        throw new MetadataArc3Error(
+          `ARC-3 field 'properties' must be an object, got ${Array.isArray(value) ? 'array' : typeof value}`,
+        )
       }
     } else if (key === 'localization') {
       if (!isPlainObject(value)) {
-        throw new MetadataArc3Error(`ARC-3 field 'localization' must be an object, got ${Array.isArray(value) ? 'array' : typeof value}`)
+        throw new MetadataArc3Error(
+          `ARC-3 field 'localization' must be an object, got ${Array.isArray(value) ? 'array' : typeof value}`,
+        )
       }
       const loc = value as Record<string, unknown>
       if (!('uri' in loc)) throw new MetadataArc3Error("ARC-3 'localization' object must have 'uri' field")
@@ -124,7 +128,8 @@ export const validateArc3Schema = (obj: Record<string, unknown>): void => {
       if (!('locales' in loc)) throw new MetadataArc3Error("ARC-3 'localization' object must have 'locales' field")
 
       if (typeof loc['uri'] !== 'string') throw new MetadataArc3Error("ARC-3 'localization.uri' must be a string")
-      if (typeof loc['default'] !== 'string') throw new MetadataArc3Error("ARC-3 'localization.default' must be a string")
+      if (typeof loc['default'] !== 'string')
+        throw new MetadataArc3Error("ARC-3 'localization.default' must be a string")
       if (!Array.isArray(loc['locales'])) throw new MetadataArc3Error("ARC-3 'localization.locales' must be an array")
       for (const locale of loc['locales']) {
         if (typeof locale !== 'string') {

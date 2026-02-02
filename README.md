@@ -10,12 +10,14 @@ Node: 22.17.0 (see `.nvmrc`)
 
 ```sh
 git submodule update --init --recursive
-npm install
+pnpm install
 ```
 
 ### Code Quality
 
 ```sh
-npm run format
-npm run lint
+pnpm run format
+pnpm run lint
 ```
+
+This project uses **Husky** and **lint-staged** to automatically lint and format staged files before they are committed.

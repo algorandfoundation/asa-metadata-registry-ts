@@ -34,7 +34,7 @@ export type AbiValue = bigint | number | boolean | Uint8Array | readonly number[
 
 const setBit = (args: { bits: number; mask: number; value: boolean }): number => {
   const { bits, mask, value } = args
-  return value ? (bits | mask) : (bits & ~mask & 0xff)
+  return value ? bits | mask : bits & ~mask & 0xff
 }
 
 const isNonzero32 = (am: Uint8Array): boolean => am.length === 32 && am.some((b) => b !== 0)
@@ -194,7 +194,8 @@ export class RegistryParameters {
   /** Compute MBR delta from old->new box size using the registry MBR parameters. */
   mbrDelta(args: { oldMetadataSize: number | null; newMetadataSize: number; delete?: boolean }): MbrDelta {
     const { oldMetadataSize, newMetadataSize, delete: del } = args
-    if (!Number.isInteger(newMetadataSize) || newMetadataSize < 0) throw new RangeError('newMetadataSize must be non-negative')
+    if (!Number.isInteger(newMetadataSize) || newMetadataSize < 0)
+      throw new RangeError('newMetadataSize must be non-negative')
 
     const oldMbr = oldMetadataSize === null ? 0 : this.mbrForBox(oldMetadataSize)
     const newMbr = this.mbrForBox(newMetadataSize)
@@ -237,16 +238,18 @@ export class ReversibleFlags {
   public readonly reserved6: boolean
   public readonly reserved7: boolean
 
-  constructor(args: {
-    arc20?: boolean
-    arc62?: boolean
-    reserved2?: boolean
-    reserved3?: boolean
-    reserved4?: boolean
-    reserved5?: boolean
-    reserved6?: boolean
-    reserved7?: boolean
-  } = {}) {
+  constructor(
+    args: {
+      arc20?: boolean
+      arc62?: boolean
+      reserved2?: boolean
+      reserved3?: boolean
+      reserved4?: boolean
+      reserved5?: boolean
+      reserved6?: boolean
+      reserved7?: boolean
+    } = {},
+  ) {
     this.arc20 = Boolean(args.arc20)
     this.arc62 = Boolean(args.arc62)
     this.reserved2 = Boolean(args.reserved2)
@@ -271,7 +274,8 @@ export class ReversibleFlags {
   }
 
   static fromByte(value: number): ReversibleFlags {
-    if (!Number.isInteger(value) || value < 0 || value > MAX_UINT8) throw new RangeError(`Byte value must be 0-255, got ${value}`)
+    if (!Number.isInteger(value) || value < 0 || value > MAX_UINT8)
+      throw new RangeError(`Byte value must be 0-255, got ${value}`)
     return new ReversibleFlags({
       arc20: Boolean(value & bitmasks.MASK_REV_ARC20),
       arc62: Boolean(value & bitmasks.MASK_REV_ARC62),
@@ -299,16 +303,18 @@ export class IrreversibleFlags {
   public readonly reserved6: boolean
   public readonly immutable: boolean
 
-  constructor(args: {
-    arc3?: boolean
-    arc89Native?: boolean
-    reserved2?: boolean
-    reserved3?: boolean
-    reserved4?: boolean
-    reserved5?: boolean
-    reserved6?: boolean
-    immutable?: boolean
-  } = {}) {
+  constructor(
+    args: {
+      arc3?: boolean
+      arc89Native?: boolean
+      reserved2?: boolean
+      reserved3?: boolean
+      reserved4?: boolean
+      reserved5?: boolean
+      reserved6?: boolean
+      immutable?: boolean
+    } = {},
+  ) {
     this.arc3 = Boolean(args.arc3)
     this.arc89Native = Boolean(args.arc89Native)
     this.reserved2 = Boolean(args.reserved2)
@@ -333,7 +339,8 @@ export class IrreversibleFlags {
   }
 
   static fromByte(value: number): IrreversibleFlags {
-    if (!Number.isInteger(value) || value < 0 || value > MAX_UINT8) throw new RangeError(`Byte value must be 0-255, got ${value}`)
+    if (!Number.isInteger(value) || value < 0 || value > MAX_UINT8)
+      throw new RangeError(`Byte value must be 0-255, got ${value}`)
     return new IrreversibleFlags({
       arc3: Boolean(value & bitmasks.MASK_IRR_ARC3),
       arc89Native: Boolean(value & bitmasks.MASK_IRR_ARC89_NATIVE),
@@ -401,7 +408,8 @@ export class MetadataHeader {
     this.lastModifiedRound = asBigInt(args.lastModifiedRound, 'last_modified_round')
     this.deprecatedBy = asBigInt(args.deprecatedBy, 'deprecated_by')
     if (this.metadataHash.length !== 32) throw new RangeError('metadata_hash must be 32 bytes')
-    if (!Number.isInteger(this.identifiers) || this.identifiers < 0 || this.identifiers > MAX_UINT8) throw new RangeError('identifiers must fit in uint8')
+    if (!Number.isInteger(this.identifiers) || this.identifiers < 0 || this.identifiers > MAX_UINT8)
+      throw new RangeError('identifiers must fit in uint8')
   }
 
   get isShort(): boolean {
@@ -680,7 +688,12 @@ export class AssetMetadataBox {
       if (enforceImmutable && !this.header.flags.irreversible.immutable) {
         throw new Error('ASA `am` override requires immutable metadata')
       }
-      if (enforceHashMatch && this.header.isArc89Native && !this.header.isArc3Compliant && !bytesEqual(asaAm, computed)) {
+      if (
+        enforceHashMatch &&
+        this.header.isArc89Native &&
+        !this.header.isArc3Compliant &&
+        !bytesEqual(asaAm, computed)
+      ) {
         throw new MetadataHashMismatchError(
           'ASA Metadata Hash (am) does not match the computed hash; ARC89 native metadata without ARC3 requires matching hashes',
         )
@@ -692,7 +705,11 @@ export class AssetMetadataBox {
   }
 
   /** Compare observed on-chain hash to the locally computed effective hash. */
-  hashMatches(args?: { params?: RegistryParameters; asaAm?: Uint8Array | null; skipValidationOnOverride?: boolean }): boolean {
+  hashMatches(args?: {
+    params?: RegistryParameters
+    asaAm?: Uint8Array | null
+    skipValidationOnOverride?: boolean
+  }): boolean {
     const asaAm = args?.asaAm ?? null
     if (asaAm && isNonzero32(asaAm) && (args?.skipValidationOnOverride ?? true)) {
       return true
@@ -747,7 +764,9 @@ export class AssetMetadataRecord {
     enforceImmutableOnOverride?: boolean
     enforceArc89NativeHashMatch?: boolean
   }): Uint8Array {
-    return new AssetMetadataBox({ assetId: this.assetId, header: this.header, body: this.body }).expectedMetadataHash(args)
+    return new AssetMetadataBox({ assetId: this.assetId, header: this.header, body: this.body }).expectedMetadataHash(
+      args,
+    )
   }
 
   hashMatches(args?: { params?: RegistryParameters; asaAm?: Uint8Array | null }): boolean {
@@ -764,7 +783,12 @@ export class AssetMetadata {
   public readonly flags: MetadataFlags
   public readonly deprecatedBy: bigint
 
-  constructor(args: { assetId: bigint | number; body: MetadataBody; flags: MetadataFlags; deprecatedBy?: bigint | number }) {
+  constructor(args: {
+    assetId: bigint | number
+    body: MetadataBody
+    flags: MetadataFlags
+    deprecatedBy?: bigint | number
+  }) {
     this.assetId = asBigInt(args.assetId, 'assetId')
     this.body = args.body
     this.flags = args.flags
@@ -901,7 +925,10 @@ export class AssetMetadata {
     if (args.flags) {
       finalFlags = args.flags
     } else if (arc3) {
-      finalFlags = new MetadataFlags({ reversible: ReversibleFlags.empty(), irreversible: new IrreversibleFlags({ arc3: true }) })
+      finalFlags = new MetadataFlags({
+        reversible: ReversibleFlags.empty(),
+        irreversible: new IrreversibleFlags({ arc3: true }),
+      })
     } else {
       finalFlags = MetadataFlags.empty()
     }

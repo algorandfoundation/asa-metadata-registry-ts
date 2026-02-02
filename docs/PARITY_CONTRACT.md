@@ -12,7 +12,7 @@ where appropriate.
 - **Feature parity:** the TS SDK will expose the same capabilities as the Python SDK.
 - **Generated AppClient is excluded:** the TypeScript repo already contains the
   AlgoKit-generated client (`src/generated/AsaMetadataRegistry.ts`). The handwritten
-  SDK must *wrap* it, not re-implement it.
+  SDK must _wrap_ it, not re-implement it.
 - **Async boundary:**
   - Pure utilities (flags, bitmasks, codecs, hashing, parsing) stay **sync**.
   - Anything that does network I/O (Algod/Indexer reads, simulate, send) is **async**.

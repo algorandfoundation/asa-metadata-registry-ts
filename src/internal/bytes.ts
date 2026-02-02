@@ -15,18 +15,19 @@ export const toBytes = (v: unknown, name: string): Uint8Array => {
   if (v instanceof Uint8Array) return v
   if (v instanceof ArrayBuffer) return new Uint8Array(v)
 
-  const B = (globalThis as any).Buffer
+  const B = (globalThis as unknown as { Buffer?: { isBuffer: (v: unknown) => boolean } }).Buffer
   if (B?.isBuffer?.(v)) return new Uint8Array(v as ArrayLike<number>)
 
   if (v && typeof v === 'object') {
-    const view = v as any
+    const view = v as { buffer?: ArrayBuffer; byteOffset?: number; byteLength?: number; length?: number }
 
     // TypedArray / DataView / buffer-like object
     if (view.buffer instanceof ArrayBuffer) {
       return new Uint8Array(view.buffer, view.byteOffset ?? 0, view.byteLength ?? view.length)
     }
 
-    if (Array.isArray(view)) {
+    if (Array.isArray(v)) {
+      const view = v as number[]
       const out = new Uint8Array(view.length)
       for (let i = 0; i < view.length; i++) {
         const n = view[i]
@@ -41,7 +42,6 @@ export const toBytes = (v: unknown, name: string): Uint8Array => {
 
   throw new TypeError(`${name} must be bytes or a sequence of ints`)
 }
-
 
 export const readUint64BE = (data: Uint8Array, offset: number): bigint => {
   if (offset < 0 || offset + 8 > data.length) throw new RangeError('uint64 out of range')
