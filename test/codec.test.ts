@@ -25,7 +25,8 @@ const {
   completePartialAssetUrl,
 } = codec
 
-describe('assetIdToBoxName and boxNameToAssetId', () => {
+describe('asset id / box name conversion', () => {
+  // Tests for assetIdToBoxName and boxNameToAssetId.
   test('asset ID to box name zero', () => {
     // Test conversion of asset ID 0.
     const result = assetIdToBoxName(0)
@@ -114,6 +115,7 @@ describe('assetIdToBoxName and boxNameToAssetId', () => {
 })
 
 describe('base64 encoding', () => {
+  // Tests for b64Encode and b64Decode.
   test('b64 encode empty', () => {
     // Test encoding empty bytes.
     const result = b64Encode(new Uint8Array())
