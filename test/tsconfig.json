@@ -1,10 +1,12 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "types": ["vitest/globals"],
+    "types": ["vitest/globals", "node"],
+    "rootDir": "..",
     "baseUrl": "..",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@algorandfoundation/asa-metadata-registry-sdk": ["src/index.ts"]
     }
   },
   "include": ["**/*.ts"]
