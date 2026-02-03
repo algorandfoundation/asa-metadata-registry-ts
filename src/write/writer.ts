@@ -8,7 +8,6 @@
  * - The generated AppClient is *not* re-implemented here; it is used as-is.
  */
 
-import { microAlgo } from '@algorandfoundation/algokit-utils'
 import { TransactionSigner } from 'algosdk'
 import * as flagConsts from '../flags'
 import { InvalidFlagIndexError, MissingAppClientError } from '../errors'
@@ -22,8 +21,8 @@ import {
 } from '../generated'
 import { AsaMetadataRegistryAvmRead, SimulateOptions } from '../read/avm'
 import { parseMbrDelta, returnValues } from '../internal/avm'
-import { AlgoAmount } from '@algorandfoundation/algokit-utils/types/amount'
-import { SendParams } from '@algorandfoundation/algokit-utils/types/transaction'
+import { microAlgo } from '@algorandfoundation/algokit-utils'
+import type { SendParams } from '@algorandfoundation/algokit-utils/types/transaction'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -90,7 +89,7 @@ const appendExtraPayload = (
       sender: args.sender,
       signer: args.signer,
       note: noteU64(i),
-      staticFee: new AlgoAmount({ microAlgos: 0 }),
+      staticFee: microAlgo(0),
     })
   }
 }
@@ -106,7 +105,7 @@ const appendExtraResources = (
       sender: args.sender,
       signer: args.signer,
       note: noteU64(i),
-      staticFee: new AlgoAmount({ microAlgos: 0 }),
+      staticFee: microAlgo(0),
     })
   }
 }
@@ -174,7 +173,7 @@ export class AsaMetadataRegistryWrite {
       sender: args.assetManager.address,
       receiver: this.client.appAddress,
       amount: microAlgo(asBigInt(payAmount, 'amountMicroAlgos')),
-      staticFee: microAlgo(0n),
+      staticFee: microAlgo(0),
     })
 
     const sp = await this.client.algorand.getSuggestedParams()
@@ -197,7 +196,7 @@ export class AsaMetadataRegistryWrite {
       },
       sender: args.assetManager.address,
       signer: args.assetManager.signer,
-      staticFee: new AlgoAmount({ microAlgos: feePool }),
+      staticFee: microAlgo(feePool),
     })
 
     appendExtraPayload(composer, {
@@ -273,7 +272,7 @@ export class AsaMetadataRegistryWrite {
       },
       sender: args.assetManager.address,
       signer: args.assetManager.signer,
-      staticFee: new AlgoAmount({ microAlgos: feePool }),
+      staticFee: microAlgo(feePool),
     })
 
     appendExtraPayload(composer, {
@@ -308,7 +307,7 @@ export class AsaMetadataRegistryWrite {
       sender: args.assetManager.address,
       receiver: this.client.appAddress,
       amount: microAlgo(asBigInt(payAmount, 'amountMicroAlgos')),
-      staticFee: microAlgo(0n),
+      staticFee: microAlgo(0),
     })
 
     const sp = await this.client.algorand.getSuggestedParams()
@@ -326,7 +325,7 @@ export class AsaMetadataRegistryWrite {
       },
       sender: args.assetManager.address,
       signer: args.assetManager.signer,
-      staticFee: new AlgoAmount({ microAlgos: feePool }),
+      staticFee: microAlgo(feePool),
     })
 
     appendExtraPayload(composer, {
@@ -376,7 +375,7 @@ export class AsaMetadataRegistryWrite {
       args: { assetId: args.assetId, offset: args.offset, payload: chunks[0] ?? new Uint8Array() },
       sender: args.assetManager.address,
       signer: args.assetManager.signer,
-      staticFee: new AlgoAmount({ microAlgos: feePool }),
+      staticFee: microAlgo(feePool),
     })
 
     for (let i = 1; i < chunks.length; i++) {
@@ -388,7 +387,7 @@ export class AsaMetadataRegistryWrite {
         },
         sender: args.assetManager.address,
         signer: args.assetManager.signer,
-        staticFee: new AlgoAmount({ microAlgos: 0 }),
+        staticFee: microAlgo(0),
       })
     }
 
@@ -417,7 +416,7 @@ export class AsaMetadataRegistryWrite {
       args: { assetId: args.assetId },
       sender: args.assetManager.address,
       signer: args.assetManager.signer,
-      staticFee: new AlgoAmount({ microAlgos: feePool }),
+      staticFee: microAlgo(feePool),
     })
     appendExtraResources(composer, {
       count: opt.extraResources,
@@ -577,7 +576,7 @@ export class AsaMetadataRegistryWrite {
       args: { assetId: args.assetId, flag: args.flagIndex, value: args.value },
       sender: args.assetManager.address,
       signer: args.assetManager.signer,
-      staticFee: new AlgoAmount({ microAlgos: feePool }),
+      staticFee: microAlgo(feePool),
     })
     appendExtraResources(composer, {
       count: opt.extraResources,
@@ -612,7 +611,7 @@ export class AsaMetadataRegistryWrite {
       args: { assetId: args.assetId, flag: args.flagIndex },
       sender: args.assetManager.address,
       signer: args.assetManager.signer,
-      staticFee: new AlgoAmount({ microAlgos: feePool }),
+      staticFee: microAlgo(feePool),
     })
     appendExtraResources(composer, {
       count: opt.extraResources,
@@ -641,7 +640,7 @@ export class AsaMetadataRegistryWrite {
       args: { assetId: args.assetId },
       sender: args.assetManager.address,
       signer: args.assetManager.signer,
-      staticFee: new AlgoAmount({ microAlgos: feePool }),
+      staticFee: microAlgo(feePool),
     })
     appendExtraResources(composer, {
       count: opt.extraResources,
@@ -670,7 +669,7 @@ export class AsaMetadataRegistryWrite {
       args: { assetId: args.assetId, newRegistryId: args.newRegistryId },
       sender: args.assetManager.address,
       signer: args.assetManager.signer,
-      staticFee: new AlgoAmount({ microAlgos: feePool }),
+      staticFee: microAlgo(feePool),
     })
     appendExtraResources(composer, {
       count: opt.extraResources,
