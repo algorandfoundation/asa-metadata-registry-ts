@@ -95,23 +95,23 @@ const splitUri = (uri: string): { scheme: string; netloc: string; path: string; 
   return { scheme, netloc, path, query, fragment }
 }
 
-const b64Encode = (data: Uint8Array): string => Buffer.from(data).toString('base64')
+const _b64Encode = (data: Uint8Array): string => Buffer.from(data).toString('base64')
 
-const b64Decode = (s: string): Uint8Array => new Uint8Array(Buffer.from(s, 'base64'))
+const _b64Decode = (s: string): Uint8Array => new Uint8Array(Buffer.from(s, 'base64'))
 
-const b64UrlEncode = (data: Uint8Array): string => {
+const _b64UrlEncode = (data: Uint8Array): string => {
   // Match Python's `base64.urlsafe_b64encode`: URL-safe alphabet AND padding.
-  return b64Encode(data).replace(/\+/g, '-').replace(/\//g, '_')
+  return _b64Encode(data).replace(/\+/g, '-').replace(/\//g, '_')
 }
 
-const b64UrlDecode = (s: string): Uint8Array => {
+const _b64UrlDecode = (s: string): Uint8Array => {
   // Accept both padded and unpadded inputs.
   let x = s.replace(/-/g, '+').replace(/_/g, '/')
   const pad = x.length % 4
   if (pad === 2) x += '=='
   else if (pad === 3) x += '='
   else if (pad !== 0) throw new InvalidArc90UriError('Invalid base64url box name')
-  return b64Decode(x)
+  return _b64Decode(x)
 }
 
 // ---------------------------------------------------------------------------
@@ -133,16 +133,16 @@ export const boxNameToAssetId = (boxName: Uint8Array): bigint => {
 }
 
 /** Standard base64 (with padding). */
-export const b64_encode = (data: Uint8Array): string => b64Encode(data)
+export const b64Encode = (data: Uint8Array): string => _b64Encode(data)
 
 /** Standard base64 decode (accepts padding). */
-export const b64_decode = (dataB64: string): Uint8Array => b64Decode(dataB64)
+export const b64Decode = (dataB64: string): Uint8Array => _b64Decode(dataB64)
 
 /** URL-safe base64, per ARC-90 examples (padding preserved to match Python SDK). */
-export const b64url_encode = (data: Uint8Array): string => b64UrlEncode(data)
+export const b64UrlEncode = (data: Uint8Array): string => _b64UrlEncode(data)
 
 /** URL-safe base64 decode. */
-export const b64url_decode = (dataB64Url: string): Uint8Array => b64UrlDecode(dataB64Url)
+export const b64UrlDecode = (dataB64Url: string): Uint8Array => _b64UrlDecode(dataB64Url)
 
 /**
  * Represents the ARC-90 compliance fragment '#arc<A>+<B>+...'.
@@ -241,7 +241,7 @@ export class Arc90Uri {
 
   /** Render the URI using ARC-89 conventions (base64url for box query parameter). */
   toUri(): string {
-    const box = this.boxName ? b64UrlEncode(this.boxName) : ''
+    const box = this.boxName ? _b64UrlEncode(this.boxName) : ''
     const frag = this.compliance.toFragment() ?? ''
 
     let netloc: string
@@ -262,7 +262,7 @@ export class Arc90Uri {
   /** The Algod `/box?name=` query parameter expects standard base64 (with padding). */
   toAlgodBoxNameB64(): string {
     if (!this.boxName) throw new Error('Cannot produce algod box name for a partial URI')
-    return b64Encode(this.boxName)
+    return _b64Encode(this.boxName)
   }
 
   static parse(uri: string): Arc90Uri {
@@ -310,7 +310,7 @@ export class Arc90Uri {
     } else {
       let decoded: Uint8Array
       try {
-        decoded = b64UrlDecode(boxValue)
+        decoded = _b64UrlDecode(boxValue)
       } catch (e) {
         throw new InvalidArc90UriError('Invalid base64url box name', { cause: e })
       }
