@@ -9,16 +9,14 @@ import * as constants from './constants'
 import { assetIdToBoxName } from './codec'
 import { InvalidPageIndexError } from './errors'
 import { concatBytes } from './internal/bytes'
+import { MAX_UINT8, MAX_UINT16 } from './internal/numbers'
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-const MAX_UINT8 = 0xff
-const MAX_UINT16 = 0xffff
-
-const uint16ToBytesBE = (n: number): Uint8Array => {
-  if (!Number.isInteger(n) || n < 0 || n > MAX_UINT16) throw new RangeError('metadataSize must fit in uint16')
+const uint16ToBytesBE = (n: number, name: string): Uint8Array => {
+  if (!Number.isInteger(n) || n < 0 || n > MAX_UINT16) throw new RangeError(`${name} must fit in uint16`)
   return new Uint8Array([(n >> 8) & 0xff, n & 0xff])
 }
 
@@ -75,7 +73,7 @@ export const computeHeaderHash = (args: {
     uint8ToByte(metadataIdentifiers, 'metadataIdentifiers'),
     uint8ToByte(reversibleFlags, 'reversibleFlags'),
     uint8ToByte(irreversibleFlags, 'irreversibleFlags'),
-    uint16ToBytesBE(metadataSize),
+    uint16ToBytesBE(metadataSize, 'metadataSize'),
   ])
 
   return sha512256(data)
@@ -105,15 +103,12 @@ export const computePageHash = (args: {
   if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex > MAX_UINT8) {
     throw new InvalidPageIndexError('pageIndex must fit in uint8')
   }
-  if (pageContent.length > MAX_UINT16) {
-    throw new RangeError('pageContent length must fit in uint16')
-  }
 
   const data = concatBytes([
     constants.HASH_DOMAIN_PAGE,
     assetIdToBoxName(assetId),
     new Uint8Array([pageIndex]),
-    uint16ToBytesBE(pageContent.length),
+    uint16ToBytesBE(pageContent.length, 'pageContent length'),
     pageContent,
   ])
 
