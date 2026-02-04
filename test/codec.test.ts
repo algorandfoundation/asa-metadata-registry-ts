@@ -206,7 +206,8 @@ describe('base64 encoding', () => {
   })
 })
 
-describe('Arc90Compliance', () => {
+describe('arc90 compliance', () => {
+  // Tests for Arc90Compliance parsing and serialization.
   test('parse empty fragment', () => {
     // Test parsing empty or None fragment.
     expect(Arc90Compliance.parse(null)).toEqual(new Arc90Compliance([]))
@@ -235,10 +236,10 @@ describe('Arc90Compliance', () => {
   test('parse arc3 with others invalid', () => {
     // Test parsing ARC-3 with others (invalid per spec).
     const result1 = Arc90Compliance.parse('#arc3+89')
-    expect(result1).toEqual(new Arc90Compliance([]))
+    expect(result1).toEqual(new Arc90Compliance([])) // invalid, returns empty
 
     const result2 = Arc90Compliance.parse('#arc89+3')
-    expect(result2).toEqual(new Arc90Compliance([]))
+    expect(result2).toEqual(new Arc90Compliance([])) // invalid, returns empty
   })
 
   test('parse leading zeros invalid', () => {
