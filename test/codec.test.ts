@@ -1,5 +1,5 @@
 /**
- * Unit tests for src.codec module.
+ * Unit tests for src/codec module.
  *
  * Tests cover:
  * - assetIdToBoxName and boxNameToAssetId
