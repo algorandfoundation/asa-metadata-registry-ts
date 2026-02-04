@@ -25,10 +25,15 @@ const uint8ToByte = (n: number, name: string): Uint8Array => {
   return new Uint8Array([n])
 }
 
+/** Cached set of available hash algorithms for O(1) lookup */
+const availableHashes = new Set(getHashes())
+
+/** Reusable UTF-8 decoder with fatal error handling */
+const utf8Decoder = new TextDecoder('utf-8', { fatal: true })
+
 const sha = (algo: string, data: Uint8Array): Uint8Array => {
   // Ensure algorithm exists (for clearer errors, and parity with Python's explicit check).
-  const available = getHashes()
-  if (!available.includes(algo)) {
+  if (!availableHashes.has(algo)) {
     throw new Error(`crypto does not support ${algo} on this Node build`)
   }
   const h = createHash(algo)
@@ -156,7 +161,7 @@ export const computeArc3MetadataHash = (jsonBytes: Uint8Array): Uint8Array => {
   // UTF-8 decode (fatal, to mirror Python exceptions).
   let jsonText: string
   try {
-    jsonText = new TextDecoder('utf-8', { fatal: true }).decode(jsonBytes)
+    jsonText = utf8Decoder.decode(jsonBytes)
   } catch {
     throw new Error('Metadata file must be UTF-8 encoded JSON.')
   }
