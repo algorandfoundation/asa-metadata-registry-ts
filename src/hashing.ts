@@ -8,6 +8,7 @@ import { createHash, getHashes } from 'crypto'
 import * as constants from './constants'
 import { assetIdToBoxName } from './codec'
 import { InvalidPageIndexError } from './errors'
+import { concatBytes } from './internal/bytes'
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -15,17 +16,6 @@ import { InvalidPageIndexError } from './errors'
 
 const MAX_UINT8 = 0xff
 const MAX_UINT16 = 0xffff
-
-const concatBytes = (...parts: Uint8Array[]): Uint8Array => {
-  const total = parts.reduce((sum, p) => sum + p.length, 0)
-  const out = new Uint8Array(total)
-  let off = 0
-  for (const p of parts) {
-    out.set(p, off)
-    off += p.length
-  }
-  return out
-}
 
 const uint16ToBytesBE = (n: number): Uint8Array => {
   if (!Number.isInteger(n) || n < 0 || n > MAX_UINT16) throw new RangeError('metadata_size must fit in uint16')
@@ -79,14 +69,14 @@ export const computeHeaderHash = (args: {
 }): Uint8Array => {
   const { assetId, metadataIdentifiers, reversibleFlags, irreversibleFlags, metadataSize } = args
 
-  const data = concatBytes(
+  const data = concatBytes([
     constants.HASH_DOMAIN_HEADER,
     assetIdToBoxName(assetId),
     uint8ToByte(metadataIdentifiers, 'metadata_identifiers'),
     uint8ToByte(reversibleFlags, 'reversible_flags'),
     uint8ToByte(irreversibleFlags, 'irreversible_flags'),
     uint16ToBytesBE(metadataSize),
-  )
+  ])
 
   return sha512_256(data)
 }
@@ -119,13 +109,13 @@ export const computePageHash = (args: {
     throw new RangeError('page_content length must fit in uint16')
   }
 
-  const data = concatBytes(
+  const data = concatBytes([
     constants.HASH_DOMAIN_PAGE,
     assetIdToBoxName(assetId),
     new Uint8Array([pageIndex]),
     uint16ToBytesBE(pageContent.length),
     pageContent,
-  )
+  ])
 
   return sha512_256(data)
 }
@@ -157,7 +147,7 @@ export const computeMetadataHash = (args: {
   for (let i = 0; i < pages.length; i++) {
     pageHashes[i] = computePageHash({ assetId, pageIndex: i, pageContent: pages[i] })
   }
-  const data = concatBytes(constants.HASH_DOMAIN_METADATA, hh, ...pageHashes)
+  const data = concatBytes([constants.HASH_DOMAIN_METADATA, hh, ...pageHashes])
 
   return sha512_256(data)
 }
@@ -191,8 +181,8 @@ export const computeArc3MetadataHash = (jsonBytes: Uint8Array): Uint8Array => {
 
     const extra = base64DecodeStrict(extraB64)
 
-    const jsonH = sha512_256(concatBytes(constants.ARC3_HASH_AMJ_PREFIX, jsonBytes))
-    const am = sha512_256(concatBytes(constants.ARC3_HASH_AM_PREFIX, jsonH, extra))
+    const jsonH = sha512_256(concatBytes([constants.ARC3_HASH_AMJ_PREFIX, jsonBytes]))
+    const am = sha512_256(concatBytes([constants.ARC3_HASH_AM_PREFIX, jsonH, extra]))
     return am
   }
 
