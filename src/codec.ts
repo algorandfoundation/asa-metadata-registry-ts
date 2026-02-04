@@ -176,7 +176,7 @@ export class Arc90Compliance {
 
     for (const p of parts) {
       if (!p) return new Arc90Compliance([])
-      if (p[0] === '0') return new Arc90Compliance([])
+      if (p.length > 1 && p[0] === '0') return new Arc90Compliance([])
       const n = Number(p)
       if (!Number.isSafeInteger(n) || n < 0) return new Arc90Compliance([])
       arcs.push(n)
