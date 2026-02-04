@@ -55,7 +55,7 @@ const base64DecodeStrict = (s: string): Uint8Array => {
 // ---------------------------------------------------------------------------
 
 /** SHA-512/256 digest. */
-export const sha512256 = (data: Uint8Array): Uint8Array => sha('sha512-256', data)
+export const sha512_256 = (data: Uint8Array): Uint8Array => sha('sha512-256', data)
 
 /** SHA-256 digest. */
 export const sha256 = (data: Uint8Array): Uint8Array => sha('sha256', data)
@@ -81,7 +81,7 @@ export const computeHeaderHash = (args: {
     uint16ToBytesBE(metadataSize, 'metadataSize'),
   ])
 
-  return sha512256(data)
+  return sha512_256(data)
 }
 
 /** Split metadata bytes into ARC-89 pages. */
@@ -117,7 +117,7 @@ export const computePageHash = (args: {
     pageContent,
   ])
 
-  return sha512256(data)
+  return sha512_256(data)
 }
 
 /**
@@ -149,7 +149,7 @@ export const computeMetadataHash = (args: {
   }
   const data = concatBytes([constants.HASH_DOMAIN_METADATA, hh, ...pageHashes])
 
-  return sha512256(data)
+  return sha512_256(data)
 }
 
 /**
@@ -181,8 +181,8 @@ export const computeArc3MetadataHash = (jsonBytes: Uint8Array): Uint8Array => {
 
     const extra = base64DecodeStrict(extraB64)
 
-    const jsonH = sha512256(concatBytes([constants.ARC3_HASH_AMJ_PREFIX, jsonBytes]))
-    const am = sha512256(concatBytes([constants.ARC3_HASH_AM_PREFIX, jsonH, extra]))
+    const jsonH = sha512_256(concatBytes([constants.ARC3_HASH_AMJ_PREFIX, jsonBytes]))
+    const am = sha512_256(concatBytes([constants.ARC3_HASH_AM_PREFIX, jsonH, extra]))
     return am
   }
 
