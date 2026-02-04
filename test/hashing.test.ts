@@ -2,13 +2,13 @@
  * Unit tests for src/hashing module.
  *
  * Tests cover:
- * - sha512_256 hash function
+ * - sha512256 hash function
  * - sha256 hash function
- * - compute_header_hash
+ * - computeHeaderHash
  * - paginate
- * - compute_page_hash
- * - compute_metadata_hash
- * - compute_arc3_metadata_hash
+ * - computePageHash
+ * - computeMetadataHash
+ * - computeArc3MetadataHash
  */
 
 import { describe, expect, test } from 'vitest'
@@ -16,7 +16,7 @@ import { hashing, assetIdToBoxName, constants } from '@algorandfoundation/asa-me
 import { concatBytes } from '@/internal/bytes'
 
 const {
-  sha512_256,
+  sha512256,
   sha256,
   paginate,
   computeHeaderHash,
@@ -29,10 +29,10 @@ const { HASH_DOMAIN_PAGE, HASH_DOMAIN_METADATA, ARC3_HASH_AM_PREFIX, ARC3_HASH_A
   constants
 
 describe('sha512/256', () => {
-  // Tests for sha512_256 hash function.
+  // Tests for sha512256 hash function.
   test('empty bytes', () => {
     // Test hashing empty bytes.
-    const result = sha512_256(new Uint8Array())
+    const result = sha512256(new Uint8Array())
     expect(result.length).toBe(32)
     // Known SHA-512/256 hash of empty string
     const expected = new Uint8Array(
@@ -43,7 +43,7 @@ describe('sha512/256', () => {
 
   test('simple string', () => {
     // Test hashing simple string.
-    const result = sha512_256(new TextEncoder().encode('hello world'))
+    const result = sha512256(new TextEncoder().encode('hello world'))
     expect(result.length).toBe(32)
     // Known SHA-512/256 hash of "hello world"
     const expected = new Uint8Array(
@@ -55,15 +55,15 @@ describe('sha512/256', () => {
   test('deterministic', () => {
     // Test that hash is deterministic.
     const data = new TextEncoder().encode('test data')
-    const result1 = sha512_256(data)
-    const result2 = sha512_256(data)
+    const result1 = sha512256(data)
+    const result2 = sha512256(data)
     expect(result1).toEqual(result2)
   })
 
   test('different inputs produce different outputs', () => {
     // Test that different inputs produce different hashes.
-    const result1 = sha512_256(new TextEncoder().encode('data1'))
-    const result2 = sha512_256(new TextEncoder().encode('data2'))
+    const result1 = sha512256(new TextEncoder().encode('data1'))
+    const result2 = sha512256(new TextEncoder().encode('data2'))
     expect(result1).not.toEqual(result2)
   })
 })
@@ -255,7 +255,7 @@ describe('compute header hash', () => {
   })
 
   test('metadata identifiers out of range negative throws', () => {
-    // Test that negative metadata_identifiers raises ValueError.
+    // Test that negative metadataIdentifiers raises ValueError.
     expect(() =>
       computeHeaderHash({
         assetId: 100,
@@ -264,11 +264,11 @@ describe('compute header hash', () => {
         irreversibleFlags: 0,
         metadataSize: 100,
       }),
-    ).toThrow(/metadata_identifiers must fit in byte/)
+    ).toThrow(/metadataIdentifiers must fit in byte/)
   })
 
   test('metadata identifiers out of range overflow throws', () => {
-    // Test that metadata_identifiers > 255 raises ValueError.
+    // Test that metadataIdentifiers > 255 raises ValueError.
     expect(() =>
       computeHeaderHash({
         assetId: 100,
@@ -277,11 +277,11 @@ describe('compute header hash', () => {
         irreversibleFlags: 0,
         metadataSize: 100,
       }),
-    ).toThrow(/metadata_identifiers must fit in byte/)
+    ).toThrow(/metadataIdentifiers must fit in byte/)
   })
 
   test('reversible flags out of range negative throws', () => {
-    // Test that negative reversible_flags raises ValueError.
+    // Test that negative reversibleFlags raises ValueError.
     expect(() =>
       computeHeaderHash({
         assetId: 100,
@@ -290,11 +290,11 @@ describe('compute header hash', () => {
         irreversibleFlags: 0,
         metadataSize: 100,
       }),
-    ).toThrow(/reversible_flags must fit in byte/)
+    ).toThrow(/reversibleFlags must fit in byte/)
   })
 
   test('reversible flags out of range overflow throws', () => {
-    // Test that reversible_flags > 255 raises ValueError.
+    // Test that reversibleFlags > 255 raises ValueError.
     expect(() =>
       computeHeaderHash({
         assetId: 100,
@@ -303,11 +303,11 @@ describe('compute header hash', () => {
         irreversibleFlags: 0,
         metadataSize: 100,
       }),
-    ).toThrow(/reversible_flags must fit in byte/)
+    ).toThrow(/reversibleFlags must fit in byte/)
   })
 
   test('irreversible flags out of range negative throws', () => {
-    // Test that negative irreversible_flags raises ValueError.
+    // Test that negative irreversibleFlags raises ValueError.
     expect(() =>
       computeHeaderHash({
         assetId: 100,
@@ -316,11 +316,11 @@ describe('compute header hash', () => {
         irreversibleFlags: -1,
         metadataSize: 100,
       }),
-    ).toThrow(/irreversible_flags must fit in byte/)
+    ).toThrow(/irreversibleFlags must fit in byte/)
   })
 
   test('irreversible flags out of range overflow throws', () => {
-    // Test that irreversible_flags > 255 raises ValueError.
+    // Test that irreversibleFlags > 255 raises ValueError.
     expect(() =>
       computeHeaderHash({
         assetId: 100,
@@ -329,11 +329,11 @@ describe('compute header hash', () => {
         irreversibleFlags: 256,
         metadataSize: 100,
       }),
-    ).toThrow(/irreversible_flags must fit in byte/)
+    ).toThrow(/irreversibleFlags must fit in byte/)
   })
 
   test('metadata size out of range negative throws', () => {
-    // Test that negative metadata_size raises ValueError.
+    // Test that negative metadataSize raises ValueError.
     expect(() =>
       computeHeaderHash({
         assetId: 100,
@@ -342,11 +342,11 @@ describe('compute header hash', () => {
         irreversibleFlags: 0,
         metadataSize: -1,
       }),
-    ).toThrow(/metadata_size must fit in uint16/)
+    ).toThrow(/metadataSize must fit in uint16/)
   })
 
   test('metadata size out of range overflow throws', () => {
-    // Test that metadata_size > 65535 raises ValueError.
+    // Test that metadataSize > 65535 raises ValueError.
     expect(() =>
       computeHeaderHash({
         assetId: 100,
@@ -355,7 +355,7 @@ describe('compute header hash', () => {
         irreversibleFlags: 0,
         metadataSize: 65536,
       }),
-    ).toThrow(/metadata_size must fit in uint16/)
+    ).toThrow(/metadataSize must fit in uint16/)
   })
 
   test('header hash uses correct domain separator', () => {
@@ -376,7 +376,7 @@ describe('compute header hash', () => {
       new Uint8Array([irreversibleFlags]),
       new Uint8Array([(metadataSize >> 8) & 0xff, metadataSize & 0xff]),
     ])
-    const expectedHash = sha512_256(expectedData)
+    const expectedHash = sha512256(expectedData)
 
     const result = computeHeaderHash({
       assetId,
@@ -451,13 +451,13 @@ describe('paginate', () => {
   })
 
   test('page size zero throws', () => {
-    // Test that page_size of 0 raises ValueError.
-    expect(() => paginate(new Uint8Array(10), 0)).toThrow(/page_size must be > 0/)
+    // Test that pageSize of 0 raises ValueError.
+    expect(() => paginate(new Uint8Array(10), 0)).toThrow(/pageSize must be > 0/)
   })
 
   test('page size negative throws', () => {
-    // Test that negative page_size raises ValueError.
-    expect(() => paginate(new Uint8Array(10), -1)).toThrow(/page_size must be > 0/)
+    // Test that negative pageSize raises ValueError.
+    expect(() => paginate(new Uint8Array(10), -1)).toThrow(/pageSize must be > 0/)
   })
 
   test('preserves metadata content', () => {
@@ -576,36 +576,36 @@ describe('compute page hash', () => {
   })
 
   test('page index out of range negative throws', () => {
-    // Test that negative page_index raises ValueError.
+    // Test that negative pageIndex raises ValueError.
     expect(() =>
       computePageHash({
         assetId: 100,
         pageIndex: -1,
         pageContent: new TextEncoder().encode('test'),
       }),
-    ).toThrow(/page_index must fit in uint8/)
+    ).toThrow(/pageIndex must fit in uint8/)
   })
 
   test('page index out of range overflow throws', () => {
-    // Test that page_index > 255 raises ValueError.
+    // Test that pageIndex > 255 raises ValueError.
     expect(() =>
       computePageHash({
         assetId: 100,
         pageIndex: 256,
         pageContent: new TextEncoder().encode('test'),
       }),
-    ).toThrow(/page_index must fit in uint8/)
+    ).toThrow(/pageIndex must fit in uint8/)
   })
 
   test('page content too large throws', () => {
-    // Test that page_content larger than uint16 max raises ValueError.
+    // Test that pageContent larger than uint16 max raises ValueError.
     expect(() =>
       computePageHash({
         assetId: 100,
         pageIndex: 0,
         pageContent: new Uint8Array(2 ** 16).fill(120),
       }),
-    ).toThrow(/page_content length must fit in uint16/)
+    ).toThrow(/pageContent length must fit in uint16/)
   })
 
   test('page hash uses correct domain separator', () => {
@@ -621,7 +621,7 @@ describe('compute page hash', () => {
       new Uint8Array([(pageContent.length >> 8) & 0xff, pageContent.length & 0xff]),
       pageContent,
     ])
-    const expectedHash = sha512_256(expectedData)
+    const expectedHash = sha512256(expectedData)
 
     const result = computePageHash({
       assetId,
@@ -759,7 +759,7 @@ describe('compute metadata hash', () => {
       }),
     )
     const data = concatBytes([HASH_DOMAIN_METADATA, hh, ...pageHashes])
-    const expected = sha512_256(data)
+    const expected = sha512256(data)
 
     const result = computeMetadataHash({
       assetId,
@@ -786,7 +786,7 @@ describe('compute metadata hash', () => {
       irreversibleFlags,
       metadataSize: 0,
     })
-    const expected = sha512_256(concatBytes([HASH_DOMAIN_METADATA, hh]))
+    const expected = sha512256(concatBytes([HASH_DOMAIN_METADATA, hh]))
 
     const result = computeMetadataHash({
       assetId,
@@ -824,7 +824,7 @@ describe('compute metadata hash', () => {
 })
 
 describe('compute arc3 metadata hash', () => {
-  // Tests for compute_arc3_metadata_hash function.
+  // Tests for computeArc3MetadataHash function.
   test('simple json no extra metadata', () => {
     // Test ARC-3 hash with simple JSON without extra_metadata.
     const jsonObj = { name: 'Test Asset', description: 'A test asset' }
@@ -854,8 +854,8 @@ describe('compute arc3 metadata hash', () => {
     expect(result.length).toBe(32)
 
     // With extra_metadata, should use SHA-512/256 double hash
-    const jsonH = sha512_256(concatBytes([ARC3_HASH_AMJ_PREFIX, jsonBytes]))
-    const expected = sha512_256(concatBytes([ARC3_HASH_AM_PREFIX, jsonH, extraData]))
+    const jsonH = sha512256(concatBytes([ARC3_HASH_AMJ_PREFIX, jsonBytes]))
+    const expected = sha512256(concatBytes([ARC3_HASH_AM_PREFIX, jsonH, extraData]))
     expect(result).toEqual(expected)
   })
 
@@ -873,8 +873,8 @@ describe('compute arc3 metadata hash', () => {
     expect(result.length).toBe(32)
 
     // Should still use double hash
-    const jsonH = sha512_256(concatBytes([ARC3_HASH_AMJ_PREFIX, jsonBytes]))
-    const expected = sha512_256(concatBytes([ARC3_HASH_AM_PREFIX, jsonH, new Uint8Array()]))
+    const jsonH = sha512256(concatBytes([ARC3_HASH_AMJ_PREFIX, jsonBytes]))
+    const expected = sha512256(concatBytes([ARC3_HASH_AM_PREFIX, jsonH, new Uint8Array()]))
     expect(result).toEqual(expected)
   })
 
@@ -992,8 +992,8 @@ describe('compute arc3 metadata hash', () => {
     expect(result.length).toBe(32)
 
     // Verify correct computation
-    const jsonH = sha512_256(concatBytes([ARC3_HASH_AMJ_PREFIX, jsonBytes]))
-    const expected = sha512_256(concatBytes([ARC3_HASH_AM_PREFIX, jsonH, extraData]))
+    const jsonH = sha512256(concatBytes([ARC3_HASH_AMJ_PREFIX, jsonBytes]))
+    const expected = sha512256(concatBytes([ARC3_HASH_AM_PREFIX, jsonH, extraData]))
     expect(result).toEqual(expected)
   })
 
@@ -1014,8 +1014,8 @@ describe('compute arc3 metadata hash', () => {
     expect(result.length).toBe(32)
 
     // Verify correct computation
-    const jsonH = sha512_256(concatBytes([ARC3_HASH_AMJ_PREFIX, jsonBytes]))
-    const expected = sha512_256(concatBytes([ARC3_HASH_AM_PREFIX, jsonH, extraData]))
+    const jsonH = sha512256(concatBytes([ARC3_HASH_AMJ_PREFIX, jsonBytes]))
+    const expected = sha512256(concatBytes([ARC3_HASH_AM_PREFIX, jsonH, extraData]))
     expect(result).toEqual(expected)
   })
 
