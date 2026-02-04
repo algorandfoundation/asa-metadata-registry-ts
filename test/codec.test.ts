@@ -325,8 +325,9 @@ describe('arc90 compliance', () => {
   })
 })
 
-describe('Arc90Uri', () => {
-  test('parse testnet URI', () => {
+describe('arc90 uri', () => {
+  // Tests for ARC90Uri parsing and serialization.
+  test('parse testnet uri', () => {
     // Test parsing testnet URI.
     const uri = 'algorand://net:testnet/app/752790676?box=AAAAAAAAAAE%3D#arc89'
     const parsed = Arc90Uri.parse(uri)
@@ -339,7 +340,7 @@ describe('Arc90Uri', () => {
     expect(parsed.isPartial).toBe(false)
   })
 
-  test('parse mainnet URI', () => {
+  test('parse mainnet uri', () => {
     // Test parsing mainnet URI.
     const uri = 'algorand://app/123456789?box=AAAAAAAAAAE%3D#arc89'
     const parsed = Arc90Uri.parse(uri)
@@ -352,7 +353,7 @@ describe('Arc90Uri', () => {
     expect(parsed.isPartial).toBe(false)
   })
 
-  test('parse localnet URI', () => {
+  test('parse localnet uri', () => {
     // Test parsing localnet URI.
     const uri = 'algorand://net:localnet/app/1001?box=AAAAAAAAAAE%3D#arc3'
     const parsed = Arc90Uri.parse(uri)
@@ -365,7 +366,7 @@ describe('Arc90Uri', () => {
     expect(parsed.isPartial).toBe(false)
   })
 
-  test('parse partial URI', () => {
+  test('parse partial uri', () => {
     // Test parsing partial URI (empty box value).
     const uri = 'algorand://net:testnet/app/752790676?box=#arc89'
     const parsed = Arc90Uri.parse(uri)
@@ -378,7 +379,7 @@ describe('Arc90Uri', () => {
     expect(parsed.isPartial).toBe(true)
   })
 
-  test('parse URI without fragment', () => {
+  test('parse uri without fragment', () => {
     // Test parsing URI without compliance fragment.
     const uri = 'algorand://net:testnet/app/752790676?box=AAAAAAAAAAE%3D'
     const parsed = Arc90Uri.parse(uri)
@@ -389,7 +390,7 @@ describe('Arc90Uri', () => {
     expect(parsed.compliance).toEqual(new Arc90Compliance([]))
   })
 
-  test('parse URI multiple compliance', () => {
+  test('parse uri multiple compliance', () => {
     // Test parsing URI with multiple compliance ARCs.
     const uri = 'algorand://net:testnet/app/752790676?box=AAAAAAAAAAE%3D#arc89+90'
     const parsed = Arc90Uri.parse(uri)
@@ -450,7 +451,7 @@ describe('Arc90Uri', () => {
     expect(() => Arc90Uri.parse('algorand://unknown/something/123?box=')).toThrow(/Unrecognized ARC-90 app URI shape/)
   })
 
-  test('to URI testnet', () => {
+  test('to uri testnet', () => {
     // Test serializing testnet URI.
     const uriObj = new Arc90Uri({
       netauth: 'net:testnet',
@@ -465,7 +466,7 @@ describe('Arc90Uri', () => {
     expect(result).toContain('arc89')
   })
 
-  test('to URI mainnet', () => {
+  test('to uri mainnet', () => {
     // Test serializing mainnet URI.
     const uriObj = new Arc90Uri({
       netauth: null,
@@ -480,7 +481,7 @@ describe('Arc90Uri', () => {
     expect(result).toContain('arc89')
   })
 
-  test('to URI partial', () => {
+  test('to uri partial', () => {
     // Test serializing partial URI.
     const uriObj = new Arc90Uri({
       netauth: 'net:testnet',
@@ -493,10 +494,11 @@ describe('Arc90Uri', () => {
     expect(result).toContain('algorand://net:testnet/app/752790676')
     expect(result).toContain('box=')
     expect(result).toContain('arc89')
-    expect(result.includes('box=&') || result.includes('box=#') || result.endsWith('box=')).toBe(false)
+    // Box should be empty
+    expect(result.includes('box=&') || result.includes('box=#') || result.endsWith('box=')).toBe(true)
   })
 
-  test('to URI without compliance', () => {
+  test('to uri without compliance', () => {
     // Test serializing URI without compliance fragment.
     const uriObj = new Arc90Uri({
       netauth: 'net:testnet',
@@ -511,7 +513,7 @@ describe('Arc90Uri', () => {
     expect(result).not.toContain('#')
   })
 
-  test('with asset ID', () => {
+  test('with asset id', () => {
     // Test completing partial URI with asset ID.
     const partial = new Arc90Uri({
       netauth: 'net:testnet',
@@ -539,7 +541,9 @@ describe('Arc90Uri', () => {
     })
     const result = uriObj.toAlgodBoxNameB64()
 
+    // Should be standard base64 with padding
     expect(result).toBe(b64Encode(new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01])))
+    // Verify it's different from URL-safe encoding if special chars present
     expect(b64Decode(result)).toEqual(new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]))
   })
 
@@ -581,7 +585,8 @@ describe('Arc90Uri', () => {
   })
 })
 
-describe('completePartialAssetUrl', () => {
+describe('complete partial asset url', () => {
+  // Tests for completePartialAssetUrl function.
   test('complete partial url', () => {
     // Test completing a partial asset URL.
     const partialUrl = 'algorand://net:testnet/app/752790676?box=#arc89'
@@ -601,7 +606,7 @@ describe('completePartialAssetUrl', () => {
     const completeUrl = 'algorand://net:testnet/app/752790676?box=AAAAAAAAAAE%3D#arc89'
     const assetId = 1n
 
-    const result = codec.completePartialAssetUrl(completeUrl, assetId)
+    const result = completePartialAssetUrl(completeUrl, assetId)
 
     const parsedOriginal = Arc90Uri.parse(completeUrl)
     const parsedResult = Arc90Uri.parse(result)
@@ -611,12 +616,12 @@ describe('completePartialAssetUrl', () => {
     expect(parsedResult.netauth).toBe(parsedOriginal.netauth)
   })
 
-  test('complete different asset ID', () => {
+  test('complete different asset id', () => {
     // Test completing URL with different asset ID preserves the original if already complete.
     const completeUrl = 'algorand://net:testnet/app/752790676?box=AAAAAAAAAAE%3D#arc89'
     const newAssetId = 999n
 
-    const result = codec.completePartialAssetUrl(completeUrl, newAssetId)
+    const result = completePartialAssetUrl(completeUrl, newAssetId)
 
     const parsed = Arc90Uri.parse(result)
     expect(parsed.assetId).toBe(1n)
@@ -658,7 +663,7 @@ describe('completePartialAssetUrl', () => {
     expect(parsed.compliance).toEqual(new Arc90Compliance([]))
   })
 
-  test('complete large asset ID', () => {
+  test('complete large asset id', () => {
     // Test completing with large asset ID.
     const partialUrl = 'algorand://net:testnet/app/752790676?box=#arc89'
     const assetId = 2n ** 48n - 1n
@@ -669,7 +674,7 @@ describe('completePartialAssetUrl', () => {
     expect(parsed.assetId).toBe(assetId)
   })
 
-  test('complete zero asset ID', () => {
+  test('complete zero asset id', () => {
     // Test completing with zero asset ID.
     const partialUrl = 'algorand://net:testnet/app/752790676?box=#arc89'
     const assetId = 0n
