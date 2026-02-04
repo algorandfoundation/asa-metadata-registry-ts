@@ -39,7 +39,15 @@ const setBit = (args: { bits: number; mask: number; value: boolean }): number =>
 
 const isNonzero32 = (am: Uint8Array): boolean => am.length === 32 && am.some((b) => b !== 0)
 
-const chunkMetadataPayload = (args: { data: Uint8Array; headMaxSize: number; extraMaxSize: number }): Uint8Array[] => {
+/**
+ * Split metadata bytes into head + extra payload chunks.
+ * @internal
+ */
+export const chunkMetadataPayload = (args: {
+  data: Uint8Array
+  headMaxSize: number
+  extraMaxSize: number
+}): Uint8Array[] => {
   const { data, headMaxSize, extraMaxSize } = args
   if (!Number.isInteger(headMaxSize) || headMaxSize <= 0) throw new RangeError('Chunk sizes must be > 0')
   if (!Number.isInteger(extraMaxSize) || extraMaxSize <= 0) throw new RangeError('Chunk sizes must be > 0')
