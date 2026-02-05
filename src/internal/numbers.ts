@@ -1,6 +1,7 @@
 const MAX_UINT64 = (1n << 64n) - 1n
 
 export const MAX_UINT8 = 0xff
+export const MAX_UINT16 = 0xffff
 
 /**
  * Converts a number or bigint to bigint with safe integer validation.

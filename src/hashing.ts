@@ -8,27 +8,15 @@ import { createHash, getHashes } from 'crypto'
 import * as constants from './constants'
 import { assetIdToBoxName } from './codec'
 import { InvalidPageIndexError } from './errors'
+import { concatBytes } from './internal/bytes'
+import { MAX_UINT8, MAX_UINT16 } from './internal/numbers'
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-const MAX_UINT8 = 0xff
-const MAX_UINT16 = 0xffff
-
-const concatBytes = (...parts: Uint8Array[]): Uint8Array => {
-  const total = parts.reduce((sum, p) => sum + p.length, 0)
-  const out = new Uint8Array(total)
-  let off = 0
-  for (const p of parts) {
-    out.set(p, off)
-    off += p.length
-  }
-  return out
-}
-
-const uint16ToBytesBE = (n: number): Uint8Array => {
-  if (!Number.isInteger(n) || n < 0 || n > MAX_UINT16) throw new RangeError('metadata_size must fit in uint16')
+const uint16ToBytesBE = (n: number, name: string): Uint8Array => {
+  if (!Number.isInteger(n) || n < 0 || n > MAX_UINT16) throw new RangeError(`${name} must fit in uint16`)
   return new Uint8Array([(n >> 8) & 0xff, n & 0xff])
 }
 
@@ -37,10 +25,15 @@ const uint8ToByte = (n: number, name: string): Uint8Array => {
   return new Uint8Array([n])
 }
 
+/** Cached set of available hash algorithms for O(1) lookup */
+const availableHashes = new Set(getHashes())
+
+/** Reusable UTF-8 decoder with fatal error handling */
+const utf8Decoder = new TextDecoder('utf-8', { fatal: true })
+
 const sha = (algo: string, data: Uint8Array): Uint8Array => {
   // Ensure algorithm exists (for clearer errors, and parity with Python's explicit check).
-  const available = getHashes()
-  if (!available.includes(algo)) {
+  if (!availableHashes.has(algo)) {
     throw new Error(`crypto does not support ${algo} on this Node build`)
   }
   const h = createHash(algo)
@@ -68,7 +61,7 @@ export const sha512_256 = (data: Uint8Array): Uint8Array => sha('sha512-256', da
 export const sha256 = (data: Uint8Array): Uint8Array => sha('sha256', data)
 
 /**
- * Compute hh = SHA-512/256("arc0089/header" || asset_id || identifiers || rev_flags || irr_flags || metadata_size)
+ * Compute hh = SHA-512/256("arc0089/header" || assetId || identifiers || revFlags || irrFlags || metadataSize)
  */
 export const computeHeaderHash = (args: {
   assetId: bigint | number
@@ -79,21 +72,21 @@ export const computeHeaderHash = (args: {
 }): Uint8Array => {
   const { assetId, metadataIdentifiers, reversibleFlags, irreversibleFlags, metadataSize } = args
 
-  const data = concatBytes(
+  const data = concatBytes([
     constants.HASH_DOMAIN_HEADER,
     assetIdToBoxName(assetId),
-    uint8ToByte(metadataIdentifiers, 'metadata_identifiers'),
-    uint8ToByte(reversibleFlags, 'reversible_flags'),
-    uint8ToByte(irreversibleFlags, 'irreversible_flags'),
-    uint16ToBytesBE(metadataSize),
-  )
+    uint8ToByte(metadataIdentifiers, 'metadataIdentifiers'),
+    uint8ToByte(reversibleFlags, 'reversibleFlags'),
+    uint8ToByte(irreversibleFlags, 'irreversibleFlags'),
+    uint16ToBytesBE(metadataSize, 'metadataSize'),
+  ])
 
   return sha512_256(data)
 }
 
 /** Split metadata bytes into ARC-89 pages. */
 export const paginate = (metadata: Uint8Array, pageSize: number): Uint8Array[] => {
-  if (!Number.isInteger(pageSize) || pageSize <= 0) throw new RangeError('page_size must be > 0')
+  if (!Number.isInteger(pageSize) || pageSize <= 0) throw new RangeError('pageSize must be > 0')
   if (metadata.length === 0) return []
   const out: Uint8Array[] = []
   for (let i = 0; i < metadata.length; i += pageSize) {
@@ -103,7 +96,7 @@ export const paginate = (metadata: Uint8Array, pageSize: number): Uint8Array[] =
 }
 
 /**
- * Compute ph[i] = SHA-512/256("arc0089/page" || asset_id || page_index || page_size || page_content)
+ * Compute ph[i] = SHA-512/256("arc0089/page" || assetId || pageIndex || pageSize || pageContent)
  */
 export const computePageHash = (args: {
   assetId: bigint | number
@@ -113,19 +106,16 @@ export const computePageHash = (args: {
   const { assetId, pageIndex, pageContent } = args
 
   if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex > MAX_UINT8) {
-    throw new InvalidPageIndexError('page_index must fit in uint8')
-  }
-  if (pageContent.length > MAX_UINT16) {
-    throw new RangeError('page_content length must fit in uint16')
+    throw new InvalidPageIndexError('pageIndex must fit in uint8')
   }
 
-  const data = concatBytes(
+  const data = concatBytes([
     constants.HASH_DOMAIN_PAGE,
     assetIdToBoxName(assetId),
     new Uint8Array([pageIndex]),
-    uint16ToBytesBE(pageContent.length),
+    uint16ToBytesBE(pageContent.length, 'pageContent length'),
     pageContent,
-  )
+  ])
 
   return sha512_256(data)
 }
@@ -157,21 +147,21 @@ export const computeMetadataHash = (args: {
   for (let i = 0; i < pages.length; i++) {
     pageHashes[i] = computePageHash({ assetId, pageIndex: i, pageContent: pages[i] })
   }
-  const data = concatBytes(constants.HASH_DOMAIN_METADATA, hh, ...pageHashes)
+  const data = concatBytes([constants.HASH_DOMAIN_METADATA, hh, ...pageHashes])
 
   return sha512_256(data)
 }
 
 /**
  * Compute the ARC-3 metadata hash:
- * - If JSON object contains "extra_metadata": am = SHA-512/256("arc0003/am" || sha512_256("arc0003/amj"||json) || extra)
+ * - If JSON object contains "extra_metadata": am = SHA-512/256("arc0003/am" || sha512256("arc0003/amj"||json) || extra)
  * - Else: sha256(json_bytes)
  */
 export const computeArc3MetadataHash = (jsonBytes: Uint8Array): Uint8Array => {
   // UTF-8 decode (fatal, to mirror Python exceptions).
   let jsonText: string
   try {
-    jsonText = new TextDecoder('utf-8', { fatal: true }).decode(jsonBytes)
+    jsonText = utf8Decoder.decode(jsonBytes)
   } catch {
     throw new Error('Metadata file must be UTF-8 encoded JSON.')
   }
@@ -191,8 +181,8 @@ export const computeArc3MetadataHash = (jsonBytes: Uint8Array): Uint8Array => {
 
     const extra = base64DecodeStrict(extraB64)
 
-    const jsonH = sha512_256(concatBytes(constants.ARC3_HASH_AMJ_PREFIX, jsonBytes))
-    const am = sha512_256(concatBytes(constants.ARC3_HASH_AM_PREFIX, jsonH, extra))
+    const jsonH = sha512_256(concatBytes([constants.ARC3_HASH_AMJ_PREFIX, jsonBytes]))
+    const am = sha512_256(concatBytes([constants.ARC3_HASH_AM_PREFIX, jsonH, extra]))
     return am
   }
 
