@@ -11,7 +11,7 @@ import { BoxParseError, InvalidPageIndexError, MetadataHashMismatchError } from 
 import { computeHeaderHash, computeMetadataHash, computePageHash } from './hashing'
 import { decodeMetadataJson, encodeMetadataJson, validateArc3Schema } from './validation'
 import { asBigInt, asNumber, asUint8, MAX_UINT8 } from './internal/numbers'
-import { bytesEqual, toBytes, readUint64BE, uint64ToBytesBE } from './internal/bytes'
+import { bytesEqual, toBytes, uint64ToBytesBE } from './internal/bytes'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -67,6 +67,21 @@ export const chunkMetadataPayload = (args: {
     chunks.push(data.slice(i, i + extraMaxSize))
   }
   return chunks
+}
+
+/**
+ * Read up to 8 bytes as a big-endian uint64, tolerating short buffers.
+ * Mirrors Python's int.from_bytes on truncated slices.
+ * @internal
+ */
+const readUint64BE = (data: Uint8Array, offset: number): bigint => {
+  if (offset >= data.length) return 0n
+  const end = Math.min(offset + 8, data.length)
+  let result = 0n
+  for (let i = offset; i < end; i++) {
+    result = (result << 8n) | BigInt(data[i]!)
+  }
+  return result
 }
 
 // ---------------------------------------------------------------------------
