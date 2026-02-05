@@ -13,7 +13,6 @@ import { decodeMetadataJson, encodeMetadataJson, validateArc3Schema } from './va
 import { asBigInt, asNumber, asUint8, MAX_UINT8 } from './internal/numbers'
 import { bytesEqual, toBytes, uint64ToBytesBE } from './internal/bytes'
 import { setBit, isNonzero32, chunkMetadataPayload, readUint64BE } from './internal/models'
-export { setBit, isNonzero32, chunkMetadataPayload, readUint64BE } from './internal/models'
 
 // ---------------------------------------------------------------------------
 // Types
