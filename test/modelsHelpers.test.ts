@@ -7,22 +7,15 @@
  * - MetadataExistence
  * - Pagination
  * - PaginatedMetadata
+ * - Internal helper functions
  */
 
 import { describe, expect, test } from 'vitest'
 import { models, enums, constants } from '@algorandfoundation/asa-metadata-registry-sdk'
 import { toBytes } from '@/internal/bytes'
+import { setBit, isNonzero32, readUint64BE } from '@/internal/models'
 
-const {
-  MbrDeltaSign,
-  MbrDelta,
-  RegistryParameters,
-  MetadataExistence,
-  Pagination,
-  PaginatedMetadata,
-  setBit,
-  isNonzero32,
-} = models
+const { MbrDeltaSign, MbrDelta, RegistryParameters, MetadataExistence, Pagination, PaginatedMetadata } = models
 
 describe('mbr delta sign', () => {
   // Tests for MbrDeltaSign enum.
@@ -457,101 +450,156 @@ describe('paginated metadata advanced', () => {
   })
 })
 
-describe('helper functions', () => {
-  // Tests for module-level helper functions.
-  test('set bit true', () => {
-    // Test setBit setting a bit to True.
-    const result = setBit({ bits: 0b00000000, mask: 0b00000001, value: true })
-    expect(result).toBe(0b00000001)
+describe('internal helper functions', () => {
+  // Tests for module-level internal helper functions.
+  // NOTE: Tests for chunkMetadataPayload are in modelsMetadata.test.ts
+  describe('set bit', () => {
+    // Tests for setBit function.
+    test('set bit true', () => {
+      // Test setBit setting a bit to True.
+      const result = setBit({ bits: 0b00000000, mask: 0b00000001, value: true })
+      expect(result).toBe(0b00000001)
+    })
+
+    test('set bit false', () => {
+      // Test setBit clearing a bit to False.
+      const result = setBit({ bits: 0b11111111, mask: 0b00000001, value: false })
+      expect(result).toBe(0b11111110)
+    })
+
+    test('set bit preserves other bits', () => {
+      // Test setBit preserves other bits when setting.
+      const result = setBit({ bits: 0b10101010, mask: 0b00000100, value: true })
+      expect(result).toBe(0b10101110)
+    })
+
+    test('set bit preserves other bits when clearing', () => {
+      // Test setBit preserves other bits when clearing.
+      const result = setBit({ bits: 0b10101110, mask: 0b00000100, value: false })
+      expect(result).toBe(0b10101010)
+    })
   })
 
-  test('set bit false', () => {
-    // Test setBit clearing a bit to False.
-    const result = setBit({ bits: 0b11111111, mask: 0b00000001, value: false })
-    expect(result).toBe(0b11111110)
+  describe('coerce bytes', () => {
+    // Tests for toBytes function (_coerce_bytes in python implementation)
+    test('coerce bytes from bytes', () => {
+      // Test toBytes with bytes input.
+      const result = toBytes(new TextEncoder().encode('hello'), 'test')
+      expect(result).toEqual(new TextEncoder().encode('hello'))
+    })
+
+    test('coerce bytes from arraybuffer', () => {
+      // Test toBytes with ArrayBuffer input.
+      const buf = new Uint8Array([4, 5, 6]).buffer
+      const result = toBytes(buf, 'test')
+      expect(result).toEqual(new Uint8Array([4, 5, 6]))
+    })
+
+    test('coerce bytes from buffer', () => {
+      // Test toBytes with Node Buffer input.
+      const result = toBytes(Buffer.from([7, 8, 9]), 'test')
+      expect(result).toBeInstanceOf(Uint8Array)
+      expect(Array.from(result)).toEqual([7, 8, 9])
+    })
+
+    test('coerce bytes from data view slice', () => {
+      // Test toBytes with a DataView over a subset of an ArrayBuffer.
+      const raw = new Uint8Array([10, 11, 12, 13, 14])
+      const view = new DataView(raw.buffer, 1, 3)
+      const result = toBytes(view, 'test')
+      expect(result).toEqual(new Uint8Array([11, 12, 13]))
+    })
+
+    test('coerce bytes from list', () => {
+      // Test toBytes with list of ints.
+      const result = toBytes([0, 255, 128], 'test')
+      expect(result).toEqual(new Uint8Array([0, 255, 128]))
+    })
+
+    test('coerce bytes invalid string raises', () => {
+      // Test toBytes with string raises TypeError.
+      expect(() => toBytes('not bytes', 'test')).toThrow(/must be bytes or a sequence of ints/)
+    })
+
+    test('coerce bytes invalid int raises', () => {
+      // Test toBytes with int raises TypeError.
+      expect(() => toBytes(42, 'test')).toThrow(/must be bytes or a sequence of ints/)
+    })
+
+    test('coerce bytes invalid list content raises', () => {
+      // Test toBytes with list of non-ints raises TypeError.
+      expect(() => toBytes(['not', 'ints'], 'test')).toThrow(/must be bytes or a sequence of ints/)
+    })
   })
 
-  test('set bit preserves other bits', () => {
-    // Test setBit preserves other bits when setting.
-    const result = setBit({ bits: 0b10101010, mask: 0b00000100, value: true })
-    expect(result).toBe(0b10101110)
-  })
+  describe('non zero 32', () => {
+    // Tests for isNonzero32 function
+    test('is nonzero 32 all zeros', () => {
+      // Test isNonzero32 with all zeros.
+      expect(isNonzero32(new Uint8Array(32))).toBe(false)
+    })
 
-  test('set bit preserves other bits when clearing', () => {
-    // Test setBit preserves other bits when clearing.
-    const result = setBit({ bits: 0b10101110, mask: 0b00000100, value: false })
-    expect(result).toBe(0b10101010)
-  })
+    test('is nonzero 32 one nonzero', () => {
+      // Test isNonzero32 with one non-zero byte.
+      const data = new Uint8Array(32)
+      data[31] = 1
+      expect(isNonzero32(data)).toBe(true)
+    })
 
-  test('coerce bytes from bytes', () => {
-    // Test toBytes with bytes input.
-    const result = toBytes(new TextEncoder().encode('hello'), 'test')
-    expect(result).toEqual(new TextEncoder().encode('hello'))
-  })
+    test('is nonzero 32 all nonzero', () => {
+      // Test isNonzero32 with all non-zero bytes.
+      expect(isNonzero32(new Uint8Array(32).fill(0xff))).toBe(true)
+    })
 
-  test('coerce bytes from arraybuffer', () => {
-    // Test toBytes with ArrayBuffer input.
-    const buf = new Uint8Array([4, 5, 6]).buffer
-    const result = toBytes(buf, 'test')
-    expect(result).toEqual(new Uint8Array([4, 5, 6]))
-  })
+    test('is nonzero 32 wrong length', () => {
+      // Test isNonzero32 with wrong length.
+      expect(isNonzero32(new Uint8Array(31).fill(1))).toBe(false)
+      expect(isNonzero32(new Uint8Array(33).fill(1))).toBe(false)
+    })
 
-  test('coerce bytes from buffer', () => {
-    // Test toBytes with Node Buffer input.
-    const result = toBytes(Buffer.from([7, 8, 9]), 'test')
-    expect(result).toBeInstanceOf(Uint8Array)
-    expect(Array.from(result)).toEqual([7, 8, 9])
-  })
+    describe('read uint64', () => {
+      // Tests for readUint64BE function
+      test('empty buffer returns zero', () => {
+        // Test readUint64BE with empty buffer.
+        const data = new Uint8Array([])
+        expect(readUint64BE(data, 0)).toBe(0n)
+      })
 
-  test('coerce bytes from data view slice', () => {
-    // Test toBytes with a DataView over a subset of an ArrayBuffer.
-    const raw = new Uint8Array([10, 11, 12, 13, 14])
-    const view = new DataView(raw.buffer, 1, 3)
-    const result = toBytes(view, 'test')
-    expect(result).toEqual(new Uint8Array([11, 12, 13]))
-  })
+      test('single byte value', () => {
+        // Test readUint64BE with single byte.
+        const data = new Uint8Array([0xff])
+        expect(readUint64BE(data, 0)).toBe(0xffn)
+      })
 
-  test('coerce bytes from list', () => {
-    // Test toBytes with list of ints.
-    const result = toBytes([0, 255, 128], 'test')
-    expect(result).toEqual(new Uint8Array([0, 255, 128]))
-  })
+      test('full 8-byte value', () => {
+        // Test readUint64BE with full 8-byte input, zero offset.
+        const data = new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1])
+        expect(readUint64BE(data, 0)).toBe(1n)
+      })
 
-  test('coerce bytes invalid string raises', () => {
-    // Test toBytes with string raises TypeError.
-    expect(() => toBytes('not bytes', 'test')).toThrow(/must be bytes or a sequence of ints/)
-  })
+      test('partial value at start', () => {
+        // Test readUint64BE with short buffer (partial read), zero offset.
+        const data = new Uint8Array([0x01, 0x02])
+        expect(readUint64BE(data, 0)).toBe(0x0102n)
+      })
 
-  test('coerce bytes invalid int raises', () => {
-    // Test toBytes with int raises TypeError.
-    expect(() => toBytes(42, 'test')).toThrow(/must be bytes or a sequence of ints/)
-  })
+      test('partial value at offset', () => {
+        // Test readUint64BE with partial data at a non-zero offset.
+        const data = new Uint8Array([0x00, 0x00, 0x03, 0x04])
+        expect(readUint64BE(data, 2)).toBe(0x0304n)
+      })
 
-  test('coerce bytes invalid list content raises', () => {
-    // Test toBytes with list of non-ints raises TypeError.
-    expect(() => toBytes(['not', 'ints'], 'test')).toThrow(/must be bytes or a sequence of ints/)
-  })
+      test('offset at buffer end returns zero', () => {
+        // Test readUint64BE when offset equals buffer length.
+        const data = new Uint8Array([0x01, 0x02, 0x03])
+        expect(readUint64BE(data, 3)).toBe(0n)
+      })
 
-  test('is nonzero 32 all zeros', () => {
-    // Test isNonzero32 with all zeros.
-    expect(isNonzero32(new Uint8Array(32))).toBe(false)
-  })
-
-  test('is nonzero 32 one nonzero', () => {
-    // Test isNonzero32 with one non-zero byte.
-    const data = new Uint8Array(32)
-    data[31] = 1
-    expect(isNonzero32(data)).toBe(true)
-  })
-
-  test('is nonzero 32 all nonzero', () => {
-    // Test isNonzero32 with all non-zero bytes.
-    expect(isNonzero32(new Uint8Array(32).fill(0xff))).toBe(true)
-  })
-
-  test('is nonzero 32 wrong length', () => {
-    // Test isNonzero32 with wrong length.
-    expect(isNonzero32(new Uint8Array(31).fill(1))).toBe(false)
-    expect(isNonzero32(new Uint8Array(33).fill(1))).toBe(false)
+      test('offset beyond buffer returns zero', () => {
+        // Test readUint64BE when offset is beyond the buffer.
+        const data = new Uint8Array([0x01, 0x02, 0x03])
+        expect(readUint64BE(data, 10)).toBe(0n)
+      })
+    })
   })
 })

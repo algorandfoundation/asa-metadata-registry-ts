@@ -5,13 +5,14 @@
  * - decodeMetadataJson
  * - encodeMetadataJson
  * - validateArc3Schema
- * - chunkMetadataPayload helper
+ * - chunkMetadataPayload internal helper and MetadataBody.chunkedPayload wrapper
  */
 
 import { describe, expect, test } from 'vitest'
 import { models, validation } from '@algorandfoundation/asa-metadata-registry-sdk'
+import { chunkMetadataPayload } from '@/internal/models'
 
-const { chunkMetadataPayload, MetadataBody } = models
+const { MetadataBody } = models
 const { decodeMetadataJson, encodeMetadataJson, validateArc3Schema } = validation
 
 describe('chunk metadata payload', () => {
