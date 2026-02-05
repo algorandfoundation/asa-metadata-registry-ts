@@ -452,7 +452,7 @@ describe('paginated metadata advanced', () => {
 
 describe('internal helper functions', () => {
   // Tests for module-level internal helper functions.
-  // NOTE: Tests for chunkMetadataPayload are in modelsMetadata.test.ts
+  // NOTE: Tests for chunkMetadataPayload are in modelsJson.test.ts
   describe('set bit', () => {
     // Tests for setBit function.
     test('set bit true', () => {
@@ -556,50 +556,50 @@ describe('internal helper functions', () => {
       expect(isNonzero32(new Uint8Array(31).fill(1))).toBe(false)
       expect(isNonzero32(new Uint8Array(33).fill(1))).toBe(false)
     })
+  })
 
-    describe('read uint64', () => {
-      // Tests for readUint64BE function
-      test('empty buffer returns zero', () => {
-        // Test readUint64BE with empty buffer.
-        const data = new Uint8Array([])
-        expect(readUint64BE(data, 0)).toBe(0n)
-      })
+  describe('read uint64', () => {
+    // Tests for readUint64BE function
+    test('empty buffer returns zero', () => {
+      // Test readUint64BE with empty buffer.
+      const data = new Uint8Array([])
+      expect(readUint64BE(data, 0)).toBe(0n)
+    })
 
-      test('single byte value', () => {
-        // Test readUint64BE with single byte.
-        const data = new Uint8Array([0xff])
-        expect(readUint64BE(data, 0)).toBe(0xffn)
-      })
+    test('single byte value', () => {
+      // Test readUint64BE with single byte.
+      const data = new Uint8Array([0xff])
+      expect(readUint64BE(data, 0)).toBe(0xffn)
+    })
 
-      test('full 8-byte value', () => {
-        // Test readUint64BE with full 8-byte input, zero offset.
-        const data = new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1])
-        expect(readUint64BE(data, 0)).toBe(1n)
-      })
+    test('full 8-byte value', () => {
+      // Test readUint64BE with full 8-byte input, zero offset.
+      const data = new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1])
+      expect(readUint64BE(data, 0)).toBe(1n)
+    })
 
-      test('partial value at start', () => {
-        // Test readUint64BE with short buffer (partial read), zero offset.
-        const data = new Uint8Array([0x01, 0x02])
-        expect(readUint64BE(data, 0)).toBe(0x0102n)
-      })
+    test('partial value at start', () => {
+      // Test readUint64BE with short buffer (partial read), zero offset.
+      const data = new Uint8Array([0x01, 0x02])
+      expect(readUint64BE(data, 0)).toBe(0x0102n)
+    })
 
-      test('partial value at offset', () => {
-        // Test readUint64BE with partial data at a non-zero offset.
-        const data = new Uint8Array([0x00, 0x00, 0x03, 0x04])
-        expect(readUint64BE(data, 2)).toBe(0x0304n)
-      })
+    test('partial value at offset', () => {
+      // Test readUint64BE with partial data at a non-zero offset.
+      const data = new Uint8Array([0x00, 0x00, 0x03, 0x04])
+      expect(readUint64BE(data, 2)).toBe(0x0304n)
+    })
 
-      test('offset at buffer end returns zero', () => {
-        // Test readUint64BE when offset equals buffer length.
-        const data = new Uint8Array([0x01, 0x02, 0x03])
-        expect(readUint64BE(data, 3)).toBe(0n)
-      })
+    test('offset at buffer end returns zero', () => {
+      // Test readUint64BE when offset equals buffer length.
+      const data = new Uint8Array([0x01, 0x02, 0x03])
+      expect(readUint64BE(data, 3)).toBe(0n)
+    })
 
-      test('offset beyond buffer returns zero', () => {
-        // Test readUint64BE when offset is beyond the buffer.
-        const data = new Uint8Array([0x01, 0x02, 0x03])
-        expect(readUint64BE(data, 10)).toBe(0n)
-      })
+    test('offset beyond buffer returns zero', () => {
+      // Test readUint64BE when offset is beyond the buffer.
+      const data = new Uint8Array([0x01, 0x02, 0x03])
+      expect(readUint64BE(data, 10)).toBe(0n)
     })
   })
 })
