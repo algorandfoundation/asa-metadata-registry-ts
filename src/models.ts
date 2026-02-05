@@ -32,12 +32,20 @@ export type AbiValue = bigint | number | boolean | Uint8Array | readonly number[
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-const setBit = (args: { bits: number; mask: number; value: boolean }): number => {
+/**
+ * Set or clear a bit in a byte value.
+ * @internal
+ */
+export const setBit = (args: { bits: number; mask: number; value: boolean }): number => {
   const { bits, mask, value } = args
   return value ? bits | mask : bits & ~mask & 0xff
 }
 
-const isNonzero32 = (am: Uint8Array): boolean => am.length === 32 && am.some((b) => b !== 0)
+/**
+ * Check if a 32-byte array contains any non-zero bytes.
+ * @internal
+ */
+export const isNonzero32 = (am: Uint8Array): boolean => am.length === 32 && am.some((b) => b !== 0)
 
 /**
  * Split metadata bytes into head + extra payload chunks.
