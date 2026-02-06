@@ -299,7 +299,7 @@ describe('asa metadata registry read', () => {
       const reader = new AsaMetadataRegistryRead({ appId: 123, algod: boxReader })
       const boxSubReader = reader.box
       expect(boxSubReader).toBeInstanceOf(AsaMetadataRegistryBoxRead)
-      expect(boxSubReader.algod).toBe(boxSubReader.algod)
+      expect(boxSubReader.algod).toBe(boxReader)
       expect(boxSubReader.appId).toBe(123n)
     })
 
@@ -630,7 +630,7 @@ describe('asa metadata registry read', () => {
       readerBoxConfig = new AsaMetadataRegistryRead({ appId: 123, algod: boxReader })
     })
 
-    describe('dispatcher get registry parameters', () => {
+    describe('get registry parameters', () => {
       // Test arc89GetMetadataRegistryParameters dispatcher.
       test('uses avm when available', async () => {
         // Test dispatcher uses AVM when available.
@@ -650,7 +650,7 @@ describe('asa metadata registry read', () => {
       })
     })
 
-    describe('dispatcher get partial uri', () => {
+    describe('get partial uri', () => {
       // Test arc89GetMetadataPartialUri dispatcher.
       test('requires avm', async () => {
         // Test dispatcher requires AVM access.
@@ -668,7 +668,7 @@ describe('asa metadata registry read', () => {
       })
     })
 
-    describe('dispatcher get mbr delta', () => {
+    describe('get mbr delta', () => {
       // Test arc89GetMetadataMbrDelta dispatcher.
       test('requires avm source', async () => {
         // Test MBR delta getter requires AVM source.
@@ -688,7 +688,7 @@ describe('asa metadata registry read', () => {
       })
     })
 
-    describe('dispatcher check metadata exists', () => {
+    describe('check metadata exists', () => {
       // Test arc89CheckMetadataExists dispatcher.
       test('auto prefers box', async () => {
         // Test AUTO source prefers BOX.
@@ -715,7 +715,7 @@ describe('asa metadata registry read', () => {
       })
     })
 
-    describe('dispatcher is metadata immutable', () => {
+    describe('is metadata immutable', () => {
       // Test arc89IsMetadataImmutable dispatcher.
       test('auto prefers box', async () => {
         // Test AUTO source prefers BOX.
@@ -744,7 +744,7 @@ describe('asa metadata registry read', () => {
       })
     })
 
-    describe('dispatcher is metadata short', () => {
+    describe('is metadata short', () => {
       // Test arc89IsMetadataShort dispatcher.
       test('box source', async () => {
         // Test BOX source.
@@ -773,7 +773,7 @@ describe('asa metadata registry read', () => {
       })
     })
 
-    describe('dispatcher get metadata header', () => {
+    describe('get metadata header', () => {
       // Test arc89GetMetadataHeader dispatcher.
       test('box source', async () => {
         // Test BOX source.
@@ -794,7 +794,7 @@ describe('asa metadata registry read', () => {
       })
     })
 
-    describe('dispatcher arc89GetMetadataPagination', () => {
+    describe('get metadata pagination', () => {
       test('box source', async () => {
         // Test BOX source.
         const metadataContent = new TextEncoder().encode('{"test": "data"}'.repeat(10))
@@ -816,7 +816,7 @@ describe('asa metadata registry read', () => {
       })
     })
 
-    describe('dispatcher get metadata (paginated)', () => {
+    describe('get metadata (paginated)', () => {
       // Test arc89GetMetadata (paginated) dispatcher.
       test('box source', async () => {
         // Test BOX source.
@@ -843,7 +843,7 @@ describe('asa metadata registry read', () => {
       })
     })
 
-    describe('dispatcher get metadata slice', () => {
+    describe('get metadata slice', () => {
       // Test arc89GetMetadataSlice dispatcher.
       test('box source', async () => {
         // Test BOX source.
@@ -870,7 +870,7 @@ describe('asa metadata registry read', () => {
       })
     })
 
-    describe('dispatcher get metadata header hash', () => {
+    describe('get metadata header hash', () => {
       // Test arc89GetMetadataHeaderHash dispatcher.
       test('box source', async () => {
         // Test BOX source.
@@ -892,7 +892,7 @@ describe('asa metadata registry read', () => {
       })
     })
 
-    describe('dispatcher get metadata page hash', () => {
+    describe('get metadata page hash', () => {
       // Test arc89GetMetadataPageHash dispatcher.
       test('box source', async () => {
         // Test BOX source.
@@ -918,7 +918,7 @@ describe('asa metadata registry read', () => {
       })
     })
 
-    describe('dispatcher get metadata hash', () => {
+    describe('get metadata hash', () => {
       // Test arc89GetMetadataHash dispatcher.
       test('box source', async () => {
         // Test BOX source.
@@ -940,7 +940,7 @@ describe('asa metadata registry read', () => {
       })
     })
 
-    describe('dispatcher get metadata string by key', () => {
+    describe('get metadata string by key', () => {
       // Test arc89GetMetadataStringByKey dispatcher.
       test('auto prefers avm', async () => {
         // Test AUTO source prefers AVM for parity.
@@ -966,7 +966,7 @@ describe('asa metadata registry read', () => {
       })
     })
 
-    describe('dispatcher get metadata uint64 by key', () => {
+    describe('get metadata uint64 by key', () => {
       // Test arc89GetMetadataUint64ByKey dispatcher.
       test('auto prefers avm', async () => {
         // Test AUTO source prefers AVM.
@@ -992,7 +992,7 @@ describe('asa metadata registry read', () => {
       })
     })
 
-    describe('dispatcher get metadata object by key', () => {
+    describe('get metadata object by key', () => {
       // Test arc89GetMetadataObjectByKey dispatcher.
       test('avm source', async () => {
         // Test AVM source.
@@ -1019,7 +1019,7 @@ describe('asa metadata registry read', () => {
       })
     })
 
-    describe('dispatcher get metadata b64 bytes by key', () => {
+    describe('get metadata b64 bytes by key', () => {
       // Test arc89GetMetadataB64BytesByKey dispatcher.
       test('avm source', async () => {
         // Test AVM source.
