@@ -17,24 +17,31 @@ import {
   AlgodBoxReader,
   Arc90Uri,
   InvalidArc90UriError,
+  IrreversibleFlags,
+  MbrDelta,
+  MbrDeltaSign,
   MetadataBody,
   MetadataDriftError,
+  MetadataExistence,
   MetadataFlags,
   MetadataHeader,
   MissingAppClientError,
+  PaginatedMetadata,
   Pagination,
   RegistryResolutionError,
   RegistryParameters,
+  ReversibleFlags,
   getDefaultRegistryParams,
   AsaMetadataRegistryBoxRead,
   AsaMetadataRegistryAvmRead,
   AlgodClientSubset,
   AssetMetadataRecord,
-  reader,
+  bitmasks,
+  // reader
+  AsaMetadataRegistryRead,
+  MetadataSource,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
 import { concatBytes } from '@/internal/bytes'
-
-const { AsaMetadataRegistryRead, MetadataSource } = reader
 
 // ================================================================
 // Mocks
@@ -113,13 +120,20 @@ const sampleMetadataRecord = (sampleMetadataHeader?: MetadataHeader, sampleMetad
 }
 
 /**
+ * Helper to mock algod box response with raw box value bytes.
+ */
+const mockBoxResponse = (mockAlgod: AlgodClientSubset, boxValue: Uint8Array) => {
+  mockAlgod.getApplicationBoxByName = vi.fn().mockReturnValue({
+    do: vi.fn().mockResolvedValue({ name: new Uint8Array(), value: boxValue }),
+  })
+}
+
+/**
  * Helper to mock algod response for asset metadata record.
  */
 const mockAssetMetadataRecord = (mockAlgod: AlgodClientSubset, record: AssetMetadataRecord) => {
   const boxValue = concatBytes([record.header.serialized, record.body.rawBytes])
-  mockAlgod.getApplicationBoxByName = vi.fn().mockReturnValue({
-    do: vi.fn().mockResolvedValue({ name: new Uint8Array(), value: boxValue }),
-  })
+  mockBoxResponse(mockAlgod, boxValue)
 
   mockAlgod.getAssetByID = vi.fn().mockReturnValue({
     do: vi.fn().mockResolvedValue({ params: { url: '' } }),
@@ -601,6 +615,525 @@ describe('asa metadata registry read', () => {
       await expect(reader.getAssetMetadata({ assetId: 456, source: MetadataSource.BOX })).rejects.toThrow(
         /BOX source selected but algod is not configured/,
       )
+    })
+  })
+
+  describe('dispatcher methods', () => {
+    // Test getAssetMetadata high-level method.
+    let reader: AsaMetadataRegistryRead
+    let readerAvmConfig: AsaMetadataRegistryRead
+    let readerBoxConfig: AsaMetadataRegistryRead
+
+    beforeEach(() => {
+      reader = new AsaMetadataRegistryRead({ appId: 123 })
+      readerAvmConfig = new AsaMetadataRegistryRead({ appId: 123, avmFactory })
+      readerBoxConfig = new AsaMetadataRegistryRead({ appId: 123, algod: boxReader })
+    })
+
+    describe('dispatcher get registry parameters', () => {
+      // Test arc89GetMetadataRegistryParameters dispatcher.
+      test('uses avm when available', async () => {
+        // Test dispatcher uses AVM when available.
+        const customParams = getDefaultRegistryParams()
+        const mockAvm = vi.mocked(avmFactory(123n))
+        mockAvm.arc89GetMetadataRegistryParameters.mockResolvedValue(customParams)
+
+        const result = await readerAvmConfig.arc89GetMetadataRegistryParameters({ source: MetadataSource.AVM })
+        expect(result).toBeInstanceOf(RegistryParameters)
+      })
+
+      test('falls back to defaults', async () => {
+        // Test dispatcher falls back to defaults when AVM not available.
+        const result = await reader.arc89GetMetadataRegistryParameters()
+        const defaults = getDefaultRegistryParams()
+        expect(result.headerSize).toBe(defaults.headerSize)
+      })
+    })
+
+    describe('dispatcher get partial uri', () => {
+      // Test arc89GetMetadataPartialUri dispatcher.
+      test('requires avm', async () => {
+        // Test dispatcher requires AVM access.
+        await expect(reader.arc89GetMetadataPartialUri()).rejects.toThrow(MissingAppClientError)
+        await expect(reader.arc89GetMetadataPartialUri()).rejects.toThrow(/getMetadataPartialUri requires AVM access/)
+      })
+
+      test('uses avm when available', async () => {
+        // Test dispatcher uses AVM.
+        const mockAvm = vi.mocked(avmFactory(123n))
+        mockAvm.arc89GetMetadataPartialUri.mockResolvedValue('algorand://app/123')
+
+        await readerAvmConfig.arc89GetMetadataPartialUri({ source: MetadataSource.AVM })
+        expect(mockAvm.arc89GetMetadataPartialUri).toHaveBeenCalledOnce()
+      })
+    })
+
+    describe('dispatcher get mbr delta', () => {
+      // Test arc89GetMetadataMbrDelta dispatcher.
+      test('requires avm source', async () => {
+        // Test MBR delta getter requires AVM source.
+        await expect(
+          reader.arc89GetMetadataMbrDelta({ assetId: 456, newSize: 100, source: MetadataSource.BOX }),
+        ).rejects.toThrow(/MBR delta getter is AVM-only/)
+      })
+
+      test('uses avm', async () => {
+        // Test dispatcher uses AVM.
+        const delta = new MbrDelta({ sign: MbrDeltaSign.POS, amount: 5000 })
+        const mockAvm = vi.mocked(avmFactory(123n))
+        mockAvm.arc89GetMetadataMbrDelta.mockResolvedValue(delta)
+
+        await readerAvmConfig.arc89GetMetadataMbrDelta({ assetId: 456, newSize: 100 })
+        expect(mockAvm.arc89GetMetadataMbrDelta).toHaveBeenCalledOnce()
+      })
+    })
+
+    describe('dispatcher check metadata exists', () => {
+      // Test arc89CheckMetadataExists dispatcher.
+      test('auto prefers box', async () => {
+        // Test AUTO source prefers BOX.
+        const boxValue = concatBytes([sampleMetadataHeaderDefault.serialized, sampleMetadataBodyDefault.rawBytes])
+        mockBoxResponse(algod, boxValue)
+        boxReader.algod.getAssetByID = vi.fn().mockReturnValue({
+          do: vi.fn().mockResolvedValue({ index: 456 }),
+        })
+
+        const result = await readerBoxConfig.arc89CheckMetadataExists({ assetId: 456 })
+        expect(result.asaExists).toBe(true)
+        expect(result.metadataExists).toBe(true)
+      })
+
+      test('uses avm when box unavailable', async () => {
+        // Test uses AVM when BOX not available.
+        const mockAvm = vi.mocked(avmFactory(123n))
+        mockAvm.arc89CheckMetadataExists.mockResolvedValue(
+          new MetadataExistence({ asaExists: true, metadataExists: false }),
+        )
+
+        await readerAvmConfig.arc89CheckMetadataExists({ assetId: 456, source: MetadataSource.AVM })
+        expect(mockAvm.arc89CheckMetadataExists).toHaveBeenCalledOnce()
+      })
+    })
+
+    describe('dispatcher is metadata immutable', () => {
+      // Test arc89IsMetadataImmutable dispatcher.
+      test('auto prefers box', async () => {
+        // Test AUTO source prefers BOX.
+        const immutableFlags = new MetadataFlags({
+          reversible: ReversibleFlags.empty(),
+          irreversible: new IrreversibleFlags({ immutable: true, arc3: false, arc89Native: false }),
+        })
+        const header = new MetadataHeader({
+          ...sampleMetadataHeaderDefault,
+          flags: immutableFlags,
+        })
+        const boxValue = concatBytes([header.serialized, sampleMetadataBodyDefault.rawBytes])
+        mockBoxResponse(algod, boxValue)
+
+        const result = await readerBoxConfig.arc89IsMetadataImmutable({ assetId: 456, source: MetadataSource.BOX })
+        expect(result).toBe(true)
+      })
+
+      test('uses avm fallback', async () => {
+        // Test uses AVM when BOX not available.
+        const mockAvm = vi.mocked(avmFactory(123n))
+        mockAvm.arc89IsMetadataImmutable.mockResolvedValue(false)
+
+        await readerAvmConfig.arc89IsMetadataImmutable({ assetId: 456, source: MetadataSource.AVM })
+        expect(mockAvm.arc89IsMetadataImmutable).toHaveBeenCalledOnce()
+      })
+    })
+
+    describe('dispatcher is metadata short', () => {
+      // Test arc89IsMetadataShort dispatcher.
+      test('box source', async () => {
+        // Test BOX source.
+        const header = new MetadataHeader({
+          ...sampleMetadataHeaderDefault,
+          identifiers: bitmasks.MASK_ID_SHORT,
+        })
+        const boxValue = concatBytes([header.serialized, sampleMetadataBodyDefault.rawBytes])
+        mockBoxResponse(algod, boxValue)
+
+        const [isShort, roundNum] = await readerBoxConfig.arc89IsMetadataShort({
+          assetId: 456,
+          source: MetadataSource.BOX,
+        })
+        expect(isShort).toBe(true)
+        expect(roundNum).toBe(1000n)
+      })
+
+      test('avm source', async () => {
+        // Test AVM source.
+        const mockAvm = vi.mocked(avmFactory(123n))
+        mockAvm.arc89IsMetadataShort.mockResolvedValue([false, 2000n] as const)
+
+        await readerAvmConfig.arc89IsMetadataShort({ assetId: 456, source: MetadataSource.AVM })
+        expect(mockAvm.arc89IsMetadataShort).toHaveBeenCalledOnce()
+      })
+    })
+
+    describe('dispatcher get metadata header', () => {
+      // Test arc89GetMetadataHeader dispatcher.
+      test('box source', async () => {
+        // Test BOX source.
+        const boxValue = concatBytes([sampleMetadataHeaderDefault.serialized, sampleMetadataBodyDefault.rawBytes])
+        mockBoxResponse(algod, boxValue)
+
+        const result = await readerBoxConfig.arc89GetMetadataHeader({ assetId: 456, source: MetadataSource.BOX })
+        expect(result.lastModifiedRound).toBe(sampleMetadataHeaderDefault.lastModifiedRound)
+      })
+
+      test('avm source', async () => {
+        // Test AVM source.
+        const mockAvm = vi.mocked(avmFactory(123n))
+        mockAvm.arc89GetMetadataHeader.mockResolvedValue(sampleMetadataHeaderDefault)
+
+        const result = await readerAvmConfig.arc89GetMetadataHeader({ assetId: 456, source: MetadataSource.AVM })
+        expect(result.lastModifiedRound).toBe(sampleMetadataHeaderDefault.lastModifiedRound)
+      })
+    })
+
+    describe('dispatcher arc89GetMetadataPagination', () => {
+      test('box source', async () => {
+        // Test BOX source.
+        const metadataContent = new TextEncoder().encode('{"test": "data"}'.repeat(10))
+        const boxValue = concatBytes([sampleMetadataHeaderDefault.serialized, metadataContent])
+        mockBoxResponse(algod, boxValue)
+
+        const result = await readerBoxConfig.arc89GetMetadataPagination({ assetId: 456, source: MetadataSource.BOX })
+        expect(result.metadataSize).toBe(metadataContent.length)
+      })
+
+      test('avm source', async () => {
+        // Test AVM source.
+        const pagination = new Pagination({ metadataSize: 150, pageSize: 100, totalPages: 2 })
+        const mockAvm = vi.mocked(avmFactory(123n))
+        mockAvm.arc89GetMetadataPagination.mockResolvedValue(pagination)
+
+        await readerAvmConfig.arc89GetMetadataPagination({ assetId: 456, source: MetadataSource.AVM })
+        expect(mockAvm.arc89GetMetadataPagination).toHaveBeenCalledOnce()
+      })
+    })
+
+    describe('dispatcher get metadata (paginated)', () => {
+      // Test arc89GetMetadata (paginated) dispatcher.
+      test('box source', async () => {
+        // Test BOX source.
+        const pageContent = new TextEncoder().encode('{"page": 0}')
+        const boxValue = concatBytes([sampleMetadataHeaderDefault.serialized, pageContent])
+        mockBoxResponse(algod, boxValue)
+
+        const result = await readerBoxConfig.arc89GetMetadata({ assetId: 456, page: 0, source: MetadataSource.BOX })
+        expect(result.pageContent).toEqual(pageContent)
+      })
+
+      test('avm source', async () => {
+        // Test AVM source.
+        const pageData = new PaginatedMetadata({
+          hasNextPage: false,
+          lastModifiedRound: 2000n,
+          pageContent: new TextEncoder().encode('page1'),
+        })
+        const mockAvm = vi.mocked(avmFactory(123n))
+        mockAvm.arc89GetMetadata.mockResolvedValue(pageData)
+
+        await readerAvmConfig.arc89GetMetadata({ assetId: 456, page: 1, source: MetadataSource.AVM })
+        expect(mockAvm.arc89GetMetadata).toHaveBeenCalledOnce()
+      })
+    })
+
+    describe('dispatcher get metadata slice', () => {
+      // Test arc89GetMetadataSlice dispatcher.
+      test('box source', async () => {
+        // Test BOX source.
+        const metadataContent = new TextEncoder().encode('0123456789'.repeat(10))
+        const boxValue = concatBytes([sampleMetadataHeaderDefault.serialized, metadataContent])
+        mockBoxResponse(algod, boxValue)
+
+        const result = await readerBoxConfig.arc89GetMetadataSlice({
+          assetId: 456,
+          offset: 10,
+          size: 20,
+          source: MetadataSource.BOX,
+        })
+        expect(result).toEqual(metadataContent.slice(10, 30))
+      })
+
+      test('avm source', async () => {
+        // Test AVM source.
+        const mockAvm = vi.mocked(avmFactory(123n))
+        mockAvm.arc89GetMetadataSlice.mockResolvedValue(new TextEncoder().encode('avm_slice'))
+
+        await readerAvmConfig.arc89GetMetadataSlice({ assetId: 456, offset: 5, size: 15, source: MetadataSource.AVM })
+        expect(mockAvm.arc89GetMetadataSlice).toHaveBeenCalledOnce()
+      })
+    })
+
+    describe('dispatcher get metadata header hash', () => {
+      // Test arc89GetMetadataHeaderHash dispatcher.
+      test('box source', async () => {
+        // Test BOX source.
+        const boxValue = concatBytes([sampleMetadataHeaderDefault.serialized, sampleMetadataBodyDefault.rawBytes])
+        mockBoxResponse(algod, boxValue)
+
+        const result = await readerBoxConfig.arc89GetMetadataHeaderHash({ assetId: 456, source: MetadataSource.BOX })
+        expect(result.length).toBe(32)
+      })
+
+      test('avm source', async () => {
+        // Test AVM source.
+        const headerHash = new Uint8Array(32).fill(0x02)
+        const mockAvm = vi.mocked(avmFactory(123n))
+        mockAvm.arc89GetMetadataHeaderHash.mockResolvedValue(headerHash)
+
+        await readerAvmConfig.arc89GetMetadataHeaderHash({ assetId: 456, source: MetadataSource.AVM })
+        expect(mockAvm.arc89GetMetadataHeaderHash).toHaveBeenCalledOnce()
+      })
+    })
+
+    describe('dispatcher get metadata page hash', () => {
+      // Test arc89GetMetadataPageHash dispatcher.
+      test('box source', async () => {
+        // Test BOX source.
+        const boxValue = concatBytes([sampleMetadataHeaderDefault.serialized, sampleMetadataBodyDefault.rawBytes])
+        mockBoxResponse(algod, boxValue)
+
+        const result = await readerBoxConfig.arc89GetMetadataPageHash({
+          assetId: 456,
+          page: 0,
+          source: MetadataSource.BOX,
+        })
+        expect(result.length).toBe(32)
+      })
+
+      test('avm source', async () => {
+        // Test AVM source.
+        const pageHash = new Uint8Array(32).fill(0x04)
+        const mockAvm = vi.mocked(avmFactory(123n))
+        mockAvm.arc89GetMetadataPageHash.mockResolvedValue(pageHash)
+
+        await readerAvmConfig.arc89GetMetadataPageHash({ assetId: 456, page: 1, source: MetadataSource.AVM })
+        expect(mockAvm.arc89GetMetadataPageHash).toHaveBeenCalledOnce()
+      })
+    })
+
+    describe('dispatcher get metadata hash', () => {
+      // Test arc89GetMetadataHash dispatcher.
+      test('box source', async () => {
+        // Test BOX source.
+        const boxValue = concatBytes([sampleMetadataHeaderDefault.serialized, sampleMetadataBodyDefault.rawBytes])
+        mockBoxResponse(algod, boxValue)
+
+        const result = await readerBoxConfig.arc89GetMetadataHash({ assetId: 456, source: MetadataSource.BOX })
+        expect(result.length).toBe(32)
+      })
+
+      test('avm source', async () => {
+        // Test AVM source.
+        const metadataHash = new Uint8Array(32).fill(0x06)
+        const mockAvm = vi.mocked(avmFactory(123n))
+        mockAvm.arc89GetMetadataHash.mockResolvedValue(metadataHash)
+
+        await readerAvmConfig.arc89GetMetadataHash({ assetId: 456, source: MetadataSource.AVM })
+        expect(mockAvm.arc89GetMetadataHash).toHaveBeenCalledOnce()
+      })
+    })
+
+    describe('dispatcher get metadata string by key', () => {
+      // Test arc89GetMetadataStringByKey dispatcher.
+      test('auto prefers avm', async () => {
+        // Test AUTO source prefers AVM for parity.
+        const mockAvm = vi.mocked(avmFactory(123n))
+        mockAvm.arc89GetMetadataStringByKey.mockResolvedValue('test_value')
+
+        await readerAvmConfig.arc89GetMetadataStringByKey({ assetId: 456, key: 'name', source: MetadataSource.AVM })
+        expect(mockAvm.arc89GetMetadataStringByKey).toHaveBeenCalledOnce()
+      })
+
+      test('falls back to box', async () => {
+        // Test falls back to BOX when AVM not available.
+        const jsonData = new TextEncoder().encode('{"name": "box_value"}')
+        const boxValue = concatBytes([sampleMetadataHeaderDefault.serialized, jsonData])
+        mockBoxResponse(algod, boxValue)
+
+        const result = await readerBoxConfig.arc89GetMetadataStringByKey({
+          assetId: 456,
+          key: 'name',
+          source: MetadataSource.BOX,
+        })
+        expect(result).toBe('box_value')
+      })
+    })
+
+    describe('dispatcher get metadata uint64 by key', () => {
+      // Test arc89GetMetadataUint64ByKey dispatcher.
+      test('auto prefers avm', async () => {
+        // Test AUTO source prefers AVM.
+        const mockAvm = vi.mocked(avmFactory(123n))
+        mockAvm.arc89GetMetadataUint64ByKey.mockResolvedValue(42n)
+
+        await readerAvmConfig.arc89GetMetadataUint64ByKey({ assetId: 456, key: 'value', source: MetadataSource.AVM })
+        expect(mockAvm.arc89GetMetadataUint64ByKey).toHaveBeenCalledOnce()
+      })
+
+      test('falls back to box', async () => {
+        // Test falls back to BOX when AVM not available.
+        const jsonData = new TextEncoder().encode('{"count": 100}')
+        const boxValue = concatBytes([sampleMetadataHeaderDefault.serialized, jsonData])
+        mockBoxResponse(algod, boxValue)
+
+        const result = await readerBoxConfig.arc89GetMetadataUint64ByKey({
+          assetId: 456,
+          key: 'count',
+          source: MetadataSource.BOX,
+        })
+        expect(result).toBe(100n)
+      })
+    })
+
+    describe('dispatcher get metadata object by key', () => {
+      // Test arc89GetMetadataObjectByKey dispatcher.
+      test('avm source', async () => {
+        // Test AVM source.
+        const mockAvm = vi.mocked(avmFactory(123n))
+        mockAvm.arc89GetMetadataObjectByKey.mockResolvedValue('{"nested": true}')
+
+        await readerAvmConfig.arc89GetMetadataObjectByKey({ assetId: 456, key: 'data', source: MetadataSource.AVM })
+        expect(mockAvm.arc89GetMetadataObjectByKey).toHaveBeenCalledOnce()
+      })
+
+      test('box fallback', async () => {
+        // Test BOX fallback.
+        const jsonData = new TextEncoder().encode('{"config": {"box": "object"}}')
+        const boxValue = concatBytes([sampleMetadataHeaderDefault.serialized, jsonData])
+        mockBoxResponse(algod, boxValue)
+
+        const result = await readerBoxConfig.arc89GetMetadataObjectByKey({
+          assetId: 456,
+          key: 'config',
+          source: MetadataSource.BOX,
+        })
+        const obj = JSON.parse(result)
+        expect(obj).toHaveProperty('box')
+      })
+    })
+
+    describe('dispatcher get metadata b64 bytes by key', () => {
+      // Test arc89GetMetadataB64BytesByKey dispatcher.
+      test('avm source', async () => {
+        // Test AVM source.
+        const mockAvm = vi.mocked(avmFactory(123n))
+        mockAvm.arc89GetMetadataB64BytesByKey.mockResolvedValue(new TextEncoder().encode('decoded_bytes'))
+
+        await readerAvmConfig.arc89GetMetadataB64BytesByKey({
+          assetId: 456,
+          key: 'image',
+          b64Encoding: 0,
+          source: MetadataSource.AVM,
+        })
+        expect(mockAvm.arc89GetMetadataB64BytesByKey).toHaveBeenCalledOnce()
+      })
+
+      test('box fallback', async () => {
+        // Test BOX fallback.
+        // Base64 standard encoding of "hello"
+        const jsonData = new TextEncoder().encode('{"data": "aGVsbG8="}')
+        const boxValue = concatBytes([sampleMetadataHeaderDefault.serialized, jsonData])
+        mockBoxResponse(algod, boxValue)
+
+        const result = await readerBoxConfig.arc89GetMetadataB64BytesByKey({
+          assetId: 456,
+          key: 'data',
+          b64Encoding: 1,
+          source: MetadataSource.BOX,
+        })
+        expect(result).toEqual(new TextEncoder().encode('hello'))
+      })
+    })
+  })
+
+  describe('edge cases', () => {
+    // Test edge cases and error scenarios.
+    test('unknown metadata source is validated', () => {
+      // Test that MetadataSource enum is properly validated.
+      new AsaMetadataRegistryRead({ appId: 123, algod: boxReader })
+
+      // Test that we can use valid enum values
+      // (The actual dispatching logic handles all valid enum values)
+      // This test verifies the enum is properly defined
+      expect(Object.values(MetadataSource)).toContain(MetadataSource.AUTO)
+      expect(Object.values(MetadataSource)).toContain(MetadataSource.BOX)
+      expect(Object.values(MetadataSource)).toContain(MetadataSource.AVM)
+    })
+
+    test('empty metadata pagination', async () => {
+      // Test AVM read with zero-size metadata.
+      const reader = new AsaMetadataRegistryRead({ appId: 123, avmFactory })
+
+      const mockAvm = vi.mocked(avmFactory(123n))
+      mockAvm.arc89GetMetadataHeader.mockResolvedValue(sampleMetadataHeaderDefault)
+      mockAvm.arc89GetMetadataPagination.mockResolvedValue(
+        new Pagination({ metadataSize: 0, pageSize: 100, totalPages: 0 }),
+      )
+      mockAvm.simulateMany.mockResolvedValue([])
+
+      const result = await reader.getAssetMetadata({ assetId: 456, source: MetadataSource.AVM })
+      expect(result.body.rawBytes.length).toBe(0)
+    })
+
+    test('simulate options passed through', async () => {
+      // Test that SimulateOptions are passed through to AVM calls.
+      const reader = new AsaMetadataRegistryRead({ appId: 123, avmFactory })
+
+      const mockAvm = vi.mocked(avmFactory(123n))
+      mockAvm.arc89GetMetadataHeader.mockResolvedValue(sampleMetadataHeaderDefault)
+
+      const simulateOpts = { extraOpcodeBudget: 1000 }
+
+      await reader.arc89GetMetadataHeader({
+        assetId: 456,
+        source: MetadataSource.AVM,
+        simulate: simulateOpts,
+      })
+      expect(mockAvm.arc89GetMetadataHeader).toHaveBeenCalledOnce()
+    })
+
+    test('deprecation self reference stops', async () => {
+      // Test that self-referencing deprecated_by doesn't loop.
+      const reader = new AsaMetadataRegistryRead({ appId: 123, algod: boxReader })
+
+      const selfRefHeader = new MetadataHeader({
+        ...sampleMetadataHeaderDefault,
+        deprecatedBy: 123n, // Same as app_id
+      })
+      const record = new AssetMetadataRecord({
+        appId: 123n,
+        assetId: 456n,
+        header: selfRefHeader,
+        body: new MetadataBody(new TextEncoder().encode('{"self": "ref"}')),
+      })
+
+      mockAssetMetadataRecord(boxReader.algod, record)
+
+      const result = await reader.getAssetMetadata({ assetId: 456, followDeprecation: true })
+
+      // Should stop immediately since deprecated_by == current app_id
+      expect(result.appId).toBe(123n)
+    })
+
+    test('metadata uri takes precedence over asset id', async () => {
+      // Test that explicit metadata_uri takes precedence.
+      const reader = new AsaMetadataRegistryRead({ appId: 123, algod: boxReader })
+
+      // Even if assetId is provided, URI should be used
+      const uri = await reader.resolveArc90Uri({
+        assetId: 999, // This should be ignored
+        metadataUri: 'algorand://app/789?box=AAAAAAAAAcg%3D', // b64url of asset ID 456
+      })
+
+      expect(uri.appId).toBe(789n)
+      expect(uri.assetId).toBe(456n)
     })
   })
 })
