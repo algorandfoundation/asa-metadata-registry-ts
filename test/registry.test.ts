@@ -398,11 +398,11 @@ describe('asa metadata registry (unit)', () => {
 })
 
 // ================================================================
-// Integration Tests
+// Workflow Tests
 // ================================================================
 
-describe('asa metadata registry (integration)', () => {
-  // Integration tests combining multiple components.
+describe('asa metadata registry (workflow)', () => {
+  // Workflow tests combining multiple components.
   let algod: AlgodClientSubset
   let appClient: AsaMetadataRegistryClient
 
@@ -411,6 +411,7 @@ describe('asa metadata registry (integration)', () => {
     algod = createMockAlgod()
     appClient = createMockAppClient()
   })
+
   test('read only workflow', () => {
     // Test read-only workflow using fromAlgod.
     const registry = AsaMetadataRegistry.fromAlgod({ algod, appId: 12345 })
