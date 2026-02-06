@@ -58,6 +58,6 @@ export * as writer from './write/writer'
 
 export * as registry from './registry'
 
-// Generated ARC-56 client (excluded from translation; wrapped in later phases)
+// Generated ARC-56 client
 // IMPORTANT: we only export it as a namespace to avoid name collisions with the SDK's domain models.
 export * as generated from './generated'

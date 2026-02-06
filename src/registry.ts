@@ -32,6 +32,7 @@ export class RegistryConfig {
   constructor(args?: { appId?: bigint | number | null; netauth?: string | null }) {
     this.appId = asUint64BigIntOrNull(args?.appId, 'appId')
     this.netauth = args?.netauth ?? null
+    Object.freeze(this)
   }
 }
 
