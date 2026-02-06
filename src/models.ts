@@ -11,7 +11,8 @@ import { BoxParseError, InvalidPageIndexError, MetadataHashMismatchError } from 
 import { computeHeaderHash, computeMetadataHash, computePageHash } from './hashing'
 import { decodeMetadataJson, encodeMetadataJson, validateArc3Schema } from './validation'
 import { asBigInt, asNumber, asUint8, MAX_UINT8 } from './internal/numbers'
-import { bytesEqual, toBytes, readUint64BE, uint64ToBytesBE } from './internal/bytes'
+import { bytesEqual, toBytes, uint64ToBytesBE } from './internal/bytes'
+import { setBit, isNonzero32, chunkMetadataPayload, readUint64BE } from './internal/models'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -27,31 +28,6 @@ import { bytesEqual, toBytes, readUint64BE, uint64ToBytesBE } from './internal/b
  * throw RangeError. Use `bigint` for large values.
  */
 export type AbiValue = bigint | number | boolean | Uint8Array | readonly number[] | readonly AbiValue[]
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-const setBit = (args: { bits: number; mask: number; value: boolean }): number => {
-  const { bits, mask, value } = args
-  return value ? bits | mask : bits & ~mask & 0xff
-}
-
-const isNonzero32 = (am: Uint8Array): boolean => am.length === 32 && am.some((b) => b !== 0)
-
-const chunkMetadataPayload = (args: { data: Uint8Array; headMaxSize: number; extraMaxSize: number }): Uint8Array[] => {
-  const { data, headMaxSize, extraMaxSize } = args
-  if (!Number.isInteger(headMaxSize) || headMaxSize <= 0) throw new RangeError('Chunk sizes must be > 0')
-  if (!Number.isInteger(extraMaxSize) || extraMaxSize <= 0) throw new RangeError('Chunk sizes must be > 0')
-
-  if (data.length <= headMaxSize) return [data]
-
-  const chunks: Uint8Array[] = [data.slice(0, headMaxSize)]
-  for (let i = headMaxSize; i < data.length; i += extraMaxSize) {
-    chunks.push(data.slice(i, i + extraMaxSize))
-  }
-  return chunks
-}
 
 // ---------------------------------------------------------------------------
 // Default registry params cache
