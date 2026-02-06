@@ -534,12 +534,12 @@ describe('asa metadata registry read', () => {
       const reader = new AsaMetadataRegistryRead({ appId: 123, algod: boxReader })
 
       const deprecatedHeader = new MetadataHeader({ ...sampleMetadataHeaderDefault, deprecatedBy: 789n })
-      const deprecactedRecord = sampleMetadataRecord(deprecatedHeader)
+      const deprecatedRecord = sampleMetadataRecord(deprecatedHeader)
       const currentHeader = new MetadataHeader({ ...sampleMetadataHeaderDefault, lastModifiedRound: 2000n })
       const currentRecord = sampleMetadataRecord(currentHeader)
 
       // Mock to return different records on subsequent calls
-      const deprecatedBoxValue = concatBytes([deprecactedRecord.header.serialized, deprecactedRecord.body.rawBytes])
+      const deprecatedBoxValue = concatBytes([deprecatedRecord.header.serialized, deprecatedRecord.body.rawBytes])
       const currentBoxValue = concatBytes([currentRecord.header.serialized, currentRecord.body.rawBytes])
       boxReader.algod.getApplicationBoxByName = vi
         .fn()
@@ -587,8 +587,8 @@ describe('asa metadata registry read', () => {
       const reader = new AsaMetadataRegistryRead({ appId: 123, algod: boxReader })
 
       const deprecatedHeader = new MetadataHeader({ ...sampleMetadataHeaderDefault, deprecatedBy: 789n })
-      const deprecactedRecord = sampleMetadataRecord(deprecatedHeader)
-      mockAssetMetadataRecord(boxReader.algod, deprecactedRecord)
+      const deprecatedRecord = sampleMetadataRecord(deprecatedHeader)
+      mockAssetMetadataRecord(boxReader.algod, deprecatedRecord)
 
       const result = await reader.getAssetMetadata({ assetId: 456, followDeprecation: false })
 
