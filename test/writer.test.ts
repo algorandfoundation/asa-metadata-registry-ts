@@ -1,0 +1,371 @@
+/**
+ * Extensive tests for src/write/writer module.
+ *
+ * Tests cover:
+ * - WriteOptions configuration (mock)
+ * - AsaMetadataRegistryWrite initialization and validation (mock when possible)
+ * - Group building methods
+ * - High-level send methods
+ * - Flag management methods (mock when possible)
+ * - Utility methods (mock)
+ * - Fee pooling and padding
+ * - Extra resources handling (mock)
+ * - Error handling and edge cases
+ */
+
+import { describe, expect, test, vi, beforeEach } from 'vitest'
+import type { TransactionSigner } from 'algosdk'
+import {
+  InvalidFlagIndexError,
+  MissingAppClientError,
+  getDefaultRegistryParams,
+  flags,
+  // writer
+  SigningAccount,
+  AsaMetadataRegistryWrite,
+  WriteOptions,
+  writeOptionsDefault,
+} from '@algorandfoundation/asa-metadata-registry-sdk'
+import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '@/generated'
+import { chunksForSlice, appendExtraResources } from '@/internal/writer'
+
+// ================================================================
+// Mocks
+// ================================================================
+
+const createMockAppClient = (): AsaMetadataRegistryClient => {
+  return {
+    appClient: { appId: 12345n },
+    appId: 12345n,
+    appAddress: 'IEEMEG2UHU5HZZ4AWTKJ4ZQCBX3LBZQBE7YYGLPOT5G4HHCXNPFP47DKCM',
+    clone: vi.fn(),
+    newGroup: vi.fn(),
+    algorand: {
+      getSuggestedParams: vi.fn(),
+      createTransaction: { payment: vi.fn() },
+    },
+  } as unknown as AsaMetadataRegistryClient
+}
+
+const createMockSigningAccount = (): SigningAccount => ({
+  address: 'IIOWCOZ6GR5KX23BOV5EAPJ7SI3LVN6BBNEIUGFUYX4X2W65H5UXCMIZKU',
+  signer: vi.fn() as unknown as TransactionSigner,
+})
+
+// ================================================================
+// AsaMetadataRegistryWrite (a.k.a. writer) Tests
+// ================================================================
+
+let mockClient: AsaMetadataRegistryClient
+
+beforeEach(() => {
+  vi.resetAllMocks()
+  mockClient = createMockAppClient()
+})
+
+// ================================================================
+// WriteOptions Tests
+// ================================================================
+
+describe('write options', () => {
+  // Test WriteOptions interface and its expected defaults.
+  test('default options', () => {
+    // Test default WriteOptions values.
+    expect(writeOptionsDefault.extraResources).toBe(0)
+    expect(writeOptionsDefault.feePaddingTxns).toBe(0)
+    expect(writeOptionsDefault.coverAppCallInnerTransactionFees).toBe(true)
+  })
+
+  test('custom options', () => {
+    // Test custom WriteOptions configuration.
+    const opts: WriteOptions = {
+      extraResources: 5,
+      feePaddingTxns: 2,
+      coverAppCallInnerTransactionFees: false,
+    }
+    expect(opts.extraResources).toBe(5)
+    expect(opts.feePaddingTxns).toBe(2)
+    expect(opts.coverAppCallInnerTransactionFees).toBe(false)
+  })
+})
+
+// ================================================================
+// Private Helper Functions Tests
+// ================================================================
+
+describe('chunking helpers', () => {
+  // Tests for module-level internal chunksForSlice function.
+  test('chunks for slice single', () => {
+    // Test slicing a small payload into single chunk.
+    const payload = new TextEncoder().encode('slice')
+    const chunks = chunksForSlice(payload, 100)
+    expect(chunks).toHaveLength(1)
+    expect(chunks[0]).toEqual(payload)
+  })
+
+  test('chunks for slice multiple', () => {
+    // Tests slicing a large payload into multiple chunks.
+    const payload = new Uint8Array(250).fill(0x78) // b"x" * 250
+    const chunks = chunksForSlice(payload, 100)
+    expect(chunks).toHaveLength(3)
+    expect(chunks[0]).toHaveLength(100)
+    expect(chunks[1]).toHaveLength(100)
+    expect(chunks[2]).toHaveLength(50)
+    // Concatenated chunks must equal original payload
+    const reassembled = new Uint8Array([...chunks[0], ...chunks[1], ...chunks[2]])
+    expect(reassembled).toEqual(payload)
+  })
+
+  test('chunks for slice empty', () => {
+    // Test slicing empty payload.
+    const chunks = chunksForSlice(new Uint8Array(), 100)
+    expect(chunks).toHaveLength(1)
+    expect(chunks[0]).toEqual(new Uint8Array())
+  })
+
+  test('chunks for slice invalid max size', () => {
+    // Test slicing with invalid max size.
+    const payload = new TextEncoder().encode('test')
+    expect(() => chunksForSlice(payload, 0)).toThrow(RangeError)
+    expect(() => chunksForSlice(payload, -1)).toThrow(RangeError)
+  })
+})
+
+describe('composer helpers', () => {
+  // Tests composer helper functions (mocked).
+  test('append extra resources zero', () => {
+    // Test that no extra resources are appended when count is 0.
+    const composer = { extraResources: vi.fn() } as unknown as AsaMetadataRegistryComposer<unknown[]>
+    const account = createMockSigningAccount()
+    appendExtraResources(composer, { count: 0, sender: account.address, signer: account.signer })
+    expect(composer.extraResources).not.toHaveBeenCalled()
+  })
+
+  test('append extra resources negative', () => {
+    // Test that negative count doesn't append extra resources.
+    const composer = { extraResources: vi.fn() } as unknown as AsaMetadataRegistryComposer<unknown[]>
+    const account = createMockSigningAccount()
+    appendExtraResources(composer, { count: -5, sender: account.address, signer: account.signer })
+    expect(composer.extraResources).not.toHaveBeenCalled()
+  })
+
+  test('append extra resources multiple', () => {
+    // Test appending multiple extra resource calls.
+    const composer = { extraResources: vi.fn() } as unknown as AsaMetadataRegistryComposer<unknown[]>
+    const account = createMockSigningAccount()
+    appendExtraResources(composer, { count: 3, sender: account.address, signer: account.signer })
+    expect(composer.extraResources).toHaveBeenCalledTimes(3)
+  })
+})
+
+// ================================================================
+// AsaMetadataRegistryWrite Initialization Tests
+// ================================================================
+
+describe('writer initialization', () => {
+  // Test AsaMetadataRegistryWrite constructor.
+  test('init with client', () => {
+    // Test successful initialization with client.
+    const writer = new AsaMetadataRegistryWrite({ client: mockClient })
+    expect(writer.client).toBe(mockClient)
+    expect(writer.params).toBeNull()
+  })
+
+  test('init with client and params', () => {
+    // Test initialization with both client and params.
+    const params = getDefaultRegistryParams()
+    const writer = new AsaMetadataRegistryWrite({ client: mockClient, params })
+    expect(writer.client).toBe(mockClient)
+    expect(writer.params).toBe(params)
+  })
+
+  test('init with null client raises error', () => {
+    // Test that initializing with null client raises MissingAppClientError.
+    expect(() => new AsaMetadataRegistryWrite({ client: null as unknown as AsaMetadataRegistryClient })).toThrow(
+      MissingAppClientError,
+    )
+  })
+
+  test('_params returns cached params', async () => {
+    // Test that _params() returns cached params if available.
+    const params = getDefaultRegistryParams()
+    const writer = new AsaMetadataRegistryWrite({ client: mockClient, params })
+    const result = await (writer as any)._params()
+    expect(result).toBe(params)
+  })
+
+  test.todo('_params fetches from on-chain if not cached')
+})
+
+// ================================================================
+// Group Builder Tests
+// ================================================================
+
+describe('build group methods', () => {
+  // Test group building methods.
+  test.todo('build create metadata group')
+  test.todo('build delete metadata group')
+  test.todo('build delete with options')
+})
+
+// ================================================================
+// High-Level Send Method Tests
+// ================================================================
+
+describe('create metadata', () => {
+  // Test createMetadata high-level method.
+  test.todo('create metadata returns mbr delta')
+  test.todo('create with simulate before send')
+  test.todo('create empty metadata returns mbr delta')
+  test.todo('create short metadata')
+  test.todo('create large metadata')
+  test.todo('create with custom simulate options')
+  test.todo('create with custom send params')
+})
+
+describe('delete metadata', () => {
+  // Test deleteMetadata high-level method.
+  test.todo('delete existing metadata')
+})
+
+describe('set reversible flag', () => {
+  // Test setReversibleFlag method.
+
+  // Flag index validation (unit-testable, throws before chain interaction).
+  test('rejects negative flag index', async () => {
+    const writer = new AsaMetadataRegistryWrite({ client: mockClient })
+    const account = createMockSigningAccount()
+
+    await expect(
+      writer.setReversibleFlag({ assetManager: account, assetId: 123, flagIndex: -1, value: true }),
+    ).rejects.toThrow(InvalidFlagIndexError)
+  })
+
+  test('rejects flag index > 7', async () => {
+    const writer = new AsaMetadataRegistryWrite({ client: mockClient })
+    const account = createMockSigningAccount()
+
+    await expect(
+      writer.setReversibleFlag({ assetManager: account, assetId: 123, flagIndex: 8, value: true }),
+    ).rejects.toThrow(InvalidFlagIndexError)
+  })
+
+  // On-chain tests.
+  test.todo('set reversible flag true')
+  test.todo('set reversible flag false')
+})
+
+describe('set irreversible flag', () => {
+  // Test setIrreversibleFlag method.
+
+  // Flag index validation (unit-testable, throws before chain interaction).
+  test('rejects creation-only indices (0, 1)', async () => {
+    // Flags 0 (ARC3) and 1 (ARC89_NATIVE) are creation-only.
+    const writer = new AsaMetadataRegistryWrite({ client: mockClient })
+    const account = createMockSigningAccount()
+
+    await expect(
+      writer.setIrreversibleFlag({
+        assetManager: account,
+        assetId: 123,
+        flagIndex: flags.IRR_FLG_ARC3,
+      }),
+    ).rejects.toThrow(InvalidFlagIndexError)
+
+    await expect(
+      writer.setIrreversibleFlag({
+        assetManager: account,
+        assetId: 123,
+        flagIndex: flags.IRR_FLG_ARC89_NATIVE,
+      }),
+    ).rejects.toThrow(InvalidFlagIndexError)
+  })
+
+  test('rejects flag index > 7', async () => {
+    const writer = new AsaMetadataRegistryWrite({ client: mockClient })
+    const account = createMockSigningAccount()
+
+    await expect(writer.setIrreversibleFlag({ assetManager: account, assetId: 123, flagIndex: 8 })).rejects.toThrow(
+      InvalidFlagIndexError,
+    )
+  })
+
+  // On-chain tests.
+  test.todo('set irreversible flag')
+})
+
+describe('set immutable', () => {
+  // Test setImmutable method.
+  test.todo('set immutable')
+})
+
+// ================================================================
+// Edge Cases and Error Handling
+// ================================================================
+
+describe('edge cases', () => {
+  // Test edge cases and error handling.
+  test.todo('create with large fee padding')
+  test.todo('create with extra resources')
+})
+
+// ================================================================
+// Integration-Style Tests
+// ================================================================
+
+describe('integration workflows', () => {
+  // Integration-style tests for complete workflows.
+  test.todo('create then delete workflow')
+  test.todo('create set flags workflow')
+})
+
+// ================================================================
+// Group Builder Tests (Detailed)
+// ================================================================
+
+describe('build create metadata group', () => {
+  // Test buildCreateMetadataGroup method.
+  test.todo('build create empty metadata')
+  test.todo('build create short metadata')
+  test.todo('build create with custom options')
+  test.todo('build create large metadata')
+})
+
+describe('build replace metadata group', () => {
+  // Test buildReplaceMetadataGroup method.
+  test.todo('build replace smaller metadata')
+  test.todo('build replace larger metadata')
+  test.todo('build replace auto detect size')
+  test.todo('build replace with options')
+})
+
+describe('build replace metadata slice group', () => {
+  // Test buildReplaceMetadataSliceGroup method.
+  test.todo('build slice small payload')
+  test.todo('build slice large payload')
+  test.todo('build slice with options')
+})
+
+describe('build delete metadata group', () => {
+  // Test buildDeleteMetadataGroup method.
+  test.todo('build delete')
+  test.todo('build delete with options')
+})
+
+// ================================================================
+// High-Level Send Method Tests (Replace)
+// ================================================================
+
+describe('replace metadata', () => {
+  // Test replaceMetadata high-level method.
+  test.todo('replace with smaller metadata')
+  test.todo('replace with larger metadata')
+  test.todo('replace auto detect current size')
+  test.todo('replace with simulate')
+})
+
+describe('replace metadata slice', () => {
+  // Test replaceMetadataSlice high-level method.
+  test.todo('replace slice')
+  test.todo('replace slice with simulate')
+})
