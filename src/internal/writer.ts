@@ -1,5 +1,5 @@
 import { microAlgo } from '@algorandfoundation/algokit-utils'
-import type { TransactionSigner } from 'algosdk'
+import type { Address, TransactionSigner } from 'algosdk'
 
 import { uint64ToBytesBE } from './bytes'
 import { asUint64BigInt } from './numbers'
@@ -24,7 +24,7 @@ export const chunksForSlice = (payload: Uint8Array, maxSize: number): Uint8Array
 /** Append extra payload transactions after the head chunk. */
 export const appendExtraPayload = (
   composer: AsaMetadataRegistryComposer<unknown[]>,
-  args: { assetId: bigint | number; chunks: Uint8Array[]; sender: string; signer: TransactionSigner },
+  args: { assetId: bigint | number; chunks: Uint8Array[]; sender: string | Address; signer: TransactionSigner },
 ) => {
   for (let i = 0; i < args.chunks.length - 1; i++) {
     const chunk = args.chunks[i + 1]
@@ -41,7 +41,7 @@ export const appendExtraPayload = (
 /** Append extra resources transactions. */
 export const appendExtraResources = (
   composer: AsaMetadataRegistryComposer<unknown[]>,
-  args: { count: number; sender: string; signer: TransactionSigner },
+  args: { count: number; sender: string | Address; signer: TransactionSigner },
 ) => {
   if (!Number.isInteger(args.count) || args.count <= 0) return
   for (let i = 0; i < args.count; i++) {

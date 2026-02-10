@@ -8,7 +8,7 @@
  * - The generated AppClient is *not* re-implemented here; it is used as-is.
  */
 
-import { TransactionSigner } from 'algosdk'
+import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
 import * as flagConsts from '../flags'
 import { InvalidFlagIndexError, MissingAppClientError } from '../errors'
 import { AssetMetadata, MbrDelta, RegistryParameters, getDefaultRegistryParams } from '../models'
@@ -28,17 +28,6 @@ import { appendExtraPayload, appendExtraResources, chunksForSlice } from '../int
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-/**
- * Minimal shape we need to sign groups.
- *
- * (AlgoKit also has a `SigningAccount` concept in some versions; we keep this
- * local to avoid hard coupling to a particular helper type.)
- */
-export type SigningAccount = {
-  address: string
-  signer: TransactionSigner
-}
 
 /**
  * Controls how ARC-89 write groups are built and sent.
@@ -110,7 +99,7 @@ export class AsaMetadataRegistryWrite {
    * @returns The generated client's composer, so callers can `.simulate()` or `.send()`.
    */
   async buildCreateMetadataGroup(args: {
-    assetManager: SigningAccount
+    assetManager: TransactionSignerAccount
     metadata: AssetMetadata
     options?: WriteOptions
   }): Promise<AsaMetadataRegistryComposer> {
@@ -124,7 +113,7 @@ export class AsaMetadataRegistryWrite {
     })
     const payAmount = mbrDelta.isPositive ? BigInt(mbrDelta.amount) : 0n
     const mbrPayment = await this.client.algorand.createTransaction.payment({
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       receiver: this.client.appAddress,
       amount: microAlgo(asBigInt(payAmount, 'amountMicroAlgos')),
       staticFee: microAlgo(0),
@@ -148,7 +137,7 @@ export class AsaMetadataRegistryWrite {
         payload: chunks[0] ?? new Uint8Array(),
         mbrDeltaPayment: mbrPayment,
       },
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
       staticFee: microAlgo(feePool),
     })
@@ -156,13 +145,13 @@ export class AsaMetadataRegistryWrite {
     appendExtraPayload(composer, {
       assetId: args.metadata.assetId,
       chunks,
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
 
     appendExtraResources(composer, {
       count: opt.extraResources,
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
     return composer
@@ -177,7 +166,7 @@ export class AsaMetadataRegistryWrite {
    * @returns The generated client's composer, so callers can `.simulate()` or `.send()`.
    */
   async buildReplaceMetadataGroup(args: {
-    assetManager: SigningAccount
+    assetManager: TransactionSignerAccount
     metadata: AssetMetadata
     options?: WriteOptions
     assumeCurrentSize?: number | null
@@ -204,7 +193,7 @@ export class AsaMetadataRegistryWrite {
   }
 
   private async buildReplaceSmallerOrEqual(args: {
-    assetManager: SigningAccount
+    assetManager: TransactionSignerAccount
     metadata: AssetMetadata
     options: WriteOptions
     equalSize: boolean
@@ -224,7 +213,7 @@ export class AsaMetadataRegistryWrite {
         metadataSize: args.metadata.body.size,
         payload: chunks[0] ?? new Uint8Array(),
       },
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
       staticFee: microAlgo(feePool),
     })
@@ -232,20 +221,20 @@ export class AsaMetadataRegistryWrite {
     appendExtraPayload(composer, {
       assetId: args.metadata.assetId,
       chunks,
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
 
     appendExtraResources(composer, {
       count: args.options.extraResources,
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
     return composer
   }
 
   private async buildReplaceLarger(args: {
-    assetManager: SigningAccount
+    assetManager: TransactionSignerAccount
     metadata: AssetMetadata
     options: WriteOptions
   }): Promise<AsaMetadataRegistryComposer> {
@@ -258,7 +247,7 @@ export class AsaMetadataRegistryWrite {
     })
     const payAmount = mbrDelta.isPositive ? BigInt(mbrDelta.amount) : 0n
     const mbrPayment = await this.client.algorand.createTransaction.payment({
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       receiver: this.client.appAddress,
       amount: microAlgo(asBigInt(payAmount, 'amountMicroAlgos')),
       staticFee: microAlgo(0),
@@ -277,7 +266,7 @@ export class AsaMetadataRegistryWrite {
         payload: chunks[0] ?? new Uint8Array(),
         mbrDeltaPayment: mbrPayment,
       },
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
       staticFee: microAlgo(feePool),
     })
@@ -285,13 +274,13 @@ export class AsaMetadataRegistryWrite {
     appendExtraPayload(composer, {
       assetId: args.metadata.assetId,
       chunks,
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
 
     appendExtraResources(composer, {
       count: args.options.extraResources,
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
     return composer
@@ -306,7 +295,7 @@ export class AsaMetadataRegistryWrite {
    * @returns The generated client's composer, so callers can `.simulate()` or `.send()`.
    */
   async buildReplaceMetadataSliceGroup(args: {
-    assetManager: SigningAccount
+    assetManager: TransactionSignerAccount
     assetId: bigint | number
     offset: number
     payload: Uint8Array | ArrayBuffer | number[]
@@ -327,7 +316,7 @@ export class AsaMetadataRegistryWrite {
 
     composer.arc89ReplaceMetadataSlice({
       args: { assetId: args.assetId, offset: args.offset, payload: chunks[0] ?? new Uint8Array() },
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
       staticFee: microAlgo(feePool),
     })
@@ -339,7 +328,7 @@ export class AsaMetadataRegistryWrite {
           offset: args.offset + i * params.replacePayloadMaxSize,
           payload: chunks[i],
         },
-        sender: args.assetManager.address,
+        sender: args.assetManager.addr,
         signer: args.assetManager.signer,
         staticFee: microAlgo(0),
       })
@@ -347,7 +336,7 @@ export class AsaMetadataRegistryWrite {
 
     appendExtraResources(composer, {
       count: opt.extraResources,
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
     return composer
@@ -355,7 +344,7 @@ export class AsaMetadataRegistryWrite {
 
   /** Build (but do not send) an ARC-89 delete metadata group. */
   async buildDeleteMetadataGroup(args: {
-    assetManager: SigningAccount
+    assetManager: TransactionSignerAccount
     assetId: bigint | number
     options?: WriteOptions
   }): Promise<AsaMetadataRegistryComposer> {
@@ -368,13 +357,13 @@ export class AsaMetadataRegistryWrite {
     const composer = this.client.newGroup()
     composer.arc89DeleteMetadata({
       args: { assetId: args.assetId },
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
       staticFee: microAlgo(feePool),
     })
     appendExtraResources(composer, {
       count: opt.extraResources,
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
     return composer
@@ -402,7 +391,7 @@ export class AsaMetadataRegistryWrite {
   }
 
   async createMetadata(args: {
-    assetManager: SigningAccount
+    assetManager: TransactionSignerAccount
     metadata: AssetMetadata
     options?: WriteOptions
     sendParams?: SendParams | null
@@ -427,7 +416,7 @@ export class AsaMetadataRegistryWrite {
   }
 
   async replaceMetadata(args: {
-    assetManager: SigningAccount
+    assetManager: TransactionSignerAccount
     metadata: AssetMetadata
     options?: WriteOptions
     sendParams?: SendParams | null
@@ -453,7 +442,7 @@ export class AsaMetadataRegistryWrite {
   }
 
   async replaceMetadataSlice(args: {
-    assetManager: SigningAccount
+    assetManager: TransactionSignerAccount
     assetId: bigint | number
     offset: number
     payload: Uint8Array | ArrayBuffer | number[]
@@ -480,7 +469,7 @@ export class AsaMetadataRegistryWrite {
   }
 
   async deleteMetadata(args: {
-    assetManager: SigningAccount
+    assetManager: TransactionSignerAccount
     assetId: bigint | number
     options?: WriteOptions
 
@@ -509,7 +498,7 @@ export class AsaMetadataRegistryWrite {
   // ------------------------------------------------------------------
 
   async setReversibleFlag(args: {
-    assetManager: SigningAccount
+    assetManager: TransactionSignerAccount
     assetId: bigint | number
     flagIndex: number
     value: boolean
@@ -528,13 +517,13 @@ export class AsaMetadataRegistryWrite {
     const composer = this.client.newGroup()
     composer.arc89SetReversibleFlag({
       args: { assetId: args.assetId, flag: args.flagIndex, value: args.value },
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
       staticFee: microAlgo(feePool),
     })
     appendExtraResources(composer, {
       count: opt.extraResources,
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
 
@@ -543,7 +532,7 @@ export class AsaMetadataRegistryWrite {
   }
 
   async setIrreversibleFlag(args: {
-    assetManager: SigningAccount
+    assetManager: TransactionSignerAccount
     assetId: bigint | number
     flagIndex: number
     options?: WriteOptions
@@ -563,13 +552,13 @@ export class AsaMetadataRegistryWrite {
     const composer = this.client.newGroup()
     composer.arc89SetIrreversibleFlag({
       args: { assetId: args.assetId, flag: args.flagIndex },
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
       staticFee: microAlgo(feePool),
     })
     appendExtraResources(composer, {
       count: opt.extraResources,
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
 
@@ -578,7 +567,7 @@ export class AsaMetadataRegistryWrite {
   }
 
   async setImmutable(args: {
-    assetManager: SigningAccount
+    assetManager: TransactionSignerAccount
     assetId: bigint | number
     options?: WriteOptions
 
@@ -592,13 +581,13 @@ export class AsaMetadataRegistryWrite {
     const composer = this.client.newGroup()
     composer.arc89SetImmutable({
       args: { assetId: args.assetId },
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
       staticFee: microAlgo(feePool),
     })
     appendExtraResources(composer, {
       count: opt.extraResources,
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
     const sendParams = args.sendParams ?? defaultSendParams(opt.coverAppCallInnerTransactionFees)
@@ -606,7 +595,7 @@ export class AsaMetadataRegistryWrite {
   }
 
   async migrateMetadata(args: {
-    assetManager: SigningAccount
+    assetManager: TransactionSignerAccount
     assetId: bigint | number
     newRegistryId: bigint | number
     options?: WriteOptions
@@ -621,13 +610,13 @@ export class AsaMetadataRegistryWrite {
     const composer = this.client.newGroup()
     composer.arc89MigrateMetadata({
       args: { assetId: args.assetId, newRegistryId: args.newRegistryId },
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
       staticFee: microAlgo(feePool),
     })
     appendExtraResources(composer, {
       count: opt.extraResources,
-      sender: args.assetManager.address,
+      sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
     const sendParams = args.sendParams ?? defaultSendParams(opt.coverAppCallInnerTransactionFees)

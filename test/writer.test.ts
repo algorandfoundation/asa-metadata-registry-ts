@@ -14,7 +14,8 @@
  */
 
 import { describe, expect, test, vi, beforeEach } from 'vitest'
-import type { TransactionSigner } from 'algosdk'
+import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
+import { Address, type TransactionSigner } from 'algosdk'
 import {
   InvalidFlagIndexError,
   MissingAppClientError,
@@ -47,8 +48,8 @@ const createMockAppClient = (): AsaMetadataRegistryClient => {
   } as unknown as AsaMetadataRegistryClient
 }
 
-const createMockSigningAccount = (): SigningAccount => ({
-  address: 'IIOWCOZ6GR5KX23BOV5EAPJ7SI3LVN6BBNEIUGFUYX4X2W65H5UXCMIZKU',
+const createMockSigningAccount = (): TransactionSignerAccount => ({
+  addr: Address.fromString('IIOWCOZ6GR5KX23BOV5EAPJ7SI3LVN6BBNEIUGFUYX4X2W65H5UXCMIZKU'),
   signer: vi.fn() as unknown as TransactionSigner,
 })
 
@@ -137,7 +138,7 @@ describe('composer helpers', () => {
     // Test that no extra resources are appended when count is 0.
     const composer = { extraResources: vi.fn() } as unknown as AsaMetadataRegistryComposer<unknown[]>
     const account = createMockSigningAccount()
-    appendExtraResources(composer, { count: 0, sender: account.address, signer: account.signer })
+    appendExtraResources(composer, { count: 0, sender: account.addr, signer: account.signer })
     expect(composer.extraResources).not.toHaveBeenCalled()
   })
 
@@ -145,7 +146,7 @@ describe('composer helpers', () => {
     // Test that negative count doesn't append extra resources.
     const composer = { extraResources: vi.fn() } as unknown as AsaMetadataRegistryComposer<unknown[]>
     const account = createMockSigningAccount()
-    appendExtraResources(composer, { count: -5, sender: account.address, signer: account.signer })
+    appendExtraResources(composer, { count: -5, sender: account.addr, signer: account.signer })
     expect(composer.extraResources).not.toHaveBeenCalled()
   })
 
@@ -153,7 +154,7 @@ describe('composer helpers', () => {
     // Test appending multiple extra resource calls.
     const composer = { extraResources: vi.fn() } as unknown as AsaMetadataRegistryComposer<unknown[]>
     const account = createMockSigningAccount()
-    appendExtraResources(composer, { count: 3, sender: account.address, signer: account.signer })
+    appendExtraResources(composer, { count: 3, sender: account.addr, signer: account.signer })
     expect(composer.extraResources).toHaveBeenCalledTimes(3)
   })
 })
