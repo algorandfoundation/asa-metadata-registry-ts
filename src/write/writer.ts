@@ -12,8 +12,8 @@ import { TransactionSigner } from 'algosdk'
 import * as flagConsts from '../flags'
 import { InvalidFlagIndexError, MissingAppClientError } from '../errors'
 import { AssetMetadata, MbrDelta, RegistryParameters, getDefaultRegistryParams } from '../models'
-import { asBigInt, asUint64BigInt, toNumber } from '../internal/numbers'
-import { toBytes, uint64ToBytesBE } from '../internal/bytes'
+import { asBigInt, toNumber } from '../internal/numbers'
+import { toBytes } from '../internal/bytes'
 import {
   AsaMetadataRegistryClient,
   AsaMetadataRegistryComposer,
@@ -23,6 +23,7 @@ import { AsaMetadataRegistryAvmRead, SimulateOptions } from '../read/avm'
 import { parseMbrDelta, returnValues } from '../internal/avm'
 import { microAlgo } from '@algorandfoundation/algokit-utils'
 import type { SendParams } from '@algorandfoundation/algokit-utils/types/transaction'
+import { appendExtraPayload, appendExtraResources, chunksForSlice } from '../internal/writer'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,62 +55,15 @@ export interface WriteOptions {
   coverAppCallInnerTransactionFees: boolean
 }
 
-const writeOptionsDefault: WriteOptions = {
+export const writeOptionsDefault: WriteOptions = {
   extraResources: 0,
   feePaddingTxns: 0,
   coverAppCallInnerTransactionFees: true,
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-const noteU64 = (n: number): Uint8Array => {
-  return uint64ToBytesBE(asUint64BigInt(n, 'note index'))
-}
-
-const chunksForSlice = (payload: Uint8Array, maxSize: number): Uint8Array[] => {
-  if (!Number.isInteger(maxSize) || maxSize <= 0) throw new RangeError('maxSize must be > 0')
-  if (payload.length === 0) return [new Uint8Array()]
-  const out: Uint8Array[] = []
-  for (let i = 0; i < payload.length; i += maxSize) {
-    out.push(payload.slice(i, i + maxSize))
-  }
-  return out
-}
-
-const appendExtraPayload = (
-  composer: AsaMetadataRegistryComposer<unknown[]>,
-  args: { assetId: bigint | number; chunks: Uint8Array[]; sender: string; signer: TransactionSigner },
-) => {
-  for (let i = 0; i < args.chunks.length - 1; i++) {
-    const chunk = args.chunks[i + 1]
-    composer.arc89ExtraPayload({
-      args: { assetId: args.assetId, payload: chunk },
-      sender: args.sender,
-      signer: args.signer,
-      note: noteU64(i),
-      staticFee: microAlgo(0),
-    })
-  }
-}
-
-const appendExtraResources = (
-  composer: AsaMetadataRegistryComposer<unknown[]>,
-  args: { count: number; sender: string; signer: TransactionSigner },
-) => {
-  if (!Number.isInteger(args.count) || args.count <= 0) return
-  for (let i = 0; i < args.count; i++) {
-    composer.extraResources({
-      args: [],
-      sender: args.sender,
-      signer: args.signer,
-      note: noteU64(i),
-      staticFee: microAlgo(0),
-    })
-  }
-}
-
+/*
+ * Helper to build default send params.
+ */
 const defaultSendParams = (coverAppCallInnerTransactionFees: boolean) => ({
   coverAppCallInnerTransactionFees,
 })
