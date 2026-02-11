@@ -25,11 +25,15 @@ import {
   RegistryParameters,
   flags,
   AssetMetadata,
+  MbrDelta,
   // writer
   AsaMetadataRegistryWrite,
   WriteOptions,
   writeOptionsDefault,
+  AsaMetadataRegistryRead,
+  AlgodBoxReader,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
+import type { SimulateOptions } from '@/read/avm'
 import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer, AsaMetadataRegistryFactory } from '@/generated'
 import { chunksForSlice, appendExtraResources } from '@/internal/writer'
 import {
@@ -38,7 +42,9 @@ import {
   createFactory,
   createFundedAccount,
   createArc89Asa,
+  buildEmptyMetadata,
   buildShortMetadata,
+  buildMaxedMetadata,
   uploadMetadata,
 } from './helpers'
 
@@ -78,7 +84,6 @@ let algorand: AlgorandClient
 let client: AsaMetadataRegistryClient
 let factory: AsaMetadataRegistryFactory
 let deployer: TransactionSignerAccount
-let assetManager: TransactionSignerAccount
 
 beforeEach(async () => {
   vi.resetAllMocks()
@@ -277,13 +282,89 @@ describe('build group methods', () => {
 
 describe('create metadata', () => {
   // Test createMetadata high-level method.
-  test.todo('create metadata returns mbr delta')
-  test.todo('create with simulate before send')
-  test.todo('create empty metadata returns mbr delta')
-  test.todo('create short metadata')
-  test.todo('create large metadata')
-  test.todo('create with custom simulate options')
-  test.todo('create with custom send params')
+  let assetManager: TransactionSignerAccount
+  let assetId: bigint
+  let writer: AsaMetadataRegistryWrite
+  let boxReader: AlgodBoxReader
+  let reader: AsaMetadataRegistryRead
+
+  beforeEach(async () => {
+    assetManager = await createFundedAccount(fixture)
+    assetId = await createArc89Asa({ assetManager, appClient: client })
+    writer = new AsaMetadataRegistryWrite({ client })
+    boxReader = new AlgodBoxReader(algorand.client.algod)
+    reader = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader })
+  })
+
+  test('create metadata returns mbr delta', async () => {
+    // Test creating metadata returns MbrDelta.
+    const metadata = AssetMetadata.fromJson({ assetId, jsonObj: { name: 'Test', description: 'Test metadata' } })
+    const mbrDelta = await writer.createMetadata({ assetManager, metadata })
+    expect(mbrDelta).toBeInstanceOf(MbrDelta)
+    expect(mbrDelta.isPositive).toBe(true)
+  })
+
+  test('create with simulate before send', async () => {
+    // Test creating metadata with simulateBeforeSend=true.
+    const metadata = AssetMetadata.fromJson({ assetId, jsonObj: { name: 'Test Simulate' } })
+    const mbrDelta = await writer.createMetadata({ assetManager, metadata, simulateBeforeSend: true })
+    expect(mbrDelta).toBeInstanceOf(MbrDelta)
+  })
+
+  test('create empty metadata returns mbr delta', async () => {
+    // Test creating empty metadata returns MbrDelta.
+    const metadata = buildEmptyMetadata(assetId)
+    const mbrDelta = await writer.createMetadata({ assetManager, metadata })
+    expect(mbrDelta).toBeInstanceOf(MbrDelta)
+    expect(mbrDelta.isPositive).toBe(true)
+  })
+
+  test('create short metadata', async () => {
+    // Test creating short metadata.
+    const metadata = buildShortMetadata(assetId)
+    const mbrDelta = await writer.createMetadata({ assetManager, metadata })
+    expect(mbrDelta).toBeInstanceOf(MbrDelta)
+    expect(mbrDelta.isPositive).toBe(true)
+    const boxValue = await reader.box.getAssetMetadataRecord({ assetId })
+    expect(boxValue).not.toBeNull()
+  })
+
+  test('create large metadata', async () => {
+    // Test creating large metadata.
+    const metadata = buildMaxedMetadata(assetId)
+    const mbrDelta = await writer.createMetadata({ assetManager, metadata })
+    expect(mbrDelta).toBeInstanceOf(MbrDelta)
+    expect(mbrDelta.isPositive).toBe(true)
+    const boxValue = await reader.box.getAssetMetadataRecord({ assetId })
+    expect(boxValue).not.toBeNull()
+  })
+
+  test('create with custom simulate options', async () => {
+    // Test creating metadata with custom SimulateOptions.
+    const metadata = buildShortMetadata(assetId)
+    const simulateOptions: SimulateOptions = {
+      allowEmptySignatures: true,
+      skipSignatures: true,
+      allowMoreLogging: true,
+    }
+    const mbrDelta = await writer.createMetadata({ assetManager, metadata, simulateBeforeSend: true, simulateOptions })
+    expect(mbrDelta).toBeInstanceOf(MbrDelta)
+    const boxValue = await reader.box.getAssetMetadataRecord({ assetId })
+    expect(boxValue).not.toBeNull()
+  })
+
+  test('create with custom send params', async () => {
+    // Test creating metadata with custom SendParams.
+    const metadata = buildShortMetadata(assetId)
+    const mbrDelta = await writer.createMetadata({
+      assetManager,
+      metadata,
+      sendParams: { coverAppCallInnerTransactionFees: false },
+    })
+    expect(mbrDelta).toBeInstanceOf(MbrDelta)
+    const boxValue = await reader.box.getAssetMetadataRecord({ assetId })
+    expect(boxValue).not.toBeNull()
+  })
 })
 
 describe('delete metadata', () => {
