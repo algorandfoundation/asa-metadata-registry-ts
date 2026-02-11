@@ -369,12 +369,23 @@ describe('create metadata', () => {
 
 describe('delete metadata', () => {
   // Test deleteMetadata high-level method.
-  test.todo('delete existing metadata')
+  test('delete existing metadata', async () => {
+    const assetManager = await createFundedAccount(fixture)
+    const writer = new AsaMetadataRegistryWrite({ client })
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const mbrDelta = await writer.deleteMetadata({ assetManager, assetId: metadata.assetId })
+    expect(mbrDelta).toBeInstanceOf(MbrDelta)
+    expect(mbrDelta.isNegative).toBe(true)
+    // TODO: replace with reader when refactored
+    await expect(client.state.box.assetMetadata.value(metadata.assetId)).rejects.toThrow()
+  })
 })
 
 describe('set reversible flag', () => {
   // Test setReversibleFlag method.
-
   // Flag index validation (unit-testable, throws before chain interaction).
   test('rejects negative flag index', async () => {
     const writer = new AsaMetadataRegistryWrite({ client: mockClient })
@@ -395,8 +406,62 @@ describe('set reversible flag', () => {
   })
 
   // On-chain tests.
-  test.todo('set reversible flag true')
-  test.todo('set reversible flag false')
+  let assetManager: TransactionSignerAccount
+  let writer: AsaMetadataRegistryWrite
+  let boxReader: AlgodBoxReader
+  let reader: AsaMetadataRegistryRead
+
+  beforeEach(async () => {
+    assetManager = await createFundedAccount(fixture)
+    writer = new AsaMetadataRegistryWrite({ client })
+    boxReader = new AlgodBoxReader(algorand.client.algod)
+    reader = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader })
+  })
+
+  test('set reversible flag true', async () => {
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    await writer.setReversibleFlag({
+      assetManager,
+      assetId: metadata.assetId,
+      flagIndex: flags.REV_FLG_ARC20,
+      value: true,
+    })
+    const record = await reader.box.getAssetMetadataRecord({ assetId })
+    expect(record).not.toBeNull()
+    expect(record.header.isArc20SmartAsa).toBe(true)
+  })
+
+  test('set reversible flag false', async () => {
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    // First set to true
+    await writer.setReversibleFlag({
+      assetManager,
+      assetId: metadata.assetId,
+      flagIndex: flags.REV_FLG_ARC62,
+      value: true,
+    })
+
+    let record = await reader.box.getAssetMetadataRecord({ assetId })
+    expect(record).not.toBeNull()
+    expect(record.header.isArc62CirculatingSupply).toBe(true)
+
+    // Then set to false
+    await writer.setReversibleFlag({
+      assetManager,
+      assetId: metadata.assetId,
+      flagIndex: flags.REV_FLG_ARC62,
+      value: false,
+    })
+    record = await reader.box.getAssetMetadataRecord({ assetId })
+    expect(record).not.toBeNull()
+    expect(record.header.isArc62CirculatingSupply).toBe(false)
+  })
 })
 
 describe('set irreversible flag', () => {
@@ -435,12 +500,58 @@ describe('set irreversible flag', () => {
   })
 
   // On-chain tests.
-  test.todo('set irreversible flag')
+  let assetManager: TransactionSignerAccount
+  let writer: AsaMetadataRegistryWrite
+  let boxReader: AlgodBoxReader
+  let reader: AsaMetadataRegistryRead
+
+  beforeEach(async () => {
+    assetManager = await createFundedAccount(fixture)
+    writer = new AsaMetadataRegistryWrite({ client })
+    boxReader = new AlgodBoxReader(algorand.client.algod)
+    reader = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader })
+  })
+
+  test('set irreversible flag', async () => {
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    await writer.setIrreversibleFlag({
+      assetManager,
+      assetId: metadata.assetId,
+      flagIndex: flags.IRR_FLG_RESERVED_2,
+    })
+    const record = await reader.box.getAssetMetadataRecord({ assetId })
+    expect(record).not.toBeNull()
+    expect(record.header.flags.irreversible.reserved2).toBe(true)
+  })
 })
 
 describe('set immutable', () => {
   // Test setImmutable method.
-  test.todo('set immutable')
+  let assetManager: TransactionSignerAccount
+  let writer: AsaMetadataRegistryWrite
+  let boxReader: AlgodBoxReader
+  let reader: AsaMetadataRegistryRead
+
+  beforeEach(async () => {
+    assetManager = await createFundedAccount(fixture)
+    writer = new AsaMetadataRegistryWrite({ client })
+    boxReader = new AlgodBoxReader(algorand.client.algod)
+    reader = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader })
+  })
+
+  test('set immutable', async () => {
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    await writer.setImmutable({ assetManager, assetId: metadata.assetId })
+    const record = await reader.box.getAssetMetadataRecord({ assetId })
+    expect(record).not.toBeNull()
+    expect(record.header.isImmutable).toBe(true)
+  })
 })
 
 // ================================================================
@@ -449,8 +560,29 @@ describe('set immutable', () => {
 
 describe('edge cases', () => {
   // Test edge cases and error handling.
-  test.todo('create with large fee padding')
-  test.todo('create with extra resources')
+  let assetManager: TransactionSignerAccount
+  let writer: AsaMetadataRegistryWrite
+
+  beforeEach(async () => {
+    assetManager = await createFundedAccount(fixture)
+    writer = new AsaMetadataRegistryWrite({ client })
+  })
+
+  test('create with large fee padding', async () => {
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const options: WriteOptions = { ...writeOptionsDefault, feePaddingTxns: 10 }
+    const metadata = AssetMetadata.fromJson({ assetId, jsonObj: { name: 'Large Fee Pad' } })
+    const mbrDelta = await writer.createMetadata({ assetManager, metadata, options })
+    expect(mbrDelta).toBeInstanceOf(MbrDelta)
+  })
+
+  test('create with extra resources', async () => {
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const options: WriteOptions = { ...writeOptionsDefault, extraResources: 3 }
+    const metadata = AssetMetadata.fromJson({ assetId, jsonObj: { name: 'Extra Resources' } })
+    const mbrDelta = await writer.createMetadata({ assetManager, metadata, options })
+    expect(mbrDelta).toBeInstanceOf(MbrDelta)
+  })
 })
 
 // ================================================================
@@ -459,8 +591,56 @@ describe('edge cases', () => {
 
 describe('integration workflows', () => {
   // Integration-style tests for complete workflows.
-  test.todo('create then delete workflow')
-  test.todo('create set flags workflow')
+  let assetManager: TransactionSignerAccount
+  let writer: AsaMetadataRegistryWrite
+  let boxReader: AlgodBoxReader
+  let reader: AsaMetadataRegistryRead
+
+  beforeEach(async () => {
+    assetManager = await createFundedAccount(fixture)
+    writer = new AsaMetadataRegistryWrite({ client })
+    boxReader = new AlgodBoxReader(algorand.client.algod)
+    reader = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader })
+  })
+
+  test('create then delete workflow', async () => {
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const metadata = AssetMetadata.fromJson({ assetId, jsonObj: { name: 'Will be deleted' } })
+
+    // Create
+    const createDelta = await writer.createMetadata({ assetManager, metadata })
+    expect(createDelta.isPositive).toBe(true)
+
+    // Delete
+    const deleteDelta = await writer.deleteMetadata({ assetManager, assetId })
+    expect(deleteDelta.isNegative).toBe(true)
+  })
+
+  test('create set flags workflow', async () => {
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const metadata = AssetMetadata.fromJson({ assetId, jsonObj: { name: 'Test flags' } })
+
+    // Create
+    await writer.createMetadata({ assetManager, metadata })
+
+    // Set flags
+    await writer.setReversibleFlag({
+      assetManager,
+      assetId,
+      flagIndex: flags.REV_FLG_ARC20,
+      value: true,
+    })
+    await writer.setIrreversibleFlag({
+      assetManager,
+      assetId,
+      flagIndex: flags.IRR_FLG_RESERVED_2,
+    })
+
+    // Verify both flags are set
+    const record = await reader.box.getAssetMetadataRecord({ assetId })
+    expect(record.header.isArc20SmartAsa).toBe(true)
+    expect(record.header.flags.irreversible.reserved2).toBe(true)
+  })
 })
 
 // ================================================================
