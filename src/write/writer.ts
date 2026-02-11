@@ -383,7 +383,7 @@ export class AsaMetadataRegistryWrite {
     const opt = args.options ?? writeOptionsDefault
     const sendParams: SendParams = {
       ...defaultSendParams(opt.coverAppCallInnerTransactionFees),
-      ...args.sendParams,
+      ...(args.sendParams ?? {}),
       ...(args.simulateBeforeSend ? { populateAppCallResources: true } : {}),
     }
     return await args.composer.send(sendParams)
