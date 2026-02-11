@@ -22,13 +22,13 @@ const prettierIgnore = fs
 export default [
   js.configs.recommended,
   {
-    files: ['src/**/*.ts'],
+    files: ['src/**/*.ts', 'test/**/*.ts'],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
         ecmaVersion: 'latest',
         sourceType: 'module',
-        project: resolve(__dirname, './tsconfig.esm.json'),
+        project: resolve(__dirname, './tsconfig.eslint.json'),
         tsconfigRootDir: __dirname,
       },
       globals: globals.node, // console, process, Buffer, etc.
@@ -61,6 +61,12 @@ export default [
       '@typescript-eslint/await-thenable': 'error',
       'prefer-const': 'error',
       'no-var': 'error',
+    },
+  },
+  {
+    files: ['test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
   {
