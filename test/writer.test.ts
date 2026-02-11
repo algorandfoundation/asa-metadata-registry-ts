@@ -236,47 +236,6 @@ describe('writer initialization', () => {
 })
 
 // ================================================================
-// Group Builder Tests
-// ================================================================
-
-describe('build group methods', () => {
-  // Test group building methods.
-  let assetManager: TransactionSignerAccount
-  let assetId: bigint
-  let writer: AsaMetadataRegistryWrite
-
-  beforeEach(async () => {
-    assetManager = await createFundedAccount(fixture)
-    assetId = await createArc89Asa({ assetManager, appClient: client })
-    writer = new AsaMetadataRegistryWrite({ client })
-  })
-
-  test('build create metadata group', async () => {
-    // Test building create group for metadata.
-    const metadata = AssetMetadata.fromJson({ assetId, jsonObj: { name: 'Test' } })
-    const composer = await writer.buildCreateMetadataGroup({ assetManager, metadata })
-    expect(composer).not.toBeNull()
-  })
-
-  test('build delete metadata group', async () => {
-    // Test building delete group.
-    const metadata = buildShortMetadata(assetId)
-    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
-    const composer = await writer.buildDeleteMetadataGroup({ assetManager, assetId: metadata.assetId })
-    expect(composer).not.toBeNull()
-  })
-
-  test('build delete with options', async () => {
-    // Test building delete group with custom options.
-    const metadata = buildShortMetadata(assetId)
-    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
-    const options: WriteOptions = { extraResources: 1, feePaddingTxns: 2, coverAppCallInnerTransactionFees: false }
-    const composer = await writer.buildDeleteMetadataGroup({ assetManager, assetId: metadata.assetId, options })
-    expect(composer).not.toBeNull()
-  })
-})
-
-// ================================================================
 // High-Level Send Method Tests
 // ================================================================
 
@@ -370,6 +329,7 @@ describe('create metadata', () => {
 describe('delete metadata', () => {
   // Test deleteMetadata high-level method.
   test('delete existing metadata', async () => {
+    // Test deleting existing metadata.
     const assetManager = await createFundedAccount(fixture)
     const writer = new AsaMetadataRegistryWrite({ client })
     const assetId = await createArc89Asa({ assetManager, appClient: client })
@@ -419,6 +379,7 @@ describe('set reversible flag', () => {
   })
 
   test('set reversible flag true', async () => {
+    // Test setting a reversible flag to true.
     const assetId = await createArc89Asa({ assetManager, appClient: client })
     const metadata = buildShortMetadata(assetId)
     await uploadMetadata({ writer, assetManager, appClient: client, metadata })
@@ -435,6 +396,7 @@ describe('set reversible flag', () => {
   })
 
   test('set reversible flag false', async () => {
+    // Test setting a reversible flag to false.
     const assetId = await createArc89Asa({ assetManager, appClient: client })
     const metadata = buildShortMetadata(assetId)
     await uploadMetadata({ writer, assetManager, appClient: client, metadata })
@@ -513,6 +475,7 @@ describe('set irreversible flag', () => {
   })
 
   test('set irreversible flag', async () => {
+    // Test setting an irreversible flag.
     const assetId = await createArc89Asa({ assetManager, appClient: client })
     const metadata = buildShortMetadata(assetId)
     await uploadMetadata({ writer, assetManager, appClient: client, metadata })
@@ -543,6 +506,7 @@ describe('set immutable', () => {
   })
 
   test('set immutable', async () => {
+    // Test setting metadata as immutable.
     const assetId = await createArc89Asa({ assetManager, appClient: client })
     const metadata = buildShortMetadata(assetId)
     await uploadMetadata({ writer, assetManager, appClient: client, metadata })
@@ -569,6 +533,7 @@ describe('edge cases', () => {
   })
 
   test('create with large fee padding', async () => {
+    // Test creating with large fee padding.
     const assetId = await createArc89Asa({ assetManager, appClient: client })
     const options: WriteOptions = { ...writeOptionsDefault, feePaddingTxns: 10 }
     const metadata = AssetMetadata.fromJson({ assetId, jsonObj: { name: 'Large Fee Pad' } })
@@ -577,6 +542,7 @@ describe('edge cases', () => {
   })
 
   test('create with extra resources', async () => {
+    // Test creating with extra resources.
     const assetId = await createArc89Asa({ assetManager, appClient: client })
     const options: WriteOptions = { ...writeOptionsDefault, extraResources: 3 }
     const metadata = AssetMetadata.fromJson({ assetId, jsonObj: { name: 'Extra Resources' } })
@@ -604,6 +570,7 @@ describe('integration workflows', () => {
   })
 
   test('create then delete workflow', async () => {
+    // Test complete create -> delete workflow.
     const assetId = await createArc89Asa({ assetManager, appClient: client })
     const metadata = AssetMetadata.fromJson({ assetId, jsonObj: { name: 'Will be deleted' } })
 
@@ -617,6 +584,7 @@ describe('integration workflows', () => {
   })
 
   test('create set flags workflow', async () => {
+    // Test create -> set flags workflow.
     const assetId = await createArc89Asa({ assetManager, appClient: client })
     const metadata = AssetMetadata.fromJson({ assetId, jsonObj: { name: 'Test flags' } })
 
@@ -644,36 +612,229 @@ describe('integration workflows', () => {
 })
 
 // ================================================================
-// Group Builder Tests (Detailed)
+// Group Builder Tests
 // ================================================================
 
 describe('build create metadata group', () => {
   // Test buildCreateMetadataGroup method.
-  test.todo('build create empty metadata')
-  test.todo('build create short metadata')
-  test.todo('build create with custom options')
-  test.todo('build create large metadata')
+  let assetManager: TransactionSignerAccount
+  let writer: AsaMetadataRegistryWrite
+  let assetId: bigint
+
+  beforeEach(async () => {
+    assetManager = await createFundedAccount(fixture)
+    writer = new AsaMetadataRegistryWrite({ client })
+    assetId = await createArc89Asa({ assetManager, appClient: client })
+  })
+
+  test('build create empty metadata', async () => {
+    // Test building create group for empty metadata.
+    const metadata = buildEmptyMetadata(assetId)
+    const composer = await writer.buildCreateMetadataGroup({ assetManager, metadata })
+    expect(composer).not.toBeNull()
+  })
+
+  test('build create short metadata', async () => {
+    // Test building create group for short metadata.
+    const metadata = buildShortMetadata(assetId)
+    const composer = await writer.buildCreateMetadataGroup({ assetManager, metadata })
+    expect(composer).not.toBeNull()
+  })
+
+  test('build create with custom options', async () => {
+    // Test building create group with custom WriteOptions.
+    const metadata = buildShortMetadata(assetId)
+    const options: WriteOptions = { ...writeOptionsDefault, extraResources: 2, feePaddingTxns: 1 }
+    const composer = await writer.buildCreateMetadataGroup({ assetManager, metadata, options })
+    expect(composer).not.toBeNull()
+  })
+
+  test('build create large metadata', async () => {
+    // Test building create group for large metadata (multiple chunks).
+    const metadata = buildMaxedMetadata(assetId)
+    const composer = await writer.buildCreateMetadataGroup({ assetManager, metadata })
+    expect(composer).not.toBeNull()
+  })
 })
 
 describe('build replace metadata group', () => {
   // Test buildReplaceMetadataGroup method.
-  test.todo('build replace smaller metadata')
-  test.todo('build replace larger metadata')
-  test.todo('build replace auto detect size')
-  test.todo('build replace with options')
+  let assetManager: TransactionSignerAccount
+  let writer: AsaMetadataRegistryWrite
+  let assetId: bigint
+
+  beforeEach(async () => {
+    assetManager = await createFundedAccount(fixture)
+    writer = new AsaMetadataRegistryWrite({ client })
+    assetId = await createArc89Asa({ assetManager, appClient: client })
+  })
+
+  test('build replace smaller metadata', async () => {
+    // Test building replace group when new metadata is smaller/equal.
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    // Replace with empty (smaller)
+    const newMetadata = AssetMetadata.fromBytes({
+      assetId: metadata.assetId,
+      metadataBytes: new Uint8Array(),
+      validateJsonObject: false,
+    })
+    const composer = await writer.buildReplaceMetadataGroup({
+      assetManager,
+      metadata: newMetadata,
+      assumeCurrentSize: metadata.size,
+    })
+    expect(composer).not.toBeNull()
+  })
+
+  test('build replace larger metadata', async () => {
+    // Test building replace group when new metadata is larger.
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    // Replace with larger content
+    const newMetadata = AssetMetadata.fromBytes({
+      assetId: metadata.assetId,
+      metadataBytes: new Uint8Array(metadata.size + 1000).fill(120),
+      validateJsonObject: false,
+    })
+    const composer = await writer.buildReplaceMetadataGroup({
+      assetManager,
+      metadata: newMetadata,
+      assumeCurrentSize: metadata.size,
+    })
+    expect(composer).not.toBeNull()
+  })
+
+  test('build replace auto detect size', async () => {
+    // Test replace group auto-detects current size when not provided.
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const newMetadata = AssetMetadata.fromBytes({
+      assetId: metadata.assetId,
+      metadataBytes: new TextEncoder().encode('new'),
+      validateJsonObject: false,
+    })
+    // Don't pass assumeCurrentSize, should fetch from chain
+    const composer = await writer.buildReplaceMetadataGroup({ assetManager, metadata: newMetadata })
+    expect(composer).not.toBeNull()
+  })
+
+  test('build replace with options', async () => {
+    // Test building replace group with custom options.
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const newMetadata = AssetMetadata.fromBytes({
+      assetId: metadata.assetId,
+      metadataBytes: new TextEncoder().encode('updated'),
+      validateJsonObject: false,
+    })
+    const options: WriteOptions = { ...writeOptionsDefault, extraResources: 2, feePaddingTxns: 1 }
+    const composer = await writer.buildReplaceMetadataGroup({
+      assetManager,
+      metadata: newMetadata,
+      assumeCurrentSize: metadata.size,
+      options,
+    })
+    expect(composer).not.toBeNull()
+  })
 })
 
 describe('build replace metadata slice group', () => {
   // Test buildReplaceMetadataSliceGroup method.
-  test.todo('build slice small payload')
-  test.todo('build slice large payload')
-  test.todo('build slice with options')
+  let assetManager: TransactionSignerAccount
+  let writer: AsaMetadataRegistryWrite
+  let assetId: bigint
+
+  beforeEach(async () => {
+    assetManager = await createFundedAccount(fixture)
+    writer = new AsaMetadataRegistryWrite({ client })
+    assetId = await createArc89Asa({ assetManager, appClient: client })
+  })
+
+  test('build slice small payload', async () => {
+    // Test building slice group with small payload (single chunk).
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const composer = await writer.buildReplaceMetadataSliceGroup({
+      assetManager,
+      assetId,
+      offset: 0,
+      payload: new TextEncoder().encode('slice'),
+    })
+    expect(composer).not.toBeNull()
+  })
+
+  test('build slice large payload', async () => {
+    // Test building slice group with large payload (multiple chunks).
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    // Create payload larger than replacePayloadMaxSize
+    const params = getDefaultRegistryParams()
+    const largePayload = new Uint8Array(params.replacePayloadMaxSize * 2 + 100).fill(120)
+    const composer = await writer.buildReplaceMetadataSliceGroup({
+      assetManager,
+      assetId: metadata.assetId,
+      offset: 0,
+      payload: largePayload,
+    })
+    expect(composer).not.toBeNull()
+  })
+
+  test('build slice with options', async () => {
+    // Test building slice group with custom options.
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const options: WriteOptions = { ...writeOptionsDefault, extraResources: 3 }
+    const composer = await writer.buildReplaceMetadataSliceGroup({
+      assetManager,
+      assetId: metadata.assetId,
+      offset: 0,
+      payload: new TextEncoder().encode('updated slice'),
+      options,
+    })
+    expect(composer).not.toBeNull()
+  })
 })
 
 describe('build delete metadata group', () => {
   // Test buildDeleteMetadataGroup method.
-  test.todo('build delete')
-  test.todo('build delete with options')
+  let assetManager: TransactionSignerAccount
+  let writer: AsaMetadataRegistryWrite
+  let assetId: bigint
+
+  beforeEach(async () => {
+    assetManager = await createFundedAccount(fixture)
+    writer = new AsaMetadataRegistryWrite({ client })
+    assetId = await createArc89Asa({ assetManager, appClient: client })
+  })
+
+  test('build delete', async () => {
+    // Test building delete group.
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const composer = await writer.buildDeleteMetadataGroup({ assetManager, assetId })
+    expect(composer).not.toBeNull()
+  })
+
+  test('build delete with options', async () => {
+    // Test building delete group with custom options.
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const options: WriteOptions = { ...writeOptionsDefault, extraResources: 1, feePaddingTxns: 2 }
+    const composer = await writer.buildDeleteMetadataGroup({ assetManager, assetId, options })
+    expect(composer).not.toBeNull()
+  })
 })
 
 // ================================================================
@@ -682,14 +843,157 @@ describe('build delete metadata group', () => {
 
 describe('replace metadata', () => {
   // Test replaceMetadata high-level method.
-  test.todo('replace with smaller metadata')
-  test.todo('replace with larger metadata')
-  test.todo('replace auto detect current size')
-  test.todo('replace with simulate')
+  let assetManager: TransactionSignerAccount
+  let writer: AsaMetadataRegistryWrite
+  let assetId: bigint
+  let boxReader: AlgodBoxReader
+  let reader: AsaMetadataRegistryRead
+
+  beforeEach(async () => {
+    assetManager = await createFundedAccount(fixture)
+    writer = new AsaMetadataRegistryWrite({ client })
+    assetId = await createArc89Asa({ assetManager, appClient: client })
+    boxReader = new AlgodBoxReader(algorand.client.algod)
+    reader = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader })
+  })
+
+  test('replace with smaller metadata', async () => {
+    // Test replacing with smaller metadata.
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const newMetadata = AssetMetadata.fromBytes({
+      assetId: metadata.assetId,
+      metadataBytes: new TextEncoder().encode('small'),
+      validateJsonObject: false,
+    })
+    const mbrDelta = await writer.replaceMetadata({
+      assetManager,
+      metadata: newMetadata,
+      assumeCurrentSize: metadata.size,
+    })
+    expect(mbrDelta).toBeInstanceOf(MbrDelta)
+    // Should be negative or zero since smaller
+    expect(mbrDelta.isNegative || mbrDelta.isZero).toBe(true)
+    const record = await reader.box.getAssetMetadataRecord({ assetId })
+    expect(record).not.toBeNull()
+    expect(record.body.rawBytes).toEqual(new TextEncoder().encode('small'))
+    expect(record.body.size).toBe(5)
+  })
+
+  test('replace with larger metadata', async () => {
+    // Test replacing with larger metadata.
+    const metadata = buildEmptyMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const newMetadata = AssetMetadata.fromBytes({
+      assetId: metadata.assetId,
+      metadataBytes: new Uint8Array(1000).fill(120),
+      validateJsonObject: false,
+    })
+    const mbrDelta = await writer.replaceMetadata({
+      assetManager,
+      metadata: newMetadata,
+      assumeCurrentSize: 0,
+    })
+    expect(mbrDelta).toBeInstanceOf(MbrDelta)
+    expect(mbrDelta.isPositive).toBe(true)
+    const record = await reader.box.getAssetMetadataRecord({ assetId })
+    expect(record).not.toBeNull()
+    expect(record.body.size).toBe(1000)
+    expect(record.body.rawBytes).toEqual(new Uint8Array(1000).fill(120))
+  })
+
+  test('replace auto detect current size', async () => {
+    // Test replace auto-detects current size.
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const newMetadata = AssetMetadata.fromBytes({
+      assetId: metadata.assetId,
+      metadataBytes: new TextEncoder().encode('replacement'),
+      validateJsonObject: false,
+    })
+    const mbrDelta = await writer.replaceMetadata({ assetManager, metadata: newMetadata })
+    expect(mbrDelta).toBeInstanceOf(MbrDelta)
+    const record = await reader.box.getAssetMetadataRecord({ assetId })
+    expect(record).not.toBeNull()
+    expect(record.body.rawBytes).toEqual(new TextEncoder().encode('replacement'))
+  })
+
+  test('replace with simulate', async () => {
+    // Test replace with simulateBeforeSend.
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const newMetadata = AssetMetadata.fromBytes({
+      assetId: metadata.assetId,
+      metadataBytes: new TextEncoder().encode('new'),
+      validateJsonObject: false,
+    })
+    const mbrDelta = await writer.replaceMetadata({
+      assetManager,
+      metadata: newMetadata,
+      simulateBeforeSend: true,
+      assumeCurrentSize: metadata.size,
+    })
+    expect(mbrDelta).toBeInstanceOf(MbrDelta)
+    const record = await reader.box.getAssetMetadataRecord({ assetId })
+    expect(record).not.toBeNull()
+    expect(record.body.rawBytes).toEqual(new TextEncoder().encode('new'))
+  })
 })
 
 describe('replace metadata slice', () => {
   // Test replaceMetadataSlice high-level method.
-  test.todo('replace slice')
-  test.todo('replace slice with simulate')
+  let assetManager: TransactionSignerAccount
+  let writer: AsaMetadataRegistryWrite
+  let assetId: bigint
+  let boxReader: AlgodBoxReader
+  let reader: AsaMetadataRegistryRead
+
+  beforeEach(async () => {
+    assetManager = await createFundedAccount(fixture)
+    writer = new AsaMetadataRegistryWrite({ client })
+    assetId = await createArc89Asa({ assetManager, appClient: client })
+    boxReader = new AlgodBoxReader(algorand.client.algod)
+    reader = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader })
+  })
+
+  test('replace slice', async () => {
+    // Test replacing a slice of metadata.
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    await writer.replaceMetadataSlice({
+      assetManager,
+      assetId,
+      offset: 0,
+      payload: new TextEncoder().encode('patch'),
+    })
+    const record = await reader.box.getAssetMetadataRecord({ assetId })
+    expect(record).not.toBeNull()
+    // Verify the slice was written at offset 0
+    const body = record.body.rawBytes
+    expect(new TextDecoder().decode(body.slice(0, 5))).toBe('patch')
+  })
+
+  test('replace slice with simulate', async () => {
+    // Test replacing slice with simulateBeforeSend.
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    await writer.replaceMetadataSlice({
+      assetManager,
+      assetId,
+      offset: 5,
+      payload: new TextEncoder().encode('updated'),
+      simulateBeforeSend: true,
+    })
+    const record = await reader.box.getAssetMetadataRecord({ assetId })
+    expect(record).not.toBeNull()
+    // Verify the slice was written at offset 5
+    const body = record.body.rawBytes
+    expect(new TextDecoder().decode(body.slice(5, 5 + 7))).toBe('updated')
+  })
 })
