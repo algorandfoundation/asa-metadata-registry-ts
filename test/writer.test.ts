@@ -33,7 +33,6 @@ import {
   WriteOptions,
   writeOptionsDefault,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
-import type { SimulateOptions } from '@/read/avm'
 import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer, AsaMetadataRegistryFactory } from '@/generated'
 import { chunksForSlice, appendExtraResources } from '@/internal/writer'
 import {
@@ -306,19 +305,13 @@ describe('high-level send methods', () => {
       expect(boxValue).not.toBeNull()
     })
 
-    test('create with custom simulate options', async () => {
-      // Test creating metadata with custom SimulateOptions.
+    test('create with simulate before send', async () => {
+      // Test creating metadata with simulateBeforeSend (populates app call resources).
       const metadata = buildShortMetadata(assetId)
-      const simulateOptions: SimulateOptions = {
-        allowEmptySignatures: true,
-        skipSignatures: true,
-        allowMoreLogging: true,
-      }
       const mbrDelta = await writer.createMetadata({
         assetManager,
         metadata,
         simulateBeforeSend: true,
-        simulateOptions,
       })
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
       const boxValue = await reader.box.getAssetMetadataRecord({ assetId })

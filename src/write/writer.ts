@@ -19,7 +19,7 @@ import {
   AsaMetadataRegistryComposer,
   AsaMetadataRegistryComposerResults,
 } from '../generated'
-import { AsaMetadataRegistryAvmRead, SimulateOptions } from '../read/avm'
+import { AsaMetadataRegistryAvmRead } from '../read/avm'
 import { parseMbrDelta, returnValues } from '../internal/avm'
 import { microAlgo } from '@algorandfoundation/algokit-utils'
 import type { SendParams } from '@algorandfoundation/algokit-utils/types/transaction'
@@ -376,7 +376,6 @@ export class AsaMetadataRegistryWrite {
   private static async sendGroup(args: {
     composer: AsaMetadataRegistryComposer<unknown[]>
     simulateBeforeSend: boolean
-    simulateOptions?: SimulateOptions | null
     sendParams?: SendParams | null
     options?: WriteOptions | null
   }): Promise<AsaMetadataRegistryComposerResults<unknown[]>> {
@@ -395,7 +394,6 @@ export class AsaMetadataRegistryWrite {
     options?: WriteOptions
     sendParams?: SendParams | null
     simulateBeforeSend?: boolean
-    simulateOptions?: SimulateOptions | null
   }): Promise<MbrDelta> {
     const composer = await this.buildCreateMetadataGroup({
       assetManager: args.assetManager,
@@ -405,7 +403,6 @@ export class AsaMetadataRegistryWrite {
     const result = await AsaMetadataRegistryWrite.sendGroup({
       composer,
       simulateBeforeSend: Boolean(args.simulateBeforeSend),
-      simulateOptions: args.simulateOptions,
       sendParams: args.sendParams,
       options: args.options,
     })
@@ -420,7 +417,6 @@ export class AsaMetadataRegistryWrite {
     options?: WriteOptions
     sendParams?: SendParams | null
     simulateBeforeSend?: boolean
-    simulateOptions?: SimulateOptions | null
     assumeCurrentSize?: number | null
   }): Promise<MbrDelta> {
     const composer = await this.buildReplaceMetadataGroup({
@@ -432,7 +428,6 @@ export class AsaMetadataRegistryWrite {
     const result = await AsaMetadataRegistryWrite.sendGroup({
       composer,
       simulateBeforeSend: Boolean(args.simulateBeforeSend),
-      simulateOptions: args.simulateOptions,
       sendParams: args.sendParams,
       options: args.options,
     })
@@ -449,7 +444,6 @@ export class AsaMetadataRegistryWrite {
 
     sendParams?: SendParams | null
     simulateBeforeSend?: boolean
-    simulateOptions?: SimulateOptions | null
   }): Promise<void> {
     const composer = await this.buildReplaceMetadataSliceGroup({
       assetManager: args.assetManager,
@@ -461,7 +455,6 @@ export class AsaMetadataRegistryWrite {
     await AsaMetadataRegistryWrite.sendGroup({
       composer,
       simulateBeforeSend: Boolean(args.simulateBeforeSend),
-      simulateOptions: args.simulateOptions,
       sendParams: args.sendParams,
       options: args.options,
     })
@@ -474,7 +467,6 @@ export class AsaMetadataRegistryWrite {
 
     sendParams?: SendParams | null
     simulateBeforeSend?: boolean
-    simulateOptions?: SimulateOptions | null
   }): Promise<MbrDelta> {
     const composer = await this.buildDeleteMetadataGroup({
       assetManager: args.assetManager,
@@ -484,7 +476,6 @@ export class AsaMetadataRegistryWrite {
     const result = await AsaMetadataRegistryWrite.sendGroup({
       composer,
       simulateBeforeSend: Boolean(args.simulateBeforeSend),
-      simulateOptions: args.simulateOptions,
       sendParams: args.sendParams,
       options: args.options,
     })
