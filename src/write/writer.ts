@@ -380,13 +380,12 @@ export class AsaMetadataRegistryWrite {
     sendParams?: SendParams | null
     options?: WriteOptions | null
   }): Promise<AsaMetadataRegistryComposerResults<unknown[]>> {
-    if (args.simulateBeforeSend) {
-      const sim = args.simulateOptions ?? ({ allowEmptySignatures: true, skipSignatures: true } as SimulateOptions)
-      await args.composer.simulate(sim)
-    }
-
     const opt = args.options ?? writeOptionsDefault
-    const sendParams = args.sendParams ?? defaultSendParams(opt.coverAppCallInnerTransactionFees)
+    const sendParams: SendParams = {
+      ...defaultSendParams(opt.coverAppCallInnerTransactionFees),
+      ...args.sendParams,
+      ...(args.simulateBeforeSend ? { populateAppCallResources: true } : {}),
+    }
     return await args.composer.send(sendParams)
   }
 
