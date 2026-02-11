@@ -1,3 +1,4 @@
+import { expect } from 'vitest'
 import { algo, microAlgo } from '@algorandfoundation/algokit-utils'
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils/types/algorand-client'
 import type { AlgorandFixture } from '@algorandfoundation/algokit-utils/types/testing'
@@ -14,6 +15,7 @@ import {
   ReversibleFlags,
   IrreversibleFlags,
   MAX_METADATA_SIZE,
+  SHORT_METADATA_SIZE,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
 
 const ARC90_NETAUTH = process.env.ARC90_NETAUTH ?? 'net:localnet'
@@ -125,12 +127,18 @@ export const buildEmptyMetadata = (assetId: bigint): AssetMetadata =>
     deprecatedBy: 0n,
   })
 
-export const buildShortMetadata = (assetId: bigint): AssetMetadata =>
-  AssetMetadata.fromJson({ assetId, jsonObj: { ...sampleJsonObj } })
+export const buildShortMetadata = (arc89Asa: bigint, jsonObj?: Record<string, unknown>): AssetMetadata => {
+  const metadata = jsonObj
+    ? AssetMetadata.fromJson({ assetId: arc89Asa, jsonObj })
+    : AssetMetadata.fromJson({ assetId: arc89Asa, jsonObj: { ...sampleJsonObj } })
+  expect(metadata.body.size).toBeLessThanOrEqual(SHORT_METADATA_SIZE)
+  expect(metadata.body.isShort).toBe(true)
+  return metadata
+}
 
-export const buildMaxedMetadata = (assetId: bigint): AssetMetadata =>
-  new AssetMetadata({
-    assetId,
+export const buildMaxedMetadata = (arc89Asa: bigint): AssetMetadata => {
+  const metadata = new AssetMetadata({
+    assetId: arc89Asa,
     body: new MetadataBody(textEncoder.encode('x'.repeat(MAX_METADATA_SIZE))),
     flags: new MetadataFlags({
       reversible: ReversibleFlags.empty(),
@@ -138,17 +146,24 @@ export const buildMaxedMetadata = (assetId: bigint): AssetMetadata =>
     }),
     deprecatedBy: 0n,
   })
+  expect(metadata.body.size).toBe(MAX_METADATA_SIZE)
+  expect(metadata.body.isShort).toBe(false)
+  return metadata
+}
 
-export const buildOversizedMetadata = (assetId: bigint): AssetMetadata =>
-  new AssetMetadata({
-    assetId,
+export const buildOversizedMetadata = (arc89Asa: bigint): AssetMetadata => {
+  const metadata = new AssetMetadata({
+    assetId: arc89Asa,
     body: new MetadataBody(textEncoder.encode('x'.repeat(MAX_METADATA_SIZE + 1))),
     flags: MetadataFlags.empty(),
     deprecatedBy: 0n,
   })
+  expect(metadata.body.size).toBeGreaterThan(MAX_METADATA_SIZE)
+  return metadata
+}
 
 // ================================================================
-// Upload helper
+// Upload metadata helper
 // ================================================================
 
 export const uploadMetadata = async (args: {
@@ -156,13 +171,18 @@ export const uploadMetadata = async (args: {
   assetManager: TransactionSignerAccount
   appClient: AsaMetadataRegistryClient
   metadata: AssetMetadata
+  immutable?: boolean
 }): Promise<AssetMetadata> => {
-  await args.writer.createMetadata({ assetManager: args.assetManager, metadata: args.metadata })
-  const boxValue = await args.appClient.state.box.assetMetadata.value(args.metadata.assetId)
-  if (!boxValue) throw new Error('Metadata box not found after create')
-  const parsed = AssetMetadataBox.parse({ assetId: args.metadata.assetId, value: boxValue })
+  const { metadata } = args
+  await args.writer.createMetadata({ assetManager: args.assetManager, metadata })
+  if (args.immutable) {
+    await args.writer.setImmutable({ assetManager: args.assetManager, assetId: metadata.assetId })
+  }
+  const boxValue = await args.appClient.state.box.assetMetadata.value(metadata.assetId)
+  expect(boxValue).not.toBeNull()
+  const parsed = AssetMetadataBox.parse({ assetId: metadata.assetId, value: boxValue! })
   return new AssetMetadata({
-    assetId: args.metadata.assetId,
+    assetId: metadata.assetId,
     body: parsed.body,
     flags: parsed.header.flags,
     deprecatedBy: parsed.header.deprecatedBy,

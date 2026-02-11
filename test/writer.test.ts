@@ -13,22 +13,34 @@
  * - Error handling and edge cases
  */
 
-import { describe, expect, test, vi, beforeEach } from 'vitest'
-import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
+import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest'
 import { Address, type TransactionSigner } from 'algosdk'
+import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
+import { algorandFixture, algoKitLogCaptureFixture } from '@algorandfoundation/algokit-utils/testing'
+import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import {
   InvalidFlagIndexError,
   MissingAppClientError,
   getDefaultRegistryParams,
+  RegistryParameters,
   flags,
+  AssetMetadata,
   // writer
-  SigningAccount,
   AsaMetadataRegistryWrite,
   WriteOptions,
   writeOptionsDefault,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
-import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '@/generated'
+import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer, AsaMetadataRegistryFactory } from '@/generated'
 import { chunksForSlice, appendExtraResources } from '@/internal/writer'
+import {
+  deployRegistry,
+  getDeployer,
+  createFactory,
+  createFundedAccount,
+  createArc89Asa,
+  buildShortMetadata,
+  uploadMetadata,
+} from './helpers'
 
 // ================================================================
 // Mocks
@@ -57,11 +69,25 @@ const createMockSigningAccount = (): TransactionSignerAccount => ({
 // AsaMetadataRegistryWrite (a.k.a. writer) Tests
 // ================================================================
 
+// mock
 let mockClient: AsaMetadataRegistryClient
 
-beforeEach(() => {
+// on-chain
+const fixture = algorandFixture()
+let algorand: AlgorandClient
+let client: AsaMetadataRegistryClient
+let factory: AsaMetadataRegistryFactory
+let deployer: TransactionSignerAccount
+let assetManager: TransactionSignerAccount
+
+beforeEach(async () => {
   vi.resetAllMocks()
   mockClient = createMockAppClient()
+  await fixture.newScope()
+  algorand = fixture.algorand
+  deployer = getDeployer(fixture)
+  factory = createFactory({ algorand, deployer })
+  client = await deployRegistry({ factory, deployer })
 })
 
 // ================================================================
@@ -195,7 +221,13 @@ describe('writer initialization', () => {
     expect(result).toBe(params)
   })
 
-  test.todo('_params fetches from on-chain if not cached')
+  test('_params fetches from on-chain if not cached', async () => {
+    // Test that _params() fetches from on-chain if not cached.
+    const writer = new AsaMetadataRegistryWrite({ client })
+    const result = await (writer as any)._params()
+    expect(result).toBeInstanceOf(RegistryParameters)
+    expect(result.headerSize).toBeGreaterThan(0)
+  })
 })
 
 // ================================================================
@@ -204,9 +236,39 @@ describe('writer initialization', () => {
 
 describe('build group methods', () => {
   // Test group building methods.
-  test.todo('build create metadata group')
-  test.todo('build delete metadata group')
-  test.todo('build delete with options')
+  let assetManager: TransactionSignerAccount
+  let assetId: bigint
+  let writer: AsaMetadataRegistryWrite
+
+  beforeEach(async () => {
+    assetManager = await createFundedAccount(fixture)
+    assetId = await createArc89Asa({ assetManager, appClient: client })
+    writer = new AsaMetadataRegistryWrite({ client })
+  })
+
+  test('build create metadata group', async () => {
+    // Test building create group for metadata.
+    const metadata = AssetMetadata.fromJson({ assetId, jsonObj: { name: 'Test' } })
+    const composer = await writer.buildCreateMetadataGroup({ assetManager, metadata })
+    expect(composer).not.toBeNull()
+  })
+
+  test('build delete metadata group', async () => {
+    // Test building delete group.
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+    const composer = await writer.buildDeleteMetadataGroup({ assetManager, assetId: metadata.assetId })
+    expect(composer).not.toBeNull()
+  })
+
+  test('build delete with options', async () => {
+    // Test building delete group with custom options.
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+    const options: WriteOptions = { extraResources: 1, feePaddingTxns: 2, coverAppCallInnerTransactionFees: false }
+    const composer = await writer.buildDeleteMetadataGroup({ assetManager, assetId: metadata.assetId, options })
+    expect(composer).not.toBeNull()
+  })
 })
 
 // ================================================================
