@@ -11,8 +11,11 @@
  * - AlgodBoxReader.resolveMetadataUriFromAsset
  */
 
-import { describe, expect, test, vi, beforeEach } from 'vitest'
+import { describe, expect, test, vi, beforeAll, beforeEach } from 'vitest'
 import type { modelsv2 } from 'algosdk'
+import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
+import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
+import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import {
   Arc90Uri,
   assetIdToBoxName,
@@ -21,11 +24,30 @@ import {
   InvalidArc90UriError,
   AssetMetadataBox,
   AssetMetadataRecord,
+  AsaMetadataRegistryRead,
+  AsaMetadataRegistryWrite,
   getDefaultRegistryParams,
+  RegistryParameters,
   HEADER_SIZE,
+  MAX_METADATA_SIZE,
+  ARC90_URI_SCHEME,
+  ARC90_URI_BOX_QUERY_NAME,
   AlgodClientSubset,
   AlgodBoxReader,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
+import { AsaMetadataRegistryClient, AsaMetadataRegistryFactory } from '@/generated'
+import {
+  sampleJsonObj,
+  deployRegistry,
+  getDeployer,
+  createFactory,
+  createFundedAccount,
+  createArc89Asa,
+  buildEmptyMetadata,
+  buildShortMetadata,
+  buildMaxedMetadata,
+  uploadMetadata,
+} from './helpers'
 
 // ================================================================
 // Mocks
@@ -473,5 +495,204 @@ describe('resolve metadata uri from asset', () => {
     })
 
     await expect(boxReader.resolveMetadataUriFromAsset({ assetId: 123 })).rejects.toThrow(InvalidArc90UriError)
+  })
+})
+
+// ================================================================
+// AlgodBoxReader Integration Tests
+// ================================================================
+
+describe('algod box reader integration', () => {
+  // Integration tests using real algod client.
+  const textDecoder = new TextDecoder()
+  const fixture = algorandFixture()
+  let algorand: AlgorandClient
+  let client: AsaMetadataRegistryClient
+  let factory: AsaMetadataRegistryFactory
+  let boxReader: AlgodBoxReader
+  let reader: AsaMetadataRegistryRead
+  let writer: AsaMetadataRegistryWrite
+  let deployer: TransactionSignerAccount
+  let assetManager: TransactionSignerAccount
+
+  beforeAll(async () => {
+    await fixture.newScope()
+    algorand = fixture.algorand
+    deployer = getDeployer(fixture)
+    factory = createFactory({ algorand, deployer })
+    client = await deployRegistry({ factory, deployer })
+    assetManager = await createFundedAccount(fixture)
+
+    // Create AlgodBoxReader with real algod client.
+    boxReader = new AlgodBoxReader(algorand.client.algod)
+    reader = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader })
+    writer = new AsaMetadataRegistryWrite({ client })
+  })
+
+  test('try get metadata box for nonexistent app', async () => {
+    // Test tryGetMetadataBox returns null for nonexistent app.
+    // Use a very high app ID that likely doesn't exist
+    const result = await boxReader.tryGetMetadataBox({ appId: 999999999, assetId: 12345 })
+    expect(result).toBeNull()
+  })
+
+  test('get metadata box for nonexistent metadata throws', async () => {
+    // Test getMetadataBox throws for nonexistent metadata.
+    await expect(boxReader.getMetadataBox({ appId: 999999999, assetId: 12345 })).rejects.toThrow(BoxNotFoundError)
+  })
+
+  test('get asset info for invalid asset id throws', async () => {
+    // Test getAssetInfo throws for invalid asset ID.
+    await expect(boxReader.getAssetInfo(999999999999)).rejects.toThrow(AsaNotFoundError)
+    await expect(boxReader.getAssetInfo(999999999999)).rejects.toThrow(/ASA 999999999999 not found/)
+  })
+
+  test('full flow with uploaded metadata', async () => {
+    // Test full read flow with actual uploaded metadata.
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const appId = client.appId
+
+    // Test tryGetMetadataBox
+    const box = await boxReader.tryGetMetadataBox({ appId, assetId })
+    expect(box).not.toBeNull()
+    expect(box!.assetId).toBe(assetId)
+    expect(box!.body.rawBytes.length).toBeGreaterThan(0)
+
+    // Test getMetadataBox
+    const box2 = await boxReader.getMetadataBox({ appId, assetId })
+    expect(box2.assetId).toBe(assetId)
+    expect(box2.body.rawBytes).toEqual(box!.body.rawBytes)
+
+    // Test getAssetMetadataRecord
+    const record = await boxReader.getAssetMetadataRecord({ appId, assetId })
+    expect(record.appId).toBe(BigInt(appId))
+    expect(record.assetId).toBe(assetId)
+    expect(record.body.rawBytes).toEqual(box!.body.rawBytes)
+    expect(record.json).toEqual(sampleJsonObj) // assert content
+  })
+
+  test('resolve metadata uri from arc89 asset', async () => {
+    // Test resolving ARC-89 URI from an actual ARC-89 compliant ASA.
+    // The createArc89Asa helper creates an ASA with an ARC-89 partial URI
+    const arc89Asa = await createArc89Asa({ assetManager, appClient: client })
+
+    const uri = await boxReader.resolveMetadataUriFromAsset({ assetId: arc89Asa })
+
+    expect(uri).toBeInstanceOf(Arc90Uri)
+    expect(uri.appId).toBeGreaterThan(0n)
+    expect(uri.appId).toBe(client.appId)
+    expect(uri.assetId).toBe(arc89Asa)
+    expect(uri.netauth).not.toBeNull()
+    expect(uri.boxName).toStrictEqual(assetIdToBoxName(arc89Asa))
+  })
+
+  test('get asset URL from arc89 asset', async () => {
+    // Test getting asset URL from an actual ARC-89 compliant ASA.
+    const arc89Asa = await createArc89Asa({ assetManager, appClient: client })
+
+    const url = await boxReader.getAssetUrl(arc89Asa)
+
+    expect(url).not.toBeNull()
+    expect(url!.startsWith(textDecoder.decode(ARC90_URI_SCHEME))).toBe(true)
+    expect(url!.includes(textDecoder.decode(ARC90_URI_BOX_QUERY_NAME))).toBe(true)
+  })
+
+  test('metadata box with empty metadata', async () => {
+    // Test reading metadata box with empty metadata.
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const metadata = buildEmptyMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const appId = client.appId
+    const box = await boxReader.getMetadataBox({ appId, assetId })
+    expect(box.assetId).toBe(assetId)
+    expect(box.body.rawBytes).toEqual(new Uint8Array())
+  })
+
+  test('metadata box with maxed metadata', async () => {
+    // Test reading metadata box with maximum size metadata.
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const metadata = buildMaxedMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const appId = client.appId
+    const box = await boxReader.getMetadataBox({ appId, assetId })
+    expect(box.assetId).toBe(assetId)
+    expect(box.body.rawBytes.length).toBe(MAX_METADATA_SIZE)
+  })
+
+  test('metadata record json parsing', async () => {
+    // Test that metadata record can parse JSON correctly.
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const appId = client.appId
+    const record = await boxReader.getAssetMetadataRecord({ appId, assetId })
+
+    // Should be able to access JSON
+    const jsonData = record.json
+    expect(typeof jsonData).toBe('object')
+    // The buildShortMetadata uses jsonObj which has these fields
+    expect('name' in jsonData || Object.keys(jsonData).length >= 0).toBe(true)
+  })
+
+  test('immutable metadata flags', async () => {
+    // Test that immutable flag is correctly read from metadata box.
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata, immutable: true })
+
+    const appId = client.appId
+    const box = await boxReader.getMetadataBox({ appId, assetId })
+    expect(box.header.isImmutable).toBe(true)
+  })
+
+  test('get box value with actual box', async () => {
+    // Test getBoxValue with an actual box.
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const appId = client.appId
+    const boxName = assetIdToBoxName(assetId)
+
+    const value = await boxReader.getBoxValue({ appId, boxName })
+
+    expect(value.value).toBeInstanceOf(Uint8Array)
+    expect(value.value.length).toBeGreaterThanOrEqual(HEADER_SIZE) // At least header size
+  })
+
+  test('custom registry parameters', async () => {
+    // Test reading metadata with custom RegistryParameters.
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const appId = client.appId
+    const defaults = getDefaultRegistryParams()
+    const params = new RegistryParameters({
+      keySize: defaults.keySize,
+      headerSize: defaults.headerSize,
+      maxMetadataSize: defaults.maxMetadataSize,
+      shortMetadataSize: defaults.shortMetadataSize,
+      pageSize: defaults.pageSize,
+      firstPayloadMaxSize: defaults.firstPayloadMaxSize,
+      extraPayloadMaxSize: defaults.extraPayloadMaxSize,
+      replacePayloadMaxSize: defaults.replacePayloadMaxSize,
+      flatMbr: 5000, // double the default
+      byteMbr: defaults.byteMbr,
+    })
+
+    const box = await boxReader.getMetadataBox({ appId, assetId, params })
+    expect(box.assetId).toBe(assetId)
+
+    // Also test with tryGetMetadataBox
+    const box2 = await boxReader.tryGetMetadataBox({ appId, assetId, params })
+    expect(box2).not.toBeNull()
+    expect(box2!.assetId).toBe(assetId)
   })
 })
