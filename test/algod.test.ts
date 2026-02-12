@@ -634,7 +634,7 @@ describe('algod box reader integration', () => {
     const jsonData = record.json
     expect(typeof jsonData).toBe('object')
     // The buildShortMetadata uses jsonObj which has these fields
-    expect('name' in jsonData || Object.keys(jsonData).length >= 0).toBe(true)
+    expect(jsonData).toStrictEqual(sampleJsonObj)
   })
 
   test('immutable metadata flags', async () => {

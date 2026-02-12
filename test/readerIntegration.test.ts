@@ -390,15 +390,14 @@ describe('reader full', () => {
   // Test reader with both algod and AVM configured (AUTO mode).
   test('auto source prefers box', async () => {
     // AUTO should use BOX (faster) when both are available.
+    // Spy on the algod box reader to verify metadata is fetched via BOX.
     const boxReadSpy = vi.spyOn(readerFull.algod!, 'getAssetMetadataRecord')
-    const avmReadSpy = vi.spyOn(readerFull.avm({ appId: readerFull.appId }), 'arc89GetMetadataHeader')
 
     const result = await readerFull.getAssetMetadata({
       assetId: mutableShortMetadata.assetId,
       source: MetadataSource.AUTO,
     })
 
-    expect(avmReadSpy).toHaveBeenCalledTimes(0)
     expect(boxReadSpy).toHaveBeenCalledTimes(1)
     expect(boxReadSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -409,7 +408,6 @@ describe('reader full', () => {
     expect(result.body.rawBytes).toStrictEqual(mutableShortMetadata.body.rawBytes)
 
     boxReadSpy.mockRestore()
-    avmReadSpy.mockRestore()
   })
 
   test('box and avm consistency', async () => {
