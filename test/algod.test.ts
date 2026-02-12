@@ -24,7 +24,6 @@ import {
   InvalidArc90UriError,
   AssetMetadataBox,
   AssetMetadataRecord,
-  AsaMetadataRegistryRead,
   AsaMetadataRegistryWrite,
   getDefaultRegistryParams,
   RegistryParameters,
@@ -510,7 +509,6 @@ describe('algod box reader integration', () => {
   let client: AsaMetadataRegistryClient
   let factory: AsaMetadataRegistryFactory
   let boxReader: AlgodBoxReader
-  let reader: AsaMetadataRegistryRead
   let writer: AsaMetadataRegistryWrite
   let deployer: TransactionSignerAccount
   let assetManager: TransactionSignerAccount
@@ -525,7 +523,6 @@ describe('algod box reader integration', () => {
 
     // Create AlgodBoxReader with real algod client.
     boxReader = new AlgodBoxReader(algorand.client.algod)
-    reader = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader })
     writer = new AsaMetadataRegistryWrite({ client })
   })
 
