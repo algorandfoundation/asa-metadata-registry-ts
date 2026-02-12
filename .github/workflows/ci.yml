@@ -49,6 +49,16 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      - name: Install AlgoKit
+        run: |
+          pipx install algokit
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Start LocalNet
+        run: |
+          algokit --skip-version-check localnet start
+          algokit localnet status
+
       - name: Test
         run: pnpm run test
 

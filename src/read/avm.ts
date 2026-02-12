@@ -110,7 +110,8 @@ export class AsaMetadataRegistryAvmRead {
   ): Promise<unknown[]> {
     const composer = this.client.newGroup()
     buildGroup(composer)
-    const results = args?.simulate ? await composer.simulate(args.simulate) : await composer.simulate()
+    const defaultSimulate: SimulateOptions = { allowUnnamedResources: true, skipSignatures: true }
+    const results = await composer.simulate(args?.simulate ?? defaultSimulate)
     return returnValues(results)
   }
 

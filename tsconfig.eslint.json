@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "paths": {
+      "@/*": ["./src/*"],
+      "@algorandfoundation/asa-metadata-registry-sdk": ["./src/index.ts"]
+    }
+  },
+  "include": ["src", "test"]
+}

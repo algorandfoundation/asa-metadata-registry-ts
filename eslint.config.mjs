@@ -2,6 +2,7 @@ import js from '@eslint/js'
 import tseslint from '@typescript-eslint/eslint-plugin'
 import tsparser from '@typescript-eslint/parser'
 import prettierPlugin from 'eslint-plugin-prettier'
+import unusedImports from 'eslint-plugin-unused-imports'
 import prettierConfig from 'eslint-config-prettier'
 import globals from 'globals'
 import { fileURLToPath } from 'url'
@@ -21,13 +22,13 @@ const prettierIgnore = fs
 export default [
   js.configs.recommended,
   {
-    files: ['src/**/*.ts'],
+    files: ['src/**/*.ts', 'test/**/*.ts'],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
         ecmaVersion: 'latest',
         sourceType: 'module',
-        project: resolve(__dirname, './tsconfig.esm.json'),
+        project: resolve(__dirname, './tsconfig.eslint.json'),
         tsconfigRootDir: __dirname,
       },
       globals: globals.node, // console, process, Buffer, etc.
@@ -35,12 +36,15 @@ export default [
     plugins: {
       '@typescript-eslint': tseslint,
       prettier: prettierPlugin,
+      'unused-imports': unusedImports,
     },
     rules: {
       ...tseslint.configs.recommended.rules,
       'prettier/prettier': 'warn',
       'no-console': 'warn',
-      '@typescript-eslint/no-unused-vars': [
+      '@typescript-eslint/no-unused-vars': 'off',
+      'unused-imports/no-unused-imports': 'error',
+      'unused-imports/no-unused-vars': [
         'warn',
         {
           ignoreRestSiblings: true,
@@ -57,6 +61,12 @@ export default [
       '@typescript-eslint/await-thenable': 'error',
       'prefer-const': 'error',
       'no-var': 'error',
+    },
+  },
+  {
+    files: ['test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
   {
