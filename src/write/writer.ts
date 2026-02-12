@@ -373,6 +373,13 @@ export class AsaMetadataRegistryWrite {
   // High-level send helpers
   // ------------------------------------------------------------------
 
+  /**
+   * Send a composed transaction group.
+   *
+   * @remarks
+   * This method does not accept custom `SimulateOptions`.
+   * TODO: correctly document this and decide if it's possible to support it or not.
+   */
   private static async sendGroup(args: {
     composer: AsaMetadataRegistryComposer<unknown[]>
     simulateBeforeSend: boolean
