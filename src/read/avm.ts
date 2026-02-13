@@ -5,10 +5,7 @@
  */
 
 import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '../generated'
-import type {
-  RawSimulateOptions,
-  SkipSignaturesSimulateOptions,
-} from '@algorandfoundation/algokit-utils/types/composer'
+import type { SimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
 import { MissingAppClientError } from '../errors'
 import { asNumber, asUint8, asUint64BigInt } from '../internal/numbers'
 import { toBytes } from '../internal/bytes'
@@ -24,11 +21,6 @@ import {
 } from '../models'
 import * as enums from '../enums'
 import { parseMbrDelta, parsePaginatedMetadata, returnValues, withArgs } from '../internal/avm'
-
-/**
- * Options passed through to AlgoKit's `TransactionComposer.simulate()`.
- */
-export type SimulateOptions = RawSimulateOptions | SkipSignaturesSimulateOptions
 
 // ------------------------------------------------------------------
 // Decode helpers (simulate return values)

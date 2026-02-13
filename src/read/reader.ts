@@ -4,6 +4,7 @@
  * Ported from Python `asa_metadata_registry/read/reader.py`.
  */
 
+import type { SimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
 import { AlgodBoxReader } from '../algod'
 import { Arc90Uri } from '../codec'
 import { InvalidArc90UriError, MetadataDriftError, MissingAppClientError, RegistryResolutionError } from '../errors'
@@ -21,7 +22,7 @@ import {
 import * as enums from '../enums'
 import { asBigInt } from '../internal/numbers'
 import { concatBytes } from '../internal/bytes'
-import { AsaMetadataRegistryAvmRead, SimulateOptions } from './avm'
+import { AsaMetadataRegistryAvmRead } from './avm'
 import { AsaMetadataRegistryBoxRead } from './box'
 import { parsePaginatedMetadata, withArgs } from '../internal/avm'
 
