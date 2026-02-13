@@ -377,8 +377,9 @@ export class AsaMetadataRegistryWrite {
    * Send a composed transaction group.
    *
    * @remarks
-   * This method does not accept custom `SimulateOptions`.
-   * TODO: correctly document this and decide if it's possible to support it or not.
+   * Unlike the Python SDK, this method does not accept custom `SimulateOptions`.
+   * Here, `populateAppCallResources: true` on `send()` performs an internal
+   * simulate + resource population + send in a single step.
    */
   private static async sendGroup(args: {
     composer: AsaMetadataRegistryComposer<unknown[]>
