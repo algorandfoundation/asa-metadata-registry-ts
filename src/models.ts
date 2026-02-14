@@ -272,7 +272,7 @@ export class ReversibleFlags {
 export class IrreversibleFlags {
   public readonly arc3: boolean
   public readonly arc89Native: boolean
-  public readonly reserved2: boolean
+  public readonly burnable: boolean
   public readonly reserved3: boolean
   public readonly reserved4: boolean
   public readonly reserved5: boolean
@@ -283,7 +283,7 @@ export class IrreversibleFlags {
     args: {
       arc3?: boolean
       arc89Native?: boolean
-      reserved2?: boolean
+      burnable?: boolean
       reserved3?: boolean
       reserved4?: boolean
       reserved5?: boolean
@@ -293,7 +293,7 @@ export class IrreversibleFlags {
   ) {
     this.arc3 = Boolean(args.arc3)
     this.arc89Native = Boolean(args.arc89Native)
-    this.reserved2 = Boolean(args.reserved2)
+    this.burnable = Boolean(args.burnable)
     this.reserved3 = Boolean(args.reserved3)
     this.reserved4 = Boolean(args.reserved4)
     this.reserved5 = Boolean(args.reserved5)
@@ -305,7 +305,7 @@ export class IrreversibleFlags {
     let value = 0
     if (this.arc3) value |= bitmasks.MASK_IRR_ARC3
     if (this.arc89Native) value |= bitmasks.MASK_IRR_ARC89_NATIVE
-    if (this.reserved2) value |= bitmasks.MASK_IRR_RESERVED_2
+    if (this.burnable) value |= bitmasks.MASK_IRR_ARC54
     if (this.reserved3) value |= bitmasks.MASK_IRR_RESERVED_3
     if (this.reserved4) value |= bitmasks.MASK_IRR_RESERVED_4
     if (this.reserved5) value |= bitmasks.MASK_IRR_RESERVED_5
@@ -320,7 +320,7 @@ export class IrreversibleFlags {
     return new IrreversibleFlags({
       arc3: Boolean(value & bitmasks.MASK_IRR_ARC3),
       arc89Native: Boolean(value & bitmasks.MASK_IRR_ARC89_NATIVE),
-      reserved2: Boolean(value & bitmasks.MASK_IRR_RESERVED_2),
+      burnable: Boolean(value & bitmasks.MASK_IRR_ARC54),
       reserved3: Boolean(value & bitmasks.MASK_IRR_RESERVED_3),
       reserved4: Boolean(value & bitmasks.MASK_IRR_RESERVED_4),
       reserved5: Boolean(value & bitmasks.MASK_IRR_RESERVED_5),

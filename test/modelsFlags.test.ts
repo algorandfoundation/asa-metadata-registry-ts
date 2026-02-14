@@ -141,7 +141,7 @@ describe('irreversible flags', () => {
     const flags = IrreversibleFlags.empty()
     expect(flags.arc3).toBe(false)
     expect(flags.arc89Native).toBe(false)
-    expect(flags.reserved2).toBe(false)
+    expect(flags.burnable).toBe(false)
     expect(flags.reserved3).toBe(false)
     expect(flags.reserved4).toBe(false)
     expect(flags.reserved5).toBe(false)
@@ -166,6 +166,14 @@ describe('irreversible flags', () => {
     expect(flags.byteValue).toBe(0b00000010)
   })
 
+  test('arc54 burnable flag', () => {
+    // Test ARC-54 burnable flag.
+    const flags = new IrreversibleFlags({ burnable: true })
+    expect(flags.burnable).toBe(true)
+    expect(flags.byteValue).toBe(bitmasks.MASK_IRR_ARC54)
+    expect(flags.byteValue).toBe(0b00000100)
+  })
+
   test('immutable flag', () => {
     // Test immutable flag.
     const flags = new IrreversibleFlags({ immutable: true })
@@ -176,12 +184,15 @@ describe('irreversible flags', () => {
 
   test('multiple flags', () => {
     // Test multiple flags set simultaneously.
-    const flags = new IrreversibleFlags({ arc3: true, arc89Native: true, immutable: true })
+    const flags = new IrreversibleFlags({ arc3: true, arc89Native: true, burnable: true, immutable: true })
     expect(flags.arc3).toBe(true)
     expect(flags.arc89Native).toBe(true)
+    expect(flags.burnable).toBe(true)
     expect(flags.immutable).toBe(true)
-    expect(flags.byteValue).toBe(bitmasks.MASK_IRR_ARC3 | bitmasks.MASK_IRR_ARC89_NATIVE | bitmasks.MASK_IRR_IMMUTABLE)
-    expect(flags.byteValue).toBe(0b10000011)
+    expect(flags.byteValue).toBe(
+      bitmasks.MASK_IRR_ARC3 | bitmasks.MASK_IRR_ARC89_NATIVE | bitmasks.MASK_IRR_ARC54 | bitmasks.MASK_IRR_IMMUTABLE,
+    )
+    expect(flags.byteValue).toBe(0b10000111)
   })
 
   test('all flags set', () => {
@@ -189,7 +200,7 @@ describe('irreversible flags', () => {
     const flags = new IrreversibleFlags({
       arc3: true,
       arc89Native: true,
-      reserved2: true,
+      burnable: true,
       reserved3: true,
       reserved4: true,
       reserved5: true,
@@ -211,8 +222,20 @@ describe('irreversible flags', () => {
     // Test fromByte with ARC-3 flag set.
     const flags = IrreversibleFlags.fromByte(bitmasks.MASK_IRR_ARC3)
     expect(flags.arc3).toBe(true)
+    expect(flags.arc89Native).toBe(false)
+    expect(flags.burnable).toBe(false)
     expect(flags.immutable).toBe(false)
     expect(flags.byteValue).toBe(bitmasks.MASK_IRR_ARC3)
+  })
+
+  test('from byte arc54', () => {
+    // Test fromByte with ARC-54 flag set.
+    const flags = IrreversibleFlags.fromByte(bitmasks.MASK_IRR_ARC54)
+    expect(flags.burnable).toBe(true)
+    expect(flags.arc3).toBe(false)
+    expect(flags.arc89Native).toBe(false)
+    expect(flags.immutable).toBe(false)
+    expect(flags.byteValue).toBe(bitmasks.MASK_IRR_ARC54)
   })
 
   test('from byte immutable', () => {
@@ -225,9 +248,10 @@ describe('irreversible flags', () => {
 
   test('from byte multiple', () => {
     // Test fromByte with multiple flags.
-    const value = bitmasks.MASK_IRR_ARC3 | bitmasks.MASK_IRR_IMMUTABLE
+    const value = bitmasks.MASK_IRR_ARC3 | bitmasks.MASK_IRR_IMMUTABLE | bitmasks.MASK_IRR_ARC54
     const flags = IrreversibleFlags.fromByte(value)
     expect(flags.arc3).toBe(true)
+    expect(flags.burnable).toBe(true)
     expect(flags.immutable).toBe(true)
     expect(flags.byteValue).toBe(value)
   })
@@ -237,7 +261,7 @@ describe('irreversible flags', () => {
     const flags = IrreversibleFlags.fromByte(0xff)
     expect(flags.arc3).toBe(true)
     expect(flags.arc89Native).toBe(true)
-    expect(flags.reserved2).toBe(true)
+    expect(flags.burnable).toBe(true)
     expect(flags.reserved3).toBe(true)
     expect(flags.reserved4).toBe(true)
     expect(flags.reserved5).toBe(true)
@@ -258,12 +282,12 @@ describe('irreversible flags', () => {
 
   test('round trip conversion', () => {
     // Test round-trip conversion flags -> byte -> flags.
-    const original = new IrreversibleFlags({ arc3: true, reserved2: true, immutable: true })
+    const original = new IrreversibleFlags({ arc3: true, arc89Native: true, burnable: true, immutable: true })
     const byteVal = original.byteValue
     const reconstructed = IrreversibleFlags.fromByte(byteVal)
     expect(reconstructed.arc3).toBe(original.arc3)
     expect(reconstructed.arc89Native).toBe(original.arc89Native)
-    expect(reconstructed.reserved2).toBe(original.reserved2)
+    expect(reconstructed.burnable).toBe(original.burnable)
     expect(reconstructed.reserved3).toBe(original.reserved3)
     expect(reconstructed.reserved4).toBe(original.reserved4)
     expect(reconstructed.reserved5).toBe(original.reserved5)
@@ -369,6 +393,16 @@ describe('flags use cases', () => {
       irreversible: new IrreversibleFlags({ arc3: true }),
     })
     expect(flags.irreversibleByte).toBe(1)
+    expect(flags.reversibleByte).toBe(0)
+  })
+
+  test('arc54 burnable asa', () => {
+    // Test flags for a standard ARC-54 burnable ASA.
+    const flags = new MetadataFlags({
+      reversible: ReversibleFlags.empty(),
+      irreversible: new IrreversibleFlags({ burnable: true }),
+    })
+    expect(flags.irreversibleByte).toBe(4)
     expect(flags.reversibleByte).toBe(0)
   })
 
