@@ -19,7 +19,7 @@ export const MASK_REV_RESERVED_7 = 1 << flags.REV_FLG_RESERVED_7
 
 // Irreversible Flags byte (set by ASA Manager Address)
 export const MASK_IRR_ARC3 = 1 << flags.IRR_FLG_ARC3
-export const MASK_IRR_ARC89_NATIVE = 1 << flags.IRR_FLG_ARC89_NATIVE
+export const MASK_IRR_ARC89 = 1 << flags.IRR_FLG_ARC89
 export const MASK_IRR_ARC54 = 1 << flags.IRR_FLG_ARC54
 export const MASK_IRR_RESERVED_3 = 1 << flags.IRR_FLG_RESERVED_3
 export const MASK_IRR_RESERVED_4 = 1 << flags.IRR_FLG_RESERVED_4

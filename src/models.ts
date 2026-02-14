@@ -304,7 +304,7 @@ export class IrreversibleFlags {
   get byteValue(): number {
     let value = 0
     if (this.arc3) value |= bitmasks.MASK_IRR_ARC3
-    if (this.arc89Native) value |= bitmasks.MASK_IRR_ARC89_NATIVE
+    if (this.arc89Native) value |= bitmasks.MASK_IRR_ARC89
     if (this.burnable) value |= bitmasks.MASK_IRR_ARC54
     if (this.reserved3) value |= bitmasks.MASK_IRR_RESERVED_3
     if (this.reserved4) value |= bitmasks.MASK_IRR_RESERVED_4
@@ -319,7 +319,7 @@ export class IrreversibleFlags {
       throw new RangeError(`Byte value must be 0-255, got ${value}`)
     return new IrreversibleFlags({
       arc3: Boolean(value & bitmasks.MASK_IRR_ARC3),
-      arc89Native: Boolean(value & bitmasks.MASK_IRR_ARC89_NATIVE),
+      arc89Native: Boolean(value & bitmasks.MASK_IRR_ARC89),
       burnable: Boolean(value & bitmasks.MASK_IRR_ARC54),
       reserved3: Boolean(value & bitmasks.MASK_IRR_RESERVED_3),
       reserved4: Boolean(value & bitmasks.MASK_IRR_RESERVED_4),

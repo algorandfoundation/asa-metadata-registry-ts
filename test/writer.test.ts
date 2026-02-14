@@ -439,7 +439,7 @@ describe('high-level send methods', () => {
         writer.setIrreversibleFlag({
           assetManager: account,
           assetId: 123,
-          flagIndex: flags.IRR_FLG_ARC89_NATIVE,
+          flagIndex: flags.IRR_FLG_ARC89,
         }),
       ).rejects.toThrow(InvalidFlagIndexError)
     })

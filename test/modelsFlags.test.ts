@@ -183,7 +183,7 @@ describe('irreversible flags', () => {
     // Test ARC-89 native flag.
     const flags = new IrreversibleFlags({ arc89Native: true })
     expect(flags.arc89Native).toBe(true)
-    expect(flags.byteValue).toBe(bitmasks.MASK_IRR_ARC89_NATIVE)
+    expect(flags.byteValue).toBe(bitmasks.MASK_IRR_ARC89)
     expect(flags.byteValue).toBe(0b00000010)
   })
 
@@ -211,7 +211,7 @@ describe('irreversible flags', () => {
     expect(flags.burnable).toBe(true)
     expect(flags.immutable).toBe(true)
     expect(flags.byteValue).toBe(
-      bitmasks.MASK_IRR_ARC3 | bitmasks.MASK_IRR_ARC89_NATIVE | bitmasks.MASK_IRR_ARC54 | bitmasks.MASK_IRR_IMMUTABLE,
+      bitmasks.MASK_IRR_ARC3 | bitmasks.MASK_IRR_ARC89 | bitmasks.MASK_IRR_ARC54 | bitmasks.MASK_IRR_IMMUTABLE,
     )
     expect(flags.byteValue).toBe(0b10000111)
   })
