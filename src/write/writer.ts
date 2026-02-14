@@ -534,10 +534,9 @@ export class AsaMetadataRegistryWrite {
     assetId: bigint | number
     flagIndex: number
     options?: WriteOptions
-
     sendParams?: SendParams | null
   }): Promise<void> {
-    if (!(flagConsts.IRR_FLG_RESERVED_2 <= args.flagIndex && args.flagIndex <= flagConsts.IRR_FLG_IMMUTABLE)) {
+    if (!(flagConsts.IRR_FLG_ARC54 <= args.flagIndex && args.flagIndex <= flagConsts.IRR_FLG_IMMUTABLE)) {
       throw new InvalidFlagIndexError(
         `Invalid irreversible flag index: ${args.flagIndex}, must be in [2, 7]. Flags 0, 1 are creation only.`,
       )

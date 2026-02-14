@@ -439,7 +439,7 @@ describe('high-level send methods', () => {
         writer.setIrreversibleFlag({
           assetManager: account,
           assetId: 123,
-          flagIndex: flags.IRR_FLG_ARC89_NATIVE,
+          flagIndex: flags.IRR_FLG_ARC89,
         }),
       ).rejects.toThrow(InvalidFlagIndexError)
     })
@@ -463,11 +463,11 @@ describe('high-level send methods', () => {
       await writer.setIrreversibleFlag({
         assetManager,
         assetId: metadata.assetId,
-        flagIndex: flags.IRR_FLG_RESERVED_2,
+        flagIndex: flags.IRR_FLG_RESERVED_3,
       })
       const record = await reader.box.getAssetMetadataRecord({ assetId })
       expect(record).not.toBeNull()
-      expect(record.header.flags.irreversible.reserved2).toBe(true)
+      expect(record.header.flags.irreversible.reserved3).toBe(true)
     })
   })
 
@@ -538,16 +538,24 @@ describe('high-level send methods', () => {
         flagIndex: flags.REV_FLG_ARC20,
         value: true,
       })
+      await writer.setReversibleFlag({
+        assetManager,
+        assetId,
+        flagIndex: flags.REV_FLG_RESERVED_3,
+        value: true,
+      })
       await writer.setIrreversibleFlag({
         assetManager,
         assetId,
-        flagIndex: flags.IRR_FLG_RESERVED_2,
+        flagIndex: flags.IRR_FLG_RESERVED_3,
       })
 
       // Verify both flags are set
       const record = await reader.box.getAssetMetadataRecord({ assetId })
       expect(record.header.isArc20SmartAsa).toBe(true)
-      expect(record.header.flags.irreversible.reserved2).toBe(true)
+      expect(record.header.flags.reversible.arc20).toBe(true)
+      expect(record.header.flags.irreversible.reserved3).toBe(true)
+      expect(record.header.flags.reversible.reserved3).toBe(true)
     })
   })
 })
