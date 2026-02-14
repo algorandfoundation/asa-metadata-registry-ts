@@ -10,7 +10,7 @@ export const MASK_ID_SHORT = 1 << flags.ID_SHORT
 // Reversible Flags byte (set by ASA Manager Address)
 export const MASK_REV_ARC20 = 1 << flags.REV_FLG_ARC20
 export const MASK_REV_ARC62 = 1 << flags.REV_FLG_ARC62
-export const MASK_REV_RESERVED_2 = 1 << flags.REV_FLG_RESERVED_2
+export const MASK_REV_NTT = 1 << flags.REV_FLG_NTT
 export const MASK_REV_RESERVED_3 = 1 << flags.REV_FLG_RESERVED_3
 export const MASK_REV_RESERVED_4 = 1 << flags.REV_FLG_RESERVED_4
 export const MASK_REV_RESERVED_5 = 1 << flags.REV_FLG_RESERVED_5

@@ -207,7 +207,7 @@ export class MetadataExistence {
 export class ReversibleFlags {
   public readonly arc20: boolean
   public readonly arc62: boolean
-  public readonly reserved2: boolean
+  public readonly ntt: boolean
   public readonly reserved3: boolean
   public readonly reserved4: boolean
   public readonly reserved5: boolean
@@ -218,7 +218,7 @@ export class ReversibleFlags {
     args: {
       arc20?: boolean
       arc62?: boolean
-      reserved2?: boolean
+      ntt?: boolean
       reserved3?: boolean
       reserved4?: boolean
       reserved5?: boolean
@@ -228,7 +228,7 @@ export class ReversibleFlags {
   ) {
     this.arc20 = Boolean(args.arc20)
     this.arc62 = Boolean(args.arc62)
-    this.reserved2 = Boolean(args.reserved2)
+    this.ntt = Boolean(args.ntt)
     this.reserved3 = Boolean(args.reserved3)
     this.reserved4 = Boolean(args.reserved4)
     this.reserved5 = Boolean(args.reserved5)
@@ -240,7 +240,7 @@ export class ReversibleFlags {
     let value = 0
     if (this.arc20) value |= bitmasks.MASK_REV_ARC20
     if (this.arc62) value |= bitmasks.MASK_REV_ARC62
-    if (this.reserved2) value |= bitmasks.MASK_REV_RESERVED_2
+    if (this.ntt) value |= bitmasks.MASK_REV_NTT
     if (this.reserved3) value |= bitmasks.MASK_REV_RESERVED_3
     if (this.reserved4) value |= bitmasks.MASK_REV_RESERVED_4
     if (this.reserved5) value |= bitmasks.MASK_REV_RESERVED_5
@@ -255,7 +255,7 @@ export class ReversibleFlags {
     return new ReversibleFlags({
       arc20: Boolean(value & bitmasks.MASK_REV_ARC20),
       arc62: Boolean(value & bitmasks.MASK_REV_ARC62),
-      reserved2: Boolean(value & bitmasks.MASK_REV_RESERVED_2),
+      ntt: Boolean(value & bitmasks.MASK_REV_NTT),
       reserved3: Boolean(value & bitmasks.MASK_REV_RESERVED_3),
       reserved4: Boolean(value & bitmasks.MASK_REV_RESERVED_4),
       reserved5: Boolean(value & bitmasks.MASK_REV_RESERVED_5),

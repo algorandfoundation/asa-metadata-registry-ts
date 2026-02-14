@@ -17,7 +17,7 @@ export const ID_SHORT = 7 as const // automatically derived from metadata size
 // Reversible Flags byte (set by ASA Manager Address)
 export const REV_FLG_ARC20 = 0 as const
 export const REV_FLG_ARC62 = 1 as const
-export const REV_FLG_RESERVED_2 = 2 as const // reserved; default init False
+export const REV_FLG_NTT = 2 as const
 export const REV_FLG_RESERVED_3 = 3 as const // reserved; default init False
 export const REV_FLG_RESERVED_4 = 4 as const // reserved; default init False
 export const REV_FLG_RESERVED_5 = 5 as const // reserved; default init False
