@@ -541,7 +541,7 @@ describe('high-level send methods', () => {
       await writer.setReversibleFlag({
         assetManager,
         assetId,
-        flagIndex: flags.REV_FLG_NTT,
+        flagIndex: flags.REV_FLG_RESERVED_3,
         value: true,
       })
       await writer.setIrreversibleFlag({
@@ -553,9 +553,9 @@ describe('high-level send methods', () => {
       // Verify both flags are set
       const record = await reader.box.getAssetMetadataRecord({ assetId })
       expect(record.header.isArc20SmartAsa).toBe(true)
-      expect(record.header.flags.irreversible.reserved3).toBe(true)
       expect(record.header.flags.reversible.arc20).toBe(true)
-      expect(record.header.flags.reversible.ntt).toBe(true)
+      expect(record.header.flags.irreversible.reserved3).toBe(true)
+      expect(record.header.flags.reversible.reserved3).toBe(true)
     })
   })
 })
