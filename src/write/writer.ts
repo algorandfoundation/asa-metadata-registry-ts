@@ -381,7 +381,7 @@ export class AsaMetadataRegistryWrite {
    * Send or simulate a transaction group.
    * If `simulate` is provided, simulate instead of sending.
    */
-  private static async sendGroup(args: {
+  static async sendGroup(args: {
     composer: AsaMetadataRegistryComposer<unknown[]>
     sendParams?: SendParams | null
     options?: WriteOptions | null
