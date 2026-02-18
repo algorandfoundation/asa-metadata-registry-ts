@@ -56,7 +56,7 @@ export const writeOptionsDefault: WriteOptions = {
 /*
  * Helper to build default send params from WriteOptions.
  */
-const defaultSendParams = (options: WriteOptions): SendParams => ({
+const createSendParams = (options: WriteOptions): SendParams => ({
   coverAppCallInnerTransactionFees: options.coverAppCallInnerTransactionFees,
   populateAppCallResources: options.populateAppCallResources,
 })
@@ -393,7 +393,7 @@ export class AsaMetadataRegistryWrite {
 
     if (!args.sendParams) {
       const opt = args.options ?? writeOptionsDefault
-      args.sendParams = defaultSendParams(opt)
+      args.sendParams = createSendParams(opt)
     }
 
     return await args.composer.send(args.sendParams)
@@ -517,7 +517,7 @@ export class AsaMetadataRegistryWrite {
       signer: args.assetManager.signer,
     })
 
-    const sendParams = args.sendParams ?? defaultSendParams(opt)
+    const sendParams = args.sendParams ?? createSendParams(opt)
     await composer.send(sendParams)
   }
 
@@ -551,7 +551,7 @@ export class AsaMetadataRegistryWrite {
       signer: args.assetManager.signer,
     })
 
-    const sendParams = args.sendParams ?? defaultSendParams(opt)
+    const sendParams = args.sendParams ?? createSendParams(opt)
     await composer.send(sendParams)
   }
 
@@ -579,7 +579,7 @@ export class AsaMetadataRegistryWrite {
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    const sendParams = args.sendParams ?? defaultSendParams(opt)
+    const sendParams = args.sendParams ?? createSendParams(opt)
     await composer.send(sendParams)
   }
 
@@ -608,7 +608,7 @@ export class AsaMetadataRegistryWrite {
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    const sendParams = args.sendParams ?? defaultSendParams(opt)
+    const sendParams = args.sendParams ?? createSendParams(opt)
     await composer.send(sendParams)
   }
 }
