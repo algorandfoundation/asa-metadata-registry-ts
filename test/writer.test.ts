@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, test, vi, beforeAll, beforeEach } from 'vitest'
-import { Address, type TransactionSigner } from 'algosdk'
+import { Address, type TransactionSigner, modelsv2 } from 'algosdk'
 import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { microAlgo, type AlgorandClient } from '@algorandfoundation/algokit-utils'
@@ -53,7 +53,6 @@ import {
   buildMaxedMetadata,
   uploadMetadata,
 } from './helpers'
-import { SimulateTraceConfig } from 'algosdk/dist/types/client/v2/algod/models/types'
 
 // ================================================================
 // Mocks
@@ -303,12 +302,12 @@ describe('send group helper', () => {
       allowEmptySignatures: true,
       allowUnnamedResources: true,
       extraOpcodeBudget: 4567,
-      execTraceConfig: { enable: true } as SimulateTraceConfig,
+      execTraceConfig: { enable: true } as modelsv2.SimulateTraceConfig,
       round: 999,
       skipSignatures: false,
     }
 
-    const result = await (AsaMetadataRegistryWrite as any).sendGroup({
+    const result = await AsaMetadataRegistryWrite.sendGroup({
       composer,
       options: writeOptionsDefault,
       simulate: simulateOptions,

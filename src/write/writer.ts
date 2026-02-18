@@ -24,7 +24,7 @@ import { parseMbrDelta, returnValues } from '../internal/avm'
 import { microAlgo } from '@algorandfoundation/algokit-utils'
 import type { SendParams } from '@algorandfoundation/algokit-utils/types/transaction'
 import { appendExtraPayload, appendExtraResources, chunksForSlice } from '../internal/writer'
-import { SimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
+import type { SimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -559,7 +559,6 @@ export class AsaMetadataRegistryWrite {
     assetManager: TransactionSignerAccount
     assetId: bigint | number
     options?: WriteOptions
-
     sendParams?: SendParams | null
   }): Promise<void> {
     const opt = args.options ?? writeOptionsDefault
@@ -588,7 +587,6 @@ export class AsaMetadataRegistryWrite {
     assetId: bigint | number
     newRegistryId: bigint | number
     options?: WriteOptions
-
     sendParams?: SendParams | null
   }): Promise<void> {
     const opt = args.options ?? writeOptionsDefault
