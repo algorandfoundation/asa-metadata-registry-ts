@@ -20,6 +20,7 @@ import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { microAlgo, type AlgorandClient } from '@algorandfoundation/algokit-utils'
 import type { SimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
 import {
+  InvalidArc3PropertiesError,
   InvalidFlagIndexError,
   MissingAppClientError,
   getDefaultRegistryParams,
@@ -41,7 +42,13 @@ import {
   AsaMetadataRegistryComposerResults,
 } from '@/generated'
 import { parseMbrDelta } from '@/internal/avm'
-import { chunksForSlice, appendExtraResources } from '@/internal/writer'
+import {
+  appendExtraResources,
+  chunksForSlice,
+  isPositiveUint64,
+  toArcPropertyKey,
+  validateArcProperty,
+} from '@/internal/writer'
 import {
   deployRegistry,
   getDeployer,
@@ -206,6 +213,75 @@ describe('composer helpers', () => {
     const account = createMockSigningAccount()
     appendExtraResources(composer, { count: 3, sender: account.addr, signer: account.signer })
     expect(composer.extraResources).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('arc property helpers', () => {
+  // Tests for module-level internal ARC-3 compliance helpers.
+  test('to arc property key maps known indices and rejects unknown', () => {
+    // Test that toArcPropertyKey correctly maps known flag indices and throws on unknown.
+    expect(toArcPropertyKey(flags.REV_FLG_ARC20)).toBe('arc-20')
+    expect(toArcPropertyKey(flags.REV_FLG_ARC62)).toBe('arc-62')
+    expect(() => toArcPropertyKey(flags.REV_FLG_NTT)).toThrow()
+  })
+
+  test.each([
+    [1, true],
+    [Number.MAX_SAFE_INTEGER, true],
+    [Number.MAX_SAFE_INTEGER + 1, false],
+    [0, false],
+    [-1, false],
+    [1n, false],
+    ['1', false],
+    [null, false],
+  ])('isPositiveUint64(%p) === %p', (value, expected) => {
+    // Test isPositiveUint64 accepts safe positive integers and rejects all other values.
+    expect(isPositiveUint64(value)).toBe(expected)
+  })
+
+  test.each(['arc-20', 'arc-62'] as const)('validateArcProperty invalid body throws for %s', (arcKey) => {
+    // Test that validateArcProperty throws InvalidArc3PropertiesError for all invalid body shapes.
+    const invalidBodies: Record<string, unknown>[] = [
+      {},
+      { properties: 'not-a-dict' },
+      { properties: { 'other-key': 1 } },
+      { properties: { 'arc-20': 'not-a-dict', 'arc-62': 'not-a-dict' } },
+      { properties: { 'arc-20': {}, 'arc-62': {} } },
+      {
+        properties: {
+          'arc-20': { 'application-id': 0 },
+          'arc-62': { 'application-id': 0 },
+        },
+      },
+      {
+        properties: {
+          'arc-20': { 'application-id': -1 },
+          'arc-62': { 'application-id': -1 },
+        },
+      },
+      {
+        properties: {
+          'arc-20': { 'application-id': '123' },
+          'arc-62': { 'application-id': '123' },
+        },
+      },
+      {
+        properties: {
+          'arc-20': { 'application-id': 2n ** 64n },
+          'arc-62': { 'application-id': 2n ** 64n },
+        },
+      },
+    ]
+
+    for (const body of invalidBodies) {
+      expect(() => validateArcProperty(body, arcKey)).toThrow(InvalidArc3PropertiesError)
+    }
+  })
+
+  test.each(['arc-20', 'arc-62'] as const)('validateArcProperty valid body passes for %s', (arcKey) => {
+    // Test that validateArcProperty does not throw for a well-formed body.
+    const body = { properties: { [arcKey]: { 'application-id': 123456 } } }
+    expect(() => validateArcProperty(body, arcKey)).not.toThrow()
   })
 })
 
