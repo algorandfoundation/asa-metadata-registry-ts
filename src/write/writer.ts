@@ -24,6 +24,7 @@ import { parseMbrDelta, returnValues } from '../internal/avm'
 import { microAlgo } from '@algorandfoundation/algokit-utils'
 import type { SendParams } from '@algorandfoundation/algokit-utils/types/transaction'
 import { appendExtraPayload, appendExtraResources, chunksForSlice } from '../internal/writer'
+import type { SimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,19 +43,22 @@ export interface WriteOptions {
   extraResources: number
   feePaddingTxns: number
   coverAppCallInnerTransactionFees: boolean
+  populateAppCallResources: boolean
 }
 
 export const writeOptionsDefault: WriteOptions = {
   extraResources: 0,
   feePaddingTxns: 0,
-  coverAppCallInnerTransactionFees: true,
+  coverAppCallInnerTransactionFees: true, // composer.send() options
+  populateAppCallResources: true, // composer.send() options
 }
 
 /*
- * Helper to build default send params.
+ * Helper to build default send params from WriteOptions.
  */
-const defaultSendParams = (coverAppCallInnerTransactionFees: boolean) => ({
-  coverAppCallInnerTransactionFees,
+const createSendParams = (options: WriteOptions): SendParams => ({
+  coverAppCallInnerTransactionFees: options.coverAppCallInnerTransactionFees,
+  populateAppCallResources: options.populateAppCallResources,
 })
 
 // ---------------------------------------------------------------------------
@@ -374,26 +378,25 @@ export class AsaMetadataRegistryWrite {
   // ------------------------------------------------------------------
 
   /**
-   * Send a composed transaction group.
-   *
-   * @remarks
-   * Unlike the Python SDK, this method does not accept custom `SimulateOptions`.
-   * Here, `populateAppCallResources: true` on `send()` performs an internal
-   * simulate + resource population + send in a single step.
+   * Send or simulate a transaction group.
+   * If `simulate` is provided, simulate instead of sending.
    */
-  private static async sendGroup(args: {
+  static async sendGroup(args: {
     composer: AsaMetadataRegistryComposer<unknown[]>
-    simulateBeforeSend: boolean
     sendParams?: SendParams | null
     options?: WriteOptions | null
+    simulate?: SimulateOptions | null
   }): Promise<AsaMetadataRegistryComposerResults<unknown[]>> {
-    const opt = args.options ?? writeOptionsDefault
-    const sendParams: SendParams = {
-      ...defaultSendParams(opt.coverAppCallInnerTransactionFees),
-      ...(args.sendParams ?? {}),
-      ...(args.simulateBeforeSend ? { populateAppCallResources: true } : {}),
+    if (args.simulate) {
+      return await args.composer.simulate(args.simulate)
     }
-    return await args.composer.send(sendParams)
+
+    if (!args.sendParams) {
+      const opt = args.options ?? writeOptionsDefault
+      args.sendParams = createSendParams(opt)
+    }
+
+    return await args.composer.send(args.sendParams)
   }
 
   async createMetadata(args: {
@@ -401,7 +404,6 @@ export class AsaMetadataRegistryWrite {
     metadata: AssetMetadata
     options?: WriteOptions
     sendParams?: SendParams | null
-    simulateBeforeSend?: boolean
   }): Promise<MbrDelta> {
     const composer = await this.buildCreateMetadataGroup({
       assetManager: args.assetManager,
@@ -410,7 +412,6 @@ export class AsaMetadataRegistryWrite {
     })
     const result = await AsaMetadataRegistryWrite.sendGroup({
       composer,
-      simulateBeforeSend: Boolean(args.simulateBeforeSend),
       sendParams: args.sendParams,
       options: args.options,
     })
@@ -424,7 +425,6 @@ export class AsaMetadataRegistryWrite {
     metadata: AssetMetadata
     options?: WriteOptions
     sendParams?: SendParams | null
-    simulateBeforeSend?: boolean
     assumeCurrentSize?: number | null
   }): Promise<MbrDelta> {
     const composer = await this.buildReplaceMetadataGroup({
@@ -435,7 +435,6 @@ export class AsaMetadataRegistryWrite {
     })
     const result = await AsaMetadataRegistryWrite.sendGroup({
       composer,
-      simulateBeforeSend: Boolean(args.simulateBeforeSend),
       sendParams: args.sendParams,
       options: args.options,
     })
@@ -449,9 +448,7 @@ export class AsaMetadataRegistryWrite {
     offset: number
     payload: Uint8Array | ArrayBuffer | number[]
     options?: WriteOptions
-
     sendParams?: SendParams | null
-    simulateBeforeSend?: boolean
   }): Promise<void> {
     const composer = await this.buildReplaceMetadataSliceGroup({
       assetManager: args.assetManager,
@@ -462,7 +459,6 @@ export class AsaMetadataRegistryWrite {
     })
     await AsaMetadataRegistryWrite.sendGroup({
       composer,
-      simulateBeforeSend: Boolean(args.simulateBeforeSend),
       sendParams: args.sendParams,
       options: args.options,
     })
@@ -472,9 +468,7 @@ export class AsaMetadataRegistryWrite {
     assetManager: TransactionSignerAccount
     assetId: bigint | number
     options?: WriteOptions
-
     sendParams?: SendParams | null
-    simulateBeforeSend?: boolean
   }): Promise<MbrDelta> {
     const composer = await this.buildDeleteMetadataGroup({
       assetManager: args.assetManager,
@@ -483,7 +477,6 @@ export class AsaMetadataRegistryWrite {
     })
     const result = await AsaMetadataRegistryWrite.sendGroup({
       composer,
-      simulateBeforeSend: Boolean(args.simulateBeforeSend),
       sendParams: args.sendParams,
       options: args.options,
     })
@@ -501,7 +494,6 @@ export class AsaMetadataRegistryWrite {
     flagIndex: number
     value: boolean
     options?: WriteOptions
-
     sendParams?: SendParams | null
   }): Promise<void> {
     if (!(flagConsts.REV_FLG_ARC20 <= args.flagIndex && args.flagIndex <= flagConsts.REV_FLG_RESERVED_7)) {
@@ -525,7 +517,7 @@ export class AsaMetadataRegistryWrite {
       signer: args.assetManager.signer,
     })
 
-    const sendParams = args.sendParams ?? defaultSendParams(opt.coverAppCallInnerTransactionFees)
+    const sendParams = args.sendParams ?? createSendParams(opt)
     await composer.send(sendParams)
   }
 
@@ -559,7 +551,7 @@ export class AsaMetadataRegistryWrite {
       signer: args.assetManager.signer,
     })
 
-    const sendParams = args.sendParams ?? defaultSendParams(opt.coverAppCallInnerTransactionFees)
+    const sendParams = args.sendParams ?? createSendParams(opt)
     await composer.send(sendParams)
   }
 
@@ -567,7 +559,6 @@ export class AsaMetadataRegistryWrite {
     assetManager: TransactionSignerAccount
     assetId: bigint | number
     options?: WriteOptions
-
     sendParams?: SendParams | null
   }): Promise<void> {
     const opt = args.options ?? writeOptionsDefault
@@ -587,7 +578,7 @@ export class AsaMetadataRegistryWrite {
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    const sendParams = args.sendParams ?? defaultSendParams(opt.coverAppCallInnerTransactionFees)
+    const sendParams = args.sendParams ?? createSendParams(opt)
     await composer.send(sendParams)
   }
 
@@ -596,7 +587,6 @@ export class AsaMetadataRegistryWrite {
     assetId: bigint | number
     newRegistryId: bigint | number
     options?: WriteOptions
-
     sendParams?: SendParams | null
   }): Promise<void> {
     const opt = args.options ?? writeOptionsDefault
@@ -616,7 +606,7 @@ export class AsaMetadataRegistryWrite {
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    const sendParams = args.sendParams ?? defaultSendParams(opt.coverAppCallInnerTransactionFees)
+    const sendParams = args.sendParams ?? createSendParams(opt)
     await composer.send(sendParams)
   }
 }

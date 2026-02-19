@@ -14,10 +14,11 @@
  */
 
 import { describe, expect, test, vi, beforeAll, beforeEach } from 'vitest'
-import { Address, type TransactionSigner } from 'algosdk'
+import { Address, type TransactionSigner, modelsv2 } from 'algosdk'
 import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
-import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
+import { microAlgo, type AlgorandClient } from '@algorandfoundation/algokit-utils'
+import type { SimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
 import {
   InvalidFlagIndexError,
   MissingAppClientError,
@@ -33,7 +34,13 @@ import {
   WriteOptions,
   writeOptionsDefault,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
-import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer, AsaMetadataRegistryFactory } from '@/generated'
+import {
+  AsaMetadataRegistryClient,
+  AsaMetadataRegistryComposer,
+  AsaMetadataRegistryFactory,
+  AsaMetadataRegistryComposerResults,
+} from '@/generated'
+import { parseMbrDelta } from '@/internal/avm'
 import { chunksForSlice, appendExtraResources } from '@/internal/writer'
 import {
   deployRegistry,
@@ -69,6 +76,13 @@ const createMockSigningAccount = (): TransactionSignerAccount => ({
   addr: Address.fromString('IIOWCOZ6GR5KX23BOV5EAPJ7SI3LVN6BBNEIUGFUYX4X2W65H5UXCMIZKU'),
   signer: vi.fn() as unknown as TransactionSigner,
 })
+
+const createMockComposer = (): AsaMetadataRegistryComposer<unknown[]> => {
+  return {
+    send: vi.fn(),
+    simulate: vi.fn(),
+  } as unknown as AsaMetadataRegistryComposer<unknown[]>
+}
 
 // ================================================================
 // AsaMetadataRegistryWrite (a.k.a. writer) Tests
@@ -108,6 +122,7 @@ describe('write options', () => {
     expect(writeOptionsDefault.extraResources).toBe(0)
     expect(writeOptionsDefault.feePaddingTxns).toBe(0)
     expect(writeOptionsDefault.coverAppCallInnerTransactionFees).toBe(true)
+    expect(writeOptionsDefault.populateAppCallResources).toBe(true)
   })
 
   test('custom options', () => {
@@ -116,10 +131,12 @@ describe('write options', () => {
       extraResources: 5,
       feePaddingTxns: 2,
       coverAppCallInnerTransactionFees: false,
+      populateAppCallResources: false,
     }
     expect(opts.extraResources).toBe(5)
     expect(opts.feePaddingTxns).toBe(2)
     expect(opts.coverAppCallInnerTransactionFees).toBe(false)
+    expect(opts.populateAppCallResources).toBe(false)
   })
 })
 
@@ -189,6 +206,162 @@ describe('composer helpers', () => {
     const account = createMockSigningAccount()
     appendExtraResources(composer, { count: 3, sender: account.addr, signer: account.signer })
     expect(composer.extraResources).toHaveBeenCalledTimes(3)
+  })
+})
+
+// ================================================================
+// Send Group Helper Tests
+// ================================================================
+
+describe('send group helper', () => {
+  // Test sendGroup helper behavior (mocked).
+  let composer: AsaMetadataRegistryComposer<unknown[]>
+  let sendResult: AsaMetadataRegistryComposerResults<unknown[]>
+
+  beforeEach(() => {
+    vi.resetAllMocks()
+    composer = createMockComposer()
+    sendResult = { groupId: 'group-id', txIds: ['tx-id'], returns: [], confirmations: [], transactions: [] }
+  })
+
+  test('build send params from options', async () => {
+    // Test sendGroup derives SendParams from WriteOptions.
+    composer.send = vi.fn().mockResolvedValue(sendResult)
+    const options: WriteOptions = {
+      extraResources: 0,
+      feePaddingTxns: 0,
+      coverAppCallInnerTransactionFees: false,
+      populateAppCallResources: false,
+    }
+
+    const result = await AsaMetadataRegistryWrite.sendGroup({
+      composer,
+      sendParams: null,
+      options,
+    })
+
+    expect(result).toBe(sendResult)
+    expect(composer.simulate).not.toHaveBeenCalled()
+    expect(composer.send).toHaveBeenCalledTimes(1)
+    expect(composer.send).toHaveBeenCalledWith({
+      coverAppCallInnerTransactionFees: false,
+      populateAppCallResources: false,
+    })
+  })
+
+  test('use provided send params', async () => {
+    // Test sendGroup uses provided SendParams.
+    const send = vi.fn().mockResolvedValue(sendResult)
+    composer.send = send
+    const sendParams = {
+      coverAppCallInnerTransactionFees: false,
+      populateAppCallResources: false,
+    }
+
+    const result = await AsaMetadataRegistryWrite.sendGroup({
+      composer,
+      sendParams,
+      options: {
+        extraResources: 0,
+        feePaddingTxns: 0,
+        coverAppCallInnerTransactionFees: true,
+        populateAppCallResources: true,
+      } satisfies WriteOptions,
+    })
+
+    expect(result).toBe(sendResult)
+    expect(composer.simulate).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send.mock.calls[0][0]).toBe(sendParams)
+  })
+
+  test('build send params with default options', async () => {
+    // Test sendGroup derives default SendParams when options are omitted.
+    composer.send = vi.fn().mockResolvedValue(sendResult)
+
+    const result = await AsaMetadataRegistryWrite.sendGroup({
+      composer,
+      sendParams: null,
+      options: null,
+    })
+
+    expect(result).toBe(sendResult)
+    expect(composer.simulate).not.toHaveBeenCalled()
+    expect(composer.send).toHaveBeenCalledTimes(1)
+    expect(composer.send).toHaveBeenCalledWith({
+      coverAppCallInnerTransactionFees: true,
+      populateAppCallResources: true,
+    })
+  })
+
+  test('simulate over send', async () => {
+    // Test sendGroup uses simulate when SimulateOptions is provided.
+    composer.simulate = vi.fn().mockResolvedValue(sendResult)
+    const simulateOptions: SimulateOptions = {
+      allowMoreLogging: true,
+      allowEmptySignatures: true,
+      allowUnnamedResources: true,
+      extraOpcodeBudget: 4567,
+      execTraceConfig: { enable: true } as modelsv2.SimulateTraceConfig,
+      round: 999,
+      skipSignatures: false,
+    }
+
+    const result = await AsaMetadataRegistryWrite.sendGroup({
+      composer,
+      options: writeOptionsDefault,
+      simulate: simulateOptions,
+    })
+
+    expect(result).toBe(sendResult)
+    expect(composer.send).not.toHaveBeenCalled()
+    expect(composer.simulate).toHaveBeenCalledTimes(1)
+    expect(composer.simulate).toHaveBeenCalledWith(simulateOptions)
+  })
+})
+
+describe('send group helper simulate', () => {
+  // Test sendGroup helper for simulation.
+  let assetManager: TransactionSignerAccount
+  let writer: AsaMetadataRegistryWrite
+  let boxReader: AlgodBoxReader
+  let reader: AsaMetadataRegistryRead
+  let assetId: bigint
+
+  beforeEach(async () => {
+    writer = new AsaMetadataRegistryWrite({ client })
+    boxReader = new AlgodBoxReader(algorand.client.algod)
+    reader = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader })
+    assetManager = await createFundedAccount(fixture)
+    assetId = await createArc89Asa({ assetManager, appClient: client })
+  })
+
+  test('simulate create metadata', async () => {
+    // Test simulating a create metadata transaction group.
+    const metadata = buildShortMetadata(assetId)
+    await expect(reader.box.getAssetMetadataRecord({ assetId })).rejects.toThrow()
+
+    const composer = await writer.buildCreateMetadataGroup({ assetManager, metadata })
+    // Any custom simulate options can go here
+    const simulateOptions: SimulateOptions = {
+      allowEmptySignatures: true,
+      skipSignatures: true,
+      allowUnnamedResources: true,
+    }
+
+    // Simulate
+    const simulateResult = await AsaMetadataRegistryWrite.sendGroup({
+      composer,
+      simulate: simulateOptions,
+    })
+
+    expect(simulateResult).not.toBeNull()
+    expect(simulateResult.returns).toHaveLength(1)
+    const mbrDelta = parseMbrDelta(simulateResult.returns[0])
+    expect(mbrDelta).toBeInstanceOf(MbrDelta)
+    expect(mbrDelta.isPositive).toBe(true)
+
+    await expect(reader.box.getAssetMetadataRecord({ assetId })).rejects.toThrow()
   })
 })
 
@@ -270,13 +443,6 @@ describe('high-level send methods', () => {
       expect(mbrDelta.isPositive).toBe(true)
     })
 
-    test('create with simulate before send', async () => {
-      // Test creating metadata with simulateBeforeSend=true.
-      const metadata = AssetMetadata.fromJson({ assetId, jsonObj: { name: 'Test Simulate' } })
-      const mbrDelta = await writer.createMetadata({ assetManager, metadata, simulateBeforeSend: true })
-      expect(mbrDelta).toBeInstanceOf(MbrDelta)
-    })
-
     test('create empty metadata returns mbr delta', async () => {
       // Test creating empty metadata returns MbrDelta.
       const metadata = buildEmptyMetadata(assetId)
@@ -301,19 +467,6 @@ describe('high-level send methods', () => {
       const mbrDelta = await writer.createMetadata({ assetManager, metadata })
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
       expect(mbrDelta.isPositive).toBe(true)
-      const boxValue = await reader.box.getAssetMetadataRecord({ assetId })
-      expect(boxValue).not.toBeNull()
-    })
-
-    test('create with simulate before send', async () => {
-      // Test creating metadata with simulateBeforeSend (populates app call resources).
-      const metadata = buildShortMetadata(assetId)
-      const mbrDelta = await writer.createMetadata({
-        assetManager,
-        metadata,
-        simulateBeforeSend: true,
-      })
-      expect(mbrDelta).toBeInstanceOf(MbrDelta)
       const boxValue = await reader.box.getAssetMetadataRecord({ assetId })
       expect(boxValue).not.toBeNull()
     })
@@ -557,6 +710,58 @@ describe('high-level send methods', () => {
       expect(record.header.flags.irreversible.reserved3).toBe(true)
       expect(record.header.flags.reversible.reserved3).toBe(true)
     })
+  })
+})
+
+// ================================================================
+// Single Transaction Compose Simulation Tests
+// ================================================================
+
+describe('write single transaction simulation', () => {
+  // Test direct composer.simulate() usage for single-transaction writer flows.
+  let assetManager: TransactionSignerAccount
+  let writer: AsaMetadataRegistryWrite
+  let boxReader: AlgodBoxReader
+  let reader: AsaMetadataRegistryRead
+  let assetId: bigint
+
+  beforeEach(async () => {
+    writer = new AsaMetadataRegistryWrite({ client })
+    boxReader = new AlgodBoxReader(algorand.client.algod)
+    reader = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader })
+    assetManager = await createFundedAccount(fixture)
+    assetId = await createArc89Asa({ assetManager, appClient: client })
+  })
+
+  test('simulate set reversible flag single transaction', async () => {
+    // Test simulating setReversibleFlag via direct composer.simulate().
+    const metadata = buildShortMetadata(assetId)
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+    const before = await reader.box.getAssetMetadataRecord({ assetId })
+    const suggestedParams = await client.algorand.getSuggestedParams()
+    const composer = writer.client.newGroup()
+    composer.arc89SetReversibleFlag({
+      args: { assetId: metadata.assetId, flag: flags.REV_FLG_ARC20, value: true },
+      sender: assetManager.addr,
+      signer: assetManager.signer,
+      staticFee: microAlgo(Number(suggestedParams.minFee)),
+    })
+    // Any custom simulate options can go here
+    const simulateOptions: SimulateOptions = {
+      allowEmptySignatures: true,
+      skipSignatures: true,
+      allowUnnamedResources: true,
+    }
+    const simulateResult = await composer.simulate(simulateOptions)
+
+    expect(simulateResult).not.toBeNull()
+    expect(simulateResult.simulateResponse).toBeDefined()
+    expect(simulateResult.returns).toHaveLength(1)
+    expect(simulateResult.returns[0]).toBeUndefined()
+
+    const after = await reader.box.getAssetMetadataRecord({ assetId })
+    expect(after).toEqual(before)
   })
 })
 
@@ -868,28 +1073,6 @@ describe('high-level replace methods', () => {
       expect(record).not.toBeNull()
       expect(record.body.rawBytes).toEqual(new TextEncoder().encode('replacement'))
     })
-
-    test('replace with simulate', async () => {
-      // Test replace with simulateBeforeSend.
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
-
-      const newMetadata = AssetMetadata.fromBytes({
-        assetId: metadata.assetId,
-        metadataBytes: new TextEncoder().encode('new'),
-        validateJsonObject: false,
-      })
-      const mbrDelta = await writer.replaceMetadata({
-        assetManager,
-        metadata: newMetadata,
-        simulateBeforeSend: true,
-        assumeCurrentSize: metadata.size,
-      })
-      expect(mbrDelta).toBeInstanceOf(MbrDelta)
-      const record = await reader.box.getAssetMetadataRecord({ assetId })
-      expect(record).not.toBeNull()
-      expect(record.body.rawBytes).toEqual(new TextEncoder().encode('new'))
-    })
   })
 
   describe('replace metadata slice', () => {
@@ -916,25 +1099,6 @@ describe('high-level replace methods', () => {
       // Verify the slice was written at offset 0
       const body = record.body.rawBytes
       expect(new TextDecoder().decode(body.slice(0, 5))).toBe('patch')
-    })
-
-    test('replace slice with simulate', async () => {
-      // Test replacing slice with simulateBeforeSend.
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
-
-      await writer.replaceMetadataSlice({
-        assetManager,
-        assetId,
-        offset: 5,
-        payload: new TextEncoder().encode('updated'),
-        simulateBeforeSend: true,
-      })
-      const record = await reader.box.getAssetMetadataRecord({ assetId })
-      expect(record).not.toBeNull()
-      // Verify the slice was written at offset 5
-      const body = record.body.rawBytes
-      expect(new TextDecoder().decode(body.slice(5, 5 + 7))).toBe('updated')
     })
   })
 })
