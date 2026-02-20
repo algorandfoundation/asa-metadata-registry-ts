@@ -3,7 +3,8 @@ import type { Address, TransactionSigner } from 'algosdk'
 
 import { uint64ToBytesBE } from './bytes'
 import { asUint64BigInt } from './numbers'
-import type { AsaMetadataRegistryComposer } from '../generated'
+import type { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '../generated'
+import { AssetMetadataBox } from '../models'
 
 /** Encode a small u64 note value (used for sequencing). */
 export const noteU64 = (n: number): Uint8Array => {
@@ -53,4 +54,13 @@ export const appendExtraResources = (
       staticFee: microAlgo(0),
     })
   }
+}
+
+/** Read and parse the metadata box for `asset_id`, or return None if not found. */
+export const parseMetadataBox = async (
+  client: AsaMetadataRegistryClient,
+  assetId: bigint | number,
+): Promise<AssetMetadataBox | null> => {
+  const boxValue = await client.state.box.assetMetadata.value(assetId)
+  return boxValue !== undefined ? AssetMetadataBox.parse({ assetId, value: boxValue }) : null
 }

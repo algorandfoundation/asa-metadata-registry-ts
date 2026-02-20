@@ -6,6 +6,7 @@ import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils
 import { AsaMetadataRegistryFactory, AsaMetadataRegistryClient } from '@/generated'
 import {
   ACCOUNT_MBR,
+  ARC3_NAME_SUFFIX,
   Arc90Uri,
   AsaMetadataRegistryWrite,
   AssetMetadata,
@@ -84,11 +85,12 @@ export const createArc90PartialUri = (appClient: AsaMetadataRegistryClient): str
   return new Arc90Uri({ netauth: ARC90_NETAUTH, appId: appClient.appId, boxName: null }).toUri()
 }
 
-export const createTestAsa = async (args: {
+export const createArc89Asa = async (args: {
   assetManager: TransactionSignerAccount
   appClient: AsaMetadataRegistryClient
-  url: string
+  arc89PartialUri?: string
 }): Promise<bigint> => {
+  const url = args.arc89PartialUri ?? createArc90PartialUri(args.appClient)
   const result = await args.appClient.algorand.send.assetCreate({
     sender: args.assetManager.addr,
     total: 42n,
@@ -97,22 +99,24 @@ export const createTestAsa = async (args: {
     decimals: 0,
     defaultFrozen: false,
     manager: args.assetManager.addr,
-    url: args.url,
+    url,
   })
   return result.assetId
 }
 
-export const createArc89Asa = async (args: {
+/** Create a valid ARC-3 ASA (`assetName` ends with `@arc3`) */
+export const createArc3Asa = async (args: {
   assetManager: TransactionSignerAccount
   appClient: AsaMetadataRegistryClient
-  arc89PartialUri?: string
 }): Promise<bigint> => {
-  const partialUri = args.arc89PartialUri ?? createArc90PartialUri(args.appClient)
-  return createTestAsa({
-    assetManager: args.assetManager,
-    appClient: args.appClient,
-    url: partialUri,
+  const arc3Suffix = new TextDecoder().decode(ARC3_NAME_SUFFIX)
+  const result = await args.appClient.algorand.send.assetCreate({
+    sender: args.assetManager.addr,
+    total: 42n,
+    assetName: `ARC3 Test ASA${arc3Suffix}`,
+    manager: args.assetManager.addr,
   })
+  return result.assetId
 }
 
 // ================================================================
@@ -160,6 +164,22 @@ export const buildOversizedMetadata = (arc89Asa: bigint): AssetMetadata => {
   })
   expect(metadata.body.size).toBeGreaterThan(MAX_METADATA_SIZE)
   return metadata
+}
+
+/** Create an ARC-3 compliant metadata payload. */
+export const createArc3Payload = (args: {
+  name: string
+  description?: string
+  image?: string
+  externalUrl?: string
+  properties?: Record<string, unknown>
+}): Record<string, unknown> => {
+  const payload: Record<string, unknown> = { name: args.name }
+  if (args.description) payload['description'] = args.description
+  if (args.image) payload['image'] = args.image
+  if (args.externalUrl) payload['external_url'] = args.externalUrl
+  if (args.properties) payload['properties'] = args.properties
+  return payload
 }
 
 // ================================================================

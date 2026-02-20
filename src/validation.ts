@@ -187,7 +187,7 @@ export const ARC3_PROPERTIES_FLAG_TO_KEY: Partial<Record<number, Arc3PropertiesK
  *
  * Raises `InvalidArc3PropertiesError` if validation fails.
  */
-export const validateArcProperty = (body: Record<string, unknown>, arcKey: Arc3PropertiesKeys): void => {
+export const validateArc3Properties = (body: Record<string, unknown>, arcKey: Arc3PropertiesKeys): void => {
   const properties = body['properties']
   if (!isPlainObject(properties)) {
     throw new InvalidArc3PropertiesError(`${arcKey.toUpperCase()} metadata must have a valid 'properties' field`)
