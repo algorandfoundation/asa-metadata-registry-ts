@@ -20,6 +20,7 @@ import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { microAlgo, type AlgorandClient } from '@algorandfoundation/algokit-utils'
 import type { SimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
 import {
+  InvalidArc3PropertiesError,
   InvalidFlagIndexError,
   MissingAppClientError,
   getDefaultRegistryParams,
@@ -29,6 +30,9 @@ import {
   MbrDelta,
   AsaMetadataRegistryRead,
   AlgodBoxReader,
+  MetadataFlags,
+  ReversibleFlags,
+  IrreversibleFlags,
   // writer
   AsaMetadataRegistryWrite,
   WriteOptions,
@@ -41,7 +45,8 @@ import {
   AsaMetadataRegistryComposerResults,
 } from '@/generated'
 import { parseMbrDelta } from '@/internal/avm'
-import { chunksForSlice, appendExtraResources } from '@/internal/writer'
+import { appendExtraResources, chunksForSlice } from '@/internal/writer'
+import { isPositiveUint64, validateArc3Properties } from '@/validation'
 import {
   deployRegistry,
   getDeployer,
@@ -52,6 +57,8 @@ import {
   buildShortMetadata,
   buildMaxedMetadata,
   uploadMetadata,
+  createArc3Asa,
+  createArc3Payload,
 } from './helpers'
 
 // ================================================================
@@ -206,6 +213,68 @@ describe('composer helpers', () => {
     const account = createMockSigningAccount()
     appendExtraResources(composer, { count: 3, sender: account.addr, signer: account.signer })
     expect(composer.extraResources).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('validate arc3 properties helpers', () => {
+  // Test isPositiveUint64 and validateArc3Properties helpers
+  test.each([
+    [1, true],
+    [Number.MAX_SAFE_INTEGER, true],
+    [Number.MAX_SAFE_INTEGER + 1, false],
+    [0, false],
+    [-1, false],
+    [1n, false],
+    ['1', false],
+    [null, false],
+  ])('is positive uint64', (value, expected) => {
+    // Test isPositiveUint64 accepts safe positive integers and rejects all other values.
+    expect(isPositiveUint64(value)).toBe(expected)
+  })
+
+  test.each(['arc-20', 'arc-62'] as const)('invalid properties throws', (arcKey) => {
+    // Test that validateArcProperty throws InvalidArc3PropertiesError for all invalid body shapes.
+    const invalidBodies: Record<string, unknown>[] = [
+      {},
+      { properties: 'not-a-dict' },
+      { properties: { 'other-key': 1 } },
+      { properties: { 'arc-20': 'not-a-dict', 'arc-62': 'not-a-dict' } },
+      { properties: { 'arc-20': {}, 'arc-62': {} } },
+      {
+        properties: {
+          'arc-20': { 'application-id': 0 },
+          'arc-62': { 'application-id': 0 },
+        },
+      },
+      {
+        properties: {
+          'arc-20': { 'application-id': -1 },
+          'arc-62': { 'application-id': -1 },
+        },
+      },
+      {
+        properties: {
+          'arc-20': { 'application-id': '123' },
+          'arc-62': { 'application-id': '123' },
+        },
+      },
+      {
+        properties: {
+          'arc-20': { 'application-id': 2n ** 64n },
+          'arc-62': { 'application-id': 2n ** 64n },
+        },
+      },
+    ]
+
+    for (const body of invalidBodies) {
+      expect(() => validateArc3Properties(body, arcKey)).toThrow(InvalidArc3PropertiesError)
+    }
+  })
+
+  test.each(['arc-20', 'arc-62'] as const)('valid properties passes', (arcKey) => {
+    // Test that validateArcProperty does not throw for a well-formed body.
+    const body = { properties: { [arcKey]: { 'application-id': 123456 } } }
+    expect(() => validateArc3Properties(body, arcKey)).not.toThrow()
   })
 })
 
@@ -485,6 +554,125 @@ describe('high-level send methods', () => {
     })
   })
 
+  describe('create metadata arc3 compliant', () => {
+    // Test createMetadata validation for declared ARC-3 compliant ASAs.
+    let assetId: bigint
+
+    beforeEach(async () => {
+      assetId = await createArc3Asa({ assetManager, appClient: client })
+    })
+
+    test.each([new ReversibleFlags({ arc20: true }), new ReversibleFlags({ arc62: true })])(
+      'invalid properties throws',
+      async (revFlag) => {
+        // Test that missing properties with arc3 + arc20/arc62 flags raises InvalidArc3PropertiesError.
+        const metadata = AssetMetadata.fromJson({
+          assetId,
+          jsonObj: createArc3Payload({ name: 'ARC3 test', properties: {} }),
+          flags: new MetadataFlags({
+            reversible: revFlag,
+            irreversible: new IrreversibleFlags({ arc3: true }),
+          }),
+        })
+
+        await expect(writer.createMetadata({ assetManager, metadata })).rejects.toThrow(InvalidArc3PropertiesError)
+      },
+    )
+
+    test('invalid properties when no reversible flags are set creates metadata', async () => {
+      // Test that arc3 flag without arc20/arc62 reversible flags skips properties validation.
+      const metadata = AssetMetadata.fromJson({
+        assetId,
+        jsonObj: createArc3Payload({ name: 'ARC3 test', properties: {} }),
+        flags: new MetadataFlags({
+          reversible: ReversibleFlags.empty(),
+          irreversible: new IrreversibleFlags({ arc3: true }),
+        }),
+      })
+
+      const mbrDelta = await writer.createMetadata({ assetManager, metadata })
+      expect(mbrDelta).toBeInstanceOf(MbrDelta)
+      expect(mbrDelta.isPositive).toBe(true)
+    })
+
+    test.each([new ReversibleFlags({ arc20: true }), new ReversibleFlags({ arc62: true })])(
+      'no arc3 flag skips validation',
+      async (revFlag) => {
+        // Test that arc20/arc62 reversible flags without arc3 flag skip properties validation.
+        const metadata = AssetMetadata.fromJson({
+          assetId,
+          jsonObj: createArc3Payload({ name: 'No ARC3', properties: {} }),
+          flags: new MetadataFlags({
+            reversible: revFlag,
+            irreversible: new IrreversibleFlags({ arc3: false }),
+          }),
+        })
+
+        const mbrDelta = await writer.createMetadata({ assetManager, metadata })
+        expect(mbrDelta).toBeInstanceOf(MbrDelta)
+        expect(mbrDelta.isPositive).toBe(true)
+      },
+    )
+
+    test('both flags validate independently', async () => {
+      // Test that both arc20+arc62 flags validates each independently, raising on the invalid one.
+      const metadata = AssetMetadata.fromJson({
+        assetId,
+        jsonObj: createArc3Payload({
+          name: 'ARC3 both flags',
+          properties: { 'arc-20': { 'application-id': 123456 } },
+        }),
+        flags: new MetadataFlags({
+          reversible: new ReversibleFlags({ arc20: true, arc62: true }),
+          irreversible: new IrreversibleFlags({ arc3: true }),
+        }),
+      })
+
+      await expect(writer.createMetadata({ assetManager, metadata })).rejects.toThrow(InvalidArc3PropertiesError)
+    })
+
+    test('valid properties both flags creates metadata', async () => {
+      // Test that both arc20+arc62 flags with valid properties creates metadata successfully.
+      const metadata = AssetMetadata.fromJson({
+        assetId,
+        jsonObj: createArc3Payload({
+          name: 'ARC3 both flags valid',
+          properties: {
+            'arc-20': { 'application-id': 123456 },
+            'arc-62': { 'application-id': 654321 },
+          },
+        }),
+        flags: new MetadataFlags({
+          reversible: new ReversibleFlags({ arc20: true, arc62: true }),
+          irreversible: new IrreversibleFlags({ arc3: true }),
+        }),
+      })
+
+      const mbrDelta = await writer.createMetadata({ assetManager, metadata })
+      expect(mbrDelta).toBeInstanceOf(MbrDelta)
+      expect(mbrDelta.isPositive).toBe(true)
+    })
+
+    test.each([
+      [new ReversibleFlags({ arc20: true }), 'arc-20'],
+      [new ReversibleFlags({ arc62: true }), 'arc-62'],
+    ])('valid properties creates metadata', async (revFlag, propKey) => {
+      // Test that valid properties with arc3 + arc20/arc62 flags creates metadata successfully.
+      const metadata = AssetMetadata.fromJson({
+        assetId,
+        jsonObj: createArc3Payload({ name: 'ARC3 One Flag', properties: { [propKey]: { 'application-id': 123456 } } }),
+        flags: new MetadataFlags({
+          reversible: revFlag,
+          irreversible: new IrreversibleFlags({ arc3: true }),
+        }),
+      })
+
+      const mbrDelta = await writer.createMetadata({ assetManager, metadata })
+      expect(mbrDelta).toBeInstanceOf(MbrDelta)
+      expect(mbrDelta.isPositive).toBe(true)
+    })
+  })
+
   describe('delete metadata', () => {
     // Test deleteMetadata high-level method.
     test('delete existing metadata', async () => {
@@ -503,6 +691,13 @@ describe('high-level send methods', () => {
 
   describe('set reversible flag', () => {
     // Test setReversibleFlag method.
+    // Test createMetadata validation for declared ARC-3 compliant ASAs.
+    let arc3AssetId: bigint
+
+    beforeEach(async () => {
+      arc3AssetId = await createArc3Asa({ assetManager, appClient: client })
+    })
+
     // Flag index validation (unit-testable, throws before chain interaction).
     test('rejects negative flag index', async () => {
       const writer = new AsaMetadataRegistryWrite({ client: mockClient })
@@ -568,6 +763,58 @@ describe('high-level send methods', () => {
       record = await reader.box.getAssetMetadataRecord({ assetId })
       expect(record).not.toBeNull()
       expect(record.header.isArc62CirculatingSupply).toBe(false)
+    })
+
+    test.each([flags.REV_FLG_ARC20, flags.REV_FLG_ARC62])('rejects arc3 invalid properties', async (flagIndex) => {
+      // Test that missing properties with arc3 + arc20/arc62 flags raises InvalidArc3PropertiesError.
+      const metadata = AssetMetadata.fromJson({
+        assetId: arc3AssetId,
+        jsonObj: createArc3Payload({ name: 'ARC3 set flag', properties: {} }),
+        flags: new MetadataFlags({
+          reversible: ReversibleFlags.empty(),
+          irreversible: new IrreversibleFlags({ arc3: true }),
+        }),
+      })
+      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+      await expect(
+        writer.setReversibleFlag({
+          assetManager,
+          assetId: arc3AssetId,
+          flagIndex,
+          value: true,
+        }),
+      ).rejects.toThrow(InvalidArc3PropertiesError)
+    })
+
+    test.each([
+      [flags.REV_FLG_ARC20, 'arc-20', 'isArc20SmartAsa'],
+      [flags.REV_FLG_ARC62, 'arc-62', 'isArc62CirculatingSupply'],
+    ] as const)('valid arc3 properties sets flag', async (flagIndex, arcKey, expectedHeaderProp) => {
+      // Test that enabling an ARC-3 mapped flag succeeds when the metadata body has a valid properties entry.
+      const metadata = AssetMetadata.fromJson({
+        assetId: arc3AssetId,
+        jsonObj: {
+          name: 'ARC3 set flag valid',
+          properties: { [arcKey]: { 'application-id': 123456 } },
+        },
+        flags: new MetadataFlags({
+          reversible: ReversibleFlags.empty(),
+          irreversible: new IrreversibleFlags({ arc3: true }),
+        }),
+      })
+      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+      await writer.setReversibleFlag({
+        assetManager,
+        assetId: arc3AssetId,
+        flagIndex,
+        value: true,
+      })
+
+      const record = await reader.box.getAssetMetadataRecord({ assetId: arc3AssetId })
+      expect(record).not.toBeNull()
+      expect(record.header[expectedHeaderProp]).toBe(true)
     })
   })
 

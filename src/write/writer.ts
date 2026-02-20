@@ -21,9 +21,10 @@ import {
 } from '../generated'
 import { AsaMetadataRegistryAvmRead } from '../read/avm'
 import { parseMbrDelta, returnValues } from '../internal/avm'
+import { ARC3_PROPERTIES_FLAG_TO_KEY, validateArc3Properties } from '../validation'
 import { microAlgo } from '@algorandfoundation/algokit-utils'
 import type { SendParams } from '@algorandfoundation/algokit-utils/types/transaction'
-import { appendExtraPayload, appendExtraResources, chunksForSlice } from '../internal/writer'
+import { appendExtraPayload, appendExtraResources, chunksForSlice, parseMetadataBox } from '../internal/writer'
 import type { SimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
 
 // ---------------------------------------------------------------------------
@@ -405,6 +406,12 @@ export class AsaMetadataRegistryWrite {
     options?: WriteOptions
     sendParams?: SendParams | null
   }): Promise<MbrDelta> {
+    if (args.metadata.flags.irreversible.arc3) {
+      const rev = args.metadata.flags.reversible
+      if (rev.arc20) validateArc3Properties(args.metadata.body.json, 'arc-20')
+      if (rev.arc62) validateArc3Properties(args.metadata.body.json, 'arc-62')
+    }
+
     const composer = await this.buildCreateMetadataGroup({
       assetManager: args.assetManager,
       metadata: args.metadata,
@@ -499,6 +506,14 @@ export class AsaMetadataRegistryWrite {
     if (!(flagConsts.REV_FLG_ARC20 <= args.flagIndex && args.flagIndex <= flagConsts.REV_FLG_RESERVED_7)) {
       throw new InvalidFlagIndexError(`Invalid reversible flag index: ${args.flagIndex}, must be in [0, 7]`)
     }
+
+    if (args.value && args.flagIndex in ARC3_PROPERTIES_FLAG_TO_KEY) {
+      const box = await parseMetadataBox(this.client, args.assetId)
+      if (box !== null && box.header.flags.irreversible.arc3) {
+        validateArc3Properties(box.body.json, ARC3_PROPERTIES_FLAG_TO_KEY[args.flagIndex]!)
+      }
+    }
+
     const opt = args.options ?? writeOptionsDefault
     const sp = await this.client.algorand.getSuggestedParams()
     const minFee = toNumber(sp.minFee)
