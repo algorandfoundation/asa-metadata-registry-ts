@@ -42,13 +42,8 @@ import {
   AsaMetadataRegistryComposerResults,
 } from '@/generated'
 import { parseMbrDelta } from '@/internal/avm'
-import {
-  appendExtraResources,
-  chunksForSlice,
-  isPositiveUint64,
-  toArcPropertyKey,
-  validateArcProperty,
-} from '@/internal/writer'
+import { appendExtraResources, chunksForSlice } from '@/internal/writer'
+import { isPositiveUint64, validateArcProperty } from '@/validation'
 import {
   deployRegistry,
   getDeployer,
@@ -218,13 +213,6 @@ describe('composer helpers', () => {
 
 describe('arc property helpers', () => {
   // Tests for module-level internal ARC-3 compliance helpers.
-  test('to arc property key maps known indices and rejects unknown', () => {
-    // Test that toArcPropertyKey correctly maps known flag indices and throws on unknown.
-    expect(toArcPropertyKey(flags.REV_FLG_ARC20)).toBe('arc-20')
-    expect(toArcPropertyKey(flags.REV_FLG_ARC62)).toBe('arc-62')
-    expect(() => toArcPropertyKey(flags.REV_FLG_NTT)).toThrow()
-  })
-
   test.each([
     [1, true],
     [Number.MAX_SAFE_INTEGER, true],
