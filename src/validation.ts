@@ -6,6 +6,7 @@
 
 import { MetadataArc3Error, MetadataEncodingError, InvalidArc3PropertiesError } from './errors'
 import { REV_FLG_ARC20, REV_FLG_ARC62 } from './flags'
+import { ARC3_PROPERTIES_KEY_ARC20, ARC3_PROPERTIES_KEY_ARC62, ARC3_PROPERTIES_KEYS } from './constants'
 
 const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf])
 
@@ -171,12 +172,12 @@ export const isArc3Metadata = (obj: Record<string, unknown>): boolean => {
 /**
  * ARC-3 metadata `properties` keys for reversible flags.
  */
-export type Arc3PropertiesKeys = 'arc-20' | 'arc-62'
+export type Arc3PropertiesKeys = (typeof ARC3_PROPERTIES_KEYS)[number]
 
 /** Map a reversible flag index to the corresponding ARC-3 properties key. */
 export const ARC3_PROPERTIES_FLAG_TO_KEY: Partial<Record<number, Arc3PropertiesKeys>> = {
-  [REV_FLG_ARC20]: 'arc-20',
-  [REV_FLG_ARC62]: 'arc-62',
+  [REV_FLG_ARC20]: ARC3_PROPERTIES_KEY_ARC20,
+  [REV_FLG_ARC62]: ARC3_PROPERTIES_KEY_ARC62,
 }
 
 /**

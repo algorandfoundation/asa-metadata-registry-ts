@@ -16,4 +16,11 @@ describe('constants', () => {
 
     expect(c.ARC89_GET_METADATA_RETURN_FIXED_SIZE + c.PAGE_SIZE).toBeLessThanOrEqual(c.MAX_LOG_SIZE)
   })
+
+  test('arc3 properties keys are in sync', () => {
+    // Ensure ARC3_PROPERTIES_KEYS and individual key constants stay in sync if new ARC keys are added.
+    expect(c.ARC3_PROPERTIES_KEYS).toContain(c.ARC3_PROPERTIES_KEY_ARC20)
+    expect(c.ARC3_PROPERTIES_KEYS).toContain(c.ARC3_PROPERTIES_KEY_ARC62)
+    expect(c.ARC3_PROPERTIES_KEYS.length).toBe(2)
+  })
 })
