@@ -65,6 +65,11 @@
     "@algorandfoundation/algokit-utils": "^9.0.0",
     "algosdk": "^3.0.0"
   },
+  "pnpm": {
+    "overrides": {
+      "minimatch": ">=10.2.1"
+    }
+  },
   "lint-staged": {
     "*.{ts,js,mjs,cjs}": [
       "prettier --write",
