@@ -56,7 +56,7 @@ export const appendExtraResources = (
   }
 }
 
-/** Read and parse the metadata box for `asset_id`, or return None if not found. */
+/** Read and parse the metadata box for `asset_id`, or return `null` if not found. */
 export const parseMetadataBox = async (
   client: AsaMetadataRegistryClient,
   assetId: bigint | number,
