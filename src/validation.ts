@@ -174,7 +174,7 @@ export const isArc3Metadata = (obj: Record<string, unknown>): boolean => {
 export type Arc3PropertiesKeys = 'arc-20' | 'arc-62'
 
 /** Map a reversible flag index to the corresponding ARC-3 properties key. */
-export const ARC3_PROPERTIES_FLAG_TO_KEY: Record<number, Arc3PropertiesKeys> = {
+export const ARC3_PROPERTIES_FLAG_TO_KEY: Partial<Record<number, Arc3PropertiesKeys>> = {
   [REV_FLG_ARC20]: 'arc-20',
   [REV_FLG_ARC62]: 'arc-62',
 }
