@@ -16,39 +16,54 @@ export const TESTNET_ASA_METADATA_REGISTRY_APP_ID = 753_324_084 as const
 
 export type RegistryNetwork = 'mainnet' | 'testnet' | 'localnet'
 
-export interface RegistryDeployment {
-  /** Network name (`mainnet` or `testnet`). */
-  network: RegistryNetwork
-  /** Base64 genesis hash. */
-  genesisHashB64: string | null
-  /** Registry App ID; may be `null` when unknown/TBD. */
-  appId: number | null
-  /** Optional creator address for trusted resolution. */
-  creatorAddress?: string | null
-  /** Optional ARC-90 netauth string. */
-  arc90UriNetauth?: string | null
+export class RegistryDeployment {
+  readonly network: RegistryNetwork
+  readonly genesisHashB64: string | null
+  readonly appId: number | null
+  readonly creatorAddress: string | null
+  readonly arc90UriNetauth: string | null
+
+  constructor(args: {
+    network: RegistryNetwork
+    genesisHashB64: string | null
+    appId: number | null
+    creatorAddress: string | null
+    arc90UriNetauth: string | null
+  }) {
+    this.network = args.network
+    this.genesisHashB64 = args.genesisHashB64
+    this.appId = args.appId
+    this.creatorAddress = args.creatorAddress
+    this.arc90UriNetauth = args.arc90UriNetauth
+
+    if (this.network !== 'localnet' && !this.genesisHashB64) throw new Error('genesisHashB64 required for non-localnet')
+
+    if (this.network !== 'mainnet' && !this.arc90UriNetauth) throw new Error('arc90UriNetauth required for non-mainnet')
+
+    Object.freeze(this)
+  }
 }
 
-export const DEFAULT_DEPLOYMENTS: Readonly<Record<string, RegistryDeployment>> = {
-  localnet: {
-    network: 'testnet',
+export const DEFAULT_DEPLOYMENTS: Readonly<Record<RegistryNetwork, RegistryDeployment>> = {
+  localnet: new RegistryDeployment({
+    network: 'localnet',
     genesisHashB64: null,
     appId: null,
     creatorAddress: null,
-    arc90UriNetauth: 'net:locanet',
-  },
-  testnet: {
+    arc90UriNetauth: 'net:localnet',
+  }),
+  testnet: new RegistryDeployment({
     network: 'testnet',
     genesisHashB64: TESTNET_GH_B64,
     appId: TESTNET_ASA_METADATA_REGISTRY_APP_ID,
     creatorAddress: TESTNET_TRUSTED_DEPLOYER_ADDR,
     arc90UriNetauth: 'net:testnet',
-  },
-  mainnet: {
+  }),
+  mainnet: new RegistryDeployment({
     network: 'mainnet',
     genesisHashB64: MAINNET_GH_B64,
     appId: null, // mainnet app id is TBD.
     creatorAddress: MAINNET_TRUSTED_DEPLOYER_ADDR,
     arc90UriNetauth: null,
-  },
+  }),
 } as const
