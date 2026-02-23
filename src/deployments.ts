@@ -14,13 +14,13 @@ export const TESTNET_TRUSTED_DEPLOYER_ADDR = 'QYK5DXJ27Y7WIWUJMP3FFOTEU56L4KTRP4
 
 export const TESTNET_ASA_METADATA_REGISTRY_APP_ID = 753_324_084 as const
 
-export type RegistryNetwork = 'mainnet' | 'testnet'
+export type RegistryNetwork = 'mainnet' | 'testnet' | 'localnet'
 
 export interface RegistryDeployment {
   /** Network name (`mainnet` or `testnet`). */
   network: RegistryNetwork
   /** Base64 genesis hash. */
-  genesisHashB64: string
+  genesisHashB64: string | null
   /** Registry App ID; may be `null` when unknown/TBD. */
   appId: number | null
   /** Optional creator address for trusted resolution. */
@@ -30,6 +30,13 @@ export interface RegistryDeployment {
 }
 
 export const DEFAULT_DEPLOYMENTS: Readonly<Record<string, RegistryDeployment>> = {
+  localnet: {
+    network: 'testnet',
+    genesisHashB64: null,
+    appId: null,
+    creatorAddress: null,
+    arc90UriNetauth: 'net:locanet',
+  },
   testnet: {
     network: 'testnet',
     genesisHashB64: TESTNET_GH_B64,
