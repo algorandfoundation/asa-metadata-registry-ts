@@ -68,3 +68,12 @@ export class RegistryResolutionError extends AsaMetadataRegistryError {}
  * but not ARC3 compliant, the ASA's metadata hash must match the computed hash.
  */
 export class MetadataHashMismatchError extends AsaMetadataRegistryError {}
+
+/**
+ * Raised when metadata is declared as ARC-3 and ARC-20 or ARC-62 compliant but
+ * is missing or has an invalid `properties` field.
+ *
+ * The `properties` field must include the relevant ARC key ("arc-20" or "arc-62")
+ * as an object with an "application-id" key set to a valid app ID (positive uint64).
+ */
+export class InvalidArc3PropertiesError extends AsaMetadataRegistryError {}

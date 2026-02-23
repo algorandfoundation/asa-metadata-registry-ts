@@ -66,6 +66,9 @@ export const ARC3_NAME_SUFFIX = utf8('@arc3')
 export const ARC3_URL_SUFFIX = utf8('#arc3')
 export const ARC3_HASH_AM_PREFIX = utf8('arc0003/am')
 export const ARC3_HASH_AMJ_PREFIX = utf8('arc0003/amj')
+export const ARC3_PROPERTIES_KEY_ARC20 = 'arc-20' as const
+export const ARC3_PROPERTIES_KEY_ARC62 = 'arc-62' as const
+export const ARC3_PROPERTIES_KEYS = [ARC3_PROPERTIES_KEY_ARC20, ARC3_PROPERTIES_KEY_ARC62] as const // SDK only
 
 // ---------------------------------------------------------------------------
 // ARC-90 constants

@@ -4,7 +4,9 @@
  * Ported from Python `asa_metadata_registry/validation.py`.
  */
 
-import { MetadataArc3Error, MetadataEncodingError } from './errors'
+import { MetadataArc3Error, MetadataEncodingError, InvalidArc3PropertiesError } from './errors'
+import { REV_FLG_ARC20, REV_FLG_ARC62 } from './flags'
+import { ARC3_PROPERTIES_KEY_ARC20, ARC3_PROPERTIES_KEY_ARC62, ARC3_PROPERTIES_KEYS } from './constants'
 
 const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf])
 
@@ -18,6 +20,17 @@ const startsWith = (data: Uint8Array, prefix: Uint8Array): boolean => {
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/**
+ * Validate a positive uint64 represented as a JSON-parsed number.
+ * @remarks Since parsing from JSON, expect a `number` input.
+ *
+ * @returns `true` if the value is type `number` and fits within the safe
+ * integer range (2**53 - 1) and is greater than 0, `false` otherwise
+ */
+export const isPositiveUint64 = (value: unknown): boolean => {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+}
 
 /**
  * Decode ARC-89 metadata bytes into a JS object.
@@ -154,4 +167,39 @@ export const validateArc3Schema = (obj: Record<string, unknown>): void => {
 export const isArc3Metadata = (obj: Record<string, unknown>): boolean => {
   const indicator = new Set(['decimals', 'properties', 'localization'])
   return Object.keys(obj).some((k) => indicator.has(k))
+}
+
+/**
+ * ARC-3 metadata `properties` keys for reversible flags.
+ */
+export type Arc3PropertiesKeys = (typeof ARC3_PROPERTIES_KEYS)[number]
+
+/** Map a reversible flag index to the corresponding ARC-3 properties key. */
+export const ARC3_PROPERTIES_FLAG_TO_KEY: Partial<Record<number, Arc3PropertiesKeys>> = {
+  [REV_FLG_ARC20]: ARC3_PROPERTIES_KEY_ARC20,
+  [REV_FLG_ARC62]: ARC3_PROPERTIES_KEY_ARC62,
+}
+
+/**
+ * Validate that ARC-3 metadata `body` has a valid `arcKey` entry in properties.
+ *
+ * Per ARC-20 and ARC-62, the value must be an object with an "application-id" key
+ * whose value is a valid app ID (positive uint64).
+ *
+ * Raises `InvalidArc3PropertiesError` if validation fails.
+ */
+export const validateArc3Properties = (body: Record<string, unknown>, arcKey: Arc3PropertiesKeys): void => {
+  const properties = body['properties']
+  if (!isPlainObject(properties)) {
+    throw new InvalidArc3PropertiesError(`${arcKey.toUpperCase()} metadata must have a valid 'properties' field`)
+  }
+
+  const arcValue = properties[arcKey]
+  if (!isPlainObject(arcValue)) {
+    throw new InvalidArc3PropertiesError(`properties['${arcKey}'] must be an object`)
+  }
+
+  if (!isPositiveUint64(arcValue['application-id'])) {
+    throw new InvalidArc3PropertiesError(`properties['${arcKey}']['application-id'] must be a positive uint64`)
+  }
 }
