@@ -44,14 +44,7 @@ export class RegistryDeployment {
   }
 }
 
-export const DEFAULT_DEPLOYMENTS: Readonly<Record<RegistryNetwork, RegistryDeployment>> = {
-  localnet: new RegistryDeployment({
-    network: 'localnet',
-    genesisHashB64: null,
-    appId: null,
-    creatorAddress: null,
-    arc90UriNetauth: 'net:localnet',
-  }),
+export const DEFAULT_DEPLOYMENTS: Readonly<Record<string, RegistryDeployment>> = {
   testnet: new RegistryDeployment({
     network: 'testnet',
     genesisHashB64: TESTNET_GH_B64,
