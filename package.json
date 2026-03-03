@@ -50,7 +50,7 @@
     "@vitest/coverage-v8": "^4.0.18",
     "algosdk": "^3.5.2",
     "concurrently": "^9.2.1",
-    "eslint": "^9.39.3",
+    "eslint": "^10.0.2",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
     "eslint-plugin-unused-imports": "^4.4.1",
