@@ -41,14 +41,13 @@
   },
   "homepage": "https://github.com/algorandfoundation/asa-metadata-registry-ts#readme",
   "devDependencies": {
-    "@algorandfoundation/algokit-client-generator": "^6.0.1",
-    "@algorandfoundation/algokit-utils": "^9.2.0",
+    "@algorandfoundation/algokit-client-generator": "7.0.0-alpha.6",
+    "@algorandfoundation/algokit-utils": "10.0.0-alpha.40",
     "@eslint/js": "^9.39.3",
     "@types/node": "^25.3.3",
     "@typescript-eslint/eslint-plugin": "^8.56.1",
     "@typescript-eslint/parser": "^8.56.1",
     "@vitest/coverage-v8": "^4.0.18",
-    "algosdk": "^3.5.2",
     "concurrently": "^9.2.1",
     "eslint": "^10.0.2",
     "eslint-config-prettier": "^10.1.8",
@@ -62,8 +61,7 @@
     "vitest": "^4.0.18"
   },
   "peerDependencies": {
-    "@algorandfoundation/algokit-utils": "^9.0.0",
-    "algosdk": "^3.0.0"
+    "@algorandfoundation/algokit-utils": ">=10.0.0-alpha.40"
   },
   "pnpm": {
     "overrides": {

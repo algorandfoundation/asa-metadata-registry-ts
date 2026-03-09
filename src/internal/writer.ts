@@ -1,5 +1,6 @@
 import { microAlgo } from '@algorandfoundation/algokit-utils'
-import type { Address, TransactionSigner } from 'algosdk'
+import type { Address } from '@algorandfoundation/algokit-utils'
+import type { TransactionSigner } from '@algorandfoundation/algokit-utils/transact'
 
 import { uint64ToBytesBE } from './bytes'
 import { asUint64BigInt } from './numbers'

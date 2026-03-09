@@ -4,7 +4,7 @@
  * Ported from Python `asa_metadata_registry/read/reader.py`.
  */
 
-import type { SimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
+import type { SimulateOptions } from '@algorandfoundation/algokit-utils/composer'
 import { AlgodBoxReader } from '../algod'
 import { Arc90Uri } from '../codec'
 import { InvalidArc90UriError, MetadataDriftError, MissingAppClientError, RegistryResolutionError } from '../errors'

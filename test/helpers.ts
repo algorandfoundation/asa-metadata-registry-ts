@@ -1,8 +1,7 @@
 import { expect } from 'vitest'
 import { algo, microAlgo } from '@algorandfoundation/algokit-utils'
-import type { AlgorandClient } from '@algorandfoundation/algokit-utils/types/algorand-client'
-import type { AlgorandFixture } from '@algorandfoundation/algokit-utils/types/testing'
-import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
+import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
+import type { AlgorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { AsaMetadataRegistryFactory, AsaMetadataRegistryClient } from '@/generated'
 import {
   ACCOUNT_MBR,
@@ -18,6 +17,7 @@ import {
   MAX_METADATA_SIZE,
   SHORT_METADATA_SIZE,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
+import { AddressWithSigners } from '@algorandfoundation/algokit-utils/transact'
 
 const ARC90_NETAUTH = process.env.ARC90_NETAUTH ?? 'net:localnet'
 const textEncoder = new TextEncoder()
@@ -34,14 +34,14 @@ export const sampleJsonObj = {
 // Account helpers
 // ================================================================
 
-export const getDeployer = (fixture: AlgorandFixture): TransactionSignerAccount => {
+export const getDeployer = (fixture: AlgorandFixture): AddressWithSigners => {
   return fixture.context.testAccount
 }
 
 export const createFundedAccount = async (
   fixture: AlgorandFixture,
   funds = algo(1000),
-): Promise<TransactionSignerAccount> => {
+): Promise<AddressWithSigners> => {
   return await fixture.context.generateAccount({ initialFunds: funds })
 }
 
@@ -51,7 +51,7 @@ export const createFundedAccount = async (
 
 export const createFactory = (args: {
   algorand: AlgorandClient
-  deployer: TransactionSignerAccount
+  deployer: AddressWithSigners
 }): AsaMetadataRegistryFactory => {
   return new AsaMetadataRegistryFactory({
     algorand: args.algorand,
@@ -66,7 +66,7 @@ export const createFactory = (args: {
 
 export const deployRegistry = async (args: {
   factory: AsaMetadataRegistryFactory
-  deployer: TransactionSignerAccount
+  deployer: AddressWithSigners
 }): Promise<AsaMetadataRegistryClient> => {
   const { appClient } = await args.factory.send.create.bare()
   await args.factory.algorand.send.payment({
@@ -86,7 +86,7 @@ export const createArc90PartialUri = (appClient: AsaMetadataRegistryClient): str
 }
 
 export const createArc89Asa = async (args: {
-  assetManager: TransactionSignerAccount
+  assetManager: AddressWithSigners
   appClient: AsaMetadataRegistryClient
   arc89PartialUri?: string
 }): Promise<bigint> => {
@@ -106,7 +106,7 @@ export const createArc89Asa = async (args: {
 
 /** Create a valid ARC-3 ASA (`assetName` ends with `@arc3`) */
 export const createArc3Asa = async (args: {
-  assetManager: TransactionSignerAccount
+  assetManager: AddressWithSigners
   appClient: AsaMetadataRegistryClient
 }): Promise<bigint> => {
   const arc3Suffix = new TextDecoder().decode(ARC3_NAME_SUFFIX)
@@ -188,7 +188,7 @@ export const createArc3Payload = (args: {
 
 export const uploadMetadata = async (args: {
   writer: AsaMetadataRegistryWrite
-  assetManager: TransactionSignerAccount
+  assetManager: AddressWithSigners
   appClient: AsaMetadataRegistryClient
   metadata: AssetMetadata
   immutable?: boolean
