@@ -13,7 +13,6 @@
  */
 
 import { describe, expect, test, beforeAll, vi } from 'vitest'
-import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import {
@@ -42,6 +41,7 @@ import {
   buildMaxedMetadata,
   uploadMetadata,
 } from './helpers'
+import { AddressWithSigners } from '@algorandfoundation/algokit-utils/transact'
 
 // ================================================================
 // AsaMetadataRegistryRead (a.k.a. reader) Integration Tests
@@ -56,8 +56,8 @@ const fixture = algorandFixture()
 let algorand: AlgorandClient
 let client: AsaMetadataRegistryClient
 let factory: AsaMetadataRegistryFactory
-let deployer: TransactionSignerAccount
-let assetManager: TransactionSignerAccount
+let deployer: AddressWithSigners
+let assetManager: AddressWithSigners
 let writer: AsaMetadataRegistryWrite
 let boxReader: AlgodBoxReader
 

@@ -12,8 +12,7 @@
  */
 
 import { describe, expect, test, vi, beforeAll, beforeEach } from 'vitest'
-import type { modelsv2 } from 'algosdk'
-import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
+import type { Box, Asset } from '@algorandfoundation/algokit-utils/algod-client'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import {
@@ -47,6 +46,7 @@ import {
   buildMaxedMetadata,
   uploadMetadata,
 } from './helpers'
+import { AddressWithSigners } from '@algorandfoundation/algokit-utils/transact'
 
 // ================================================================
 // Mocks
@@ -54,8 +54,8 @@ import {
 
 const createMockAlgod = () => {
   return {
-    getApplicationBoxByName: vi.fn(),
-    getAssetByID: vi.fn(),
+    applicationBoxByName: vi.fn(),
+    assetById: vi.fn(),
   } as AlgodClientSubset
 }
 
@@ -63,23 +63,24 @@ const createMockBoxReader = (mockAlgod: AlgodClientSubset) => {
   return new AlgodBoxReader(mockAlgod)
 }
 
-const createMockBoxResponse = (value?: Uint8Array<ArrayBufferLike>, rawValue = false): modelsv2.Box => {
+const createMockBoxResponse = (value?: Uint8Array<ArrayBufferLike>, rawValue = false): Box => {
   return {
+    round: 0n,
     name: new Uint8Array(),
     value: rawValue ? value : minimalMetadataBoxValue(value),
-  } as modelsv2.Box
+  } as Box
 }
 
-const createMockAssetResponse = (assetId?: bigint, url?: string): modelsv2.Asset => {
+const createMockAssetResponse = (assetId?: bigint, url?: string): Asset => {
   return {
-    index: assetId ?? 12345n,
+    id: assetId ?? 12345n,
     params: {
       total: 1000n,
       decimals: 0,
       name: 'Test Asset',
       url: url ?? '',
     },
-  } as modelsv2.Asset
+  } as Asset
 }
 
 // ================================================================
@@ -113,23 +114,19 @@ describe('get box value', () => {
     // Test getBoxValue with simple response shape {value: Uint8Array}.
     const boxData = new TextEncoder().encode('test_box_value')
     const response = createMockBoxResponse(boxData, true)
-    algod.getApplicationBoxByName = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(response),
-    })
+    algod.applicationBoxByName = vi.fn().mockResolvedValue(response)
 
     const result = await boxReader.getBoxValue({ appId: 123, boxName: new TextEncoder().encode('test_box') })
 
     expect(result.value).toEqual(boxData)
-    expect(algod.getApplicationBoxByName).toHaveBeenCalledWith(123n, new TextEncoder().encode('test_box'))
+    expect(algod.applicationBoxByName).toHaveBeenCalledWith(123n, new TextEncoder().encode('test_box'))
   })
 
   test('get box value empty bytes', async () => {
     // Test getBoxValue with empty bytes.
     const emptyBytes = new Uint8Array([0x00])
     const response = createMockBoxResponse(emptyBytes, true)
-    algod.getApplicationBoxByName = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(response),
-    })
+    algod.applicationBoxByName = vi.fn().mockResolvedValue(response)
 
     const result = await boxReader.getBoxValue({ appId: 789, boxName: new TextEncoder().encode('minimal_box') })
 
@@ -138,9 +135,7 @@ describe('get box value', () => {
 
   test('get box value not found 404', async () => {
     // Test getBoxValue raises BoxNotFoundError on 404.
-    algod.getApplicationBoxByName = vi.fn().mockReturnValue({
-      do: vi.fn().mockRejectedValue(new Error('Error 404: Box not found')),
-    })
+    algod.applicationBoxByName = vi.fn().mockRejectedValue(new Error('Error 404: Box not found'))
 
     await expect(
       boxReader.getBoxValue({ appId: 123, boxName: new TextEncoder().encode('missing_box') }),
@@ -152,9 +147,7 @@ describe('get box value', () => {
 
   test('get box value not found message', async () => {
     // Test getBoxValue raises BoxNotFoundError on 'not found' message.
-    algod.getApplicationBoxByName = vi.fn().mockReturnValue({
-      do: vi.fn().mockRejectedValue(new Error('The specified box was not found')),
-    })
+    algod.applicationBoxByName = vi.fn().mockRejectedValue(new Error('The specified box was not found'))
 
     await expect(
       boxReader.getBoxValue({ appId: 123, boxName: new TextEncoder().encode('missing_box') }),
@@ -166,9 +159,7 @@ describe('get box value', () => {
 
   test('get box value unexpected error reraises', async () => {
     // Test getBoxValue re-raises unexpected errors.
-    algod.getApplicationBoxByName = vi.fn().mockReturnValue({
-      do: vi.fn().mockRejectedValue(new Error('Unexpected error')),
-    })
+    algod.applicationBoxByName = vi.fn().mockRejectedValue(new Error('Unexpected error'))
 
     await expect(boxReader.getBoxValue({ appId: 123, boxName: new TextEncoder().encode('error_box') })).rejects.toThrow(
       /Unexpected error/,
@@ -183,9 +174,7 @@ describe('try get metadata box', () => {
     const assetId = 12345n
     const body = new TextEncoder().encode('{"test": "metadata"}')
     const response = createMockBoxResponse(body)
-    algod.getApplicationBoxByName = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(response),
-    })
+    algod.applicationBoxByName = vi.fn().mockResolvedValue(response)
 
     const result = await boxReader.tryGetMetadataBox({ appId: 123, assetId })
 
@@ -193,14 +182,12 @@ describe('try get metadata box', () => {
     expect(result).toBeInstanceOf(AssetMetadataBox)
     expect(result!.assetId).toBe(assetId)
     expect(result!.body.rawBytes).toEqual(body)
-    expect(algod.getApplicationBoxByName).toHaveBeenCalledWith(123n, assetIdToBoxName(assetId))
+    expect(algod.applicationBoxByName).toHaveBeenCalledWith(123n, assetIdToBoxName(assetId))
   })
 
   test('try get metadata box not found', async () => {
     // Test tryGetMetadataBox returns null when box doesn't exist.
-    algod.getApplicationBoxByName = vi.fn().mockReturnValue({
-      do: vi.fn().mockRejectedValue(new Error('Error 404: Not found')),
-    })
+    algod.applicationBoxByName = vi.fn().mockRejectedValue(new Error('Error 404: Not found'))
 
     const result = await boxReader.tryGetMetadataBox({ appId: 123, assetId: 12345 })
 
@@ -213,9 +200,7 @@ describe('try get metadata box', () => {
     const body = new TextEncoder().encode('test')
     const response = createMockBoxResponse(body)
 
-    algod.getApplicationBoxByName = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(response),
-    })
+    algod.applicationBoxByName = vi.fn().mockResolvedValue(response)
 
     const params = getDefaultRegistryParams()
     const result = await boxReader.tryGetMetadataBox({ appId: 123, assetId, params })
@@ -233,9 +218,7 @@ describe('get metadata box', () => {
     const body = new TextEncoder().encode('{"name": "Test Asset"}')
     const response = createMockBoxResponse(body)
 
-    algod.getApplicationBoxByName = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(response),
-    })
+    algod.applicationBoxByName = vi.fn().mockResolvedValue(response)
 
     const result = await boxReader.getMetadataBox({ appId: 456, assetId })
 
@@ -246,9 +229,7 @@ describe('get metadata box', () => {
 
   test('get metadata box not found raises', async () => {
     // Test getMetadataBox raises BoxNotFoundError when box doesn't exist.
-    algod.getApplicationBoxByName = vi.fn().mockReturnValue({
-      do: vi.fn().mockRejectedValue(new Error('404 Not found')),
-    })
+    algod.applicationBoxByName = vi.fn().mockRejectedValue(new Error('404 Not found'))
 
     await expect(boxReader.getMetadataBox({ appId: 123, assetId: 12345 })).rejects.toThrow(BoxNotFoundError)
     await expect(boxReader.getMetadataBox({ appId: 123, assetId: 12345 })).rejects.toThrow(/Metadata box not found/)
@@ -265,9 +246,7 @@ describe('get asset metadata record', () => {
     const body = new TextEncoder().encode('{"description": "Test metadata"}')
     const response = createMockBoxResponse(body)
 
-    algod.getApplicationBoxByName = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(response),
-    })
+    algod.applicationBoxByName = vi.fn().mockResolvedValue(response)
 
     const result = await boxReader.getAssetMetadataRecord({ appId, assetId })
 
@@ -285,9 +264,7 @@ describe('get asset metadata record', () => {
     const body = new TextEncoder().encode('{}')
     const response = createMockBoxResponse(body)
 
-    algod.getApplicationBoxByName = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(response),
-    })
+    algod.applicationBoxByName = vi.fn().mockResolvedValue(response)
 
     const params = getDefaultRegistryParams()
     const result = await boxReader.getAssetMetadataRecord({ appId, assetId, params })
@@ -304,23 +281,19 @@ describe('get asset info', () => {
     const assetId = 123456n
     const assetInfo = createMockAssetResponse(assetId)
 
-    algod.getAssetByID = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(assetInfo),
-    })
+    algod.assetById = vi.fn().mockResolvedValue(assetInfo)
 
     const result = await boxReader.getAssetInfo(assetId)
 
     expect(result).toEqual(assetInfo)
-    expect(algod.getAssetByID).toHaveBeenCalledWith(assetId)
+    expect(algod.assetById).toHaveBeenCalledWith(assetId)
   })
 
   test('get asset info not found 404', async () => {
     // Test getAssetInfo raises AsaNotFoundError on 404.
     const assetId = 99999n
 
-    algod.getAssetByID = vi.fn().mockReturnValue({
-      do: vi.fn().mockRejectedValue(new Error('Error 404: Asset not found')),
-    })
+    algod.assetById = vi.fn().mockRejectedValue(new Error('Error 404: Asset not found'))
 
     await expect(boxReader.getAssetInfo(assetId)).rejects.toThrow(AsaNotFoundError)
     await expect(boxReader.getAssetInfo(assetId)).rejects.toThrow(`ASA ${assetId} not found`)
@@ -329,9 +302,7 @@ describe('get asset info', () => {
   test('get asset info not found message', async () => {
     // Test getAssetInfo raises AsaNotFoundError on 'not found' message.
     const assetId = 88888n
-    algod.getAssetByID = vi.fn().mockReturnValue({
-      do: vi.fn().mockRejectedValue(new Error('asset not found in ledger')),
-    })
+    algod.assetById = vi.fn().mockRejectedValue(new Error('asset not found in ledger'))
 
     await expect(boxReader.getAssetInfo(assetId)).rejects.toThrow(AsaNotFoundError)
     await expect(boxReader.getAssetInfo(assetId)).rejects.toThrow(`ASA ${assetId} not found`)
@@ -341,9 +312,7 @@ describe('get asset info', () => {
     // Test getAssetInfo re-raises unexpected errors.
     const assetId = 77777n
 
-    algod.getAssetByID = vi.fn().mockReturnValue({
-      do: vi.fn().mockRejectedValue(new Error('Network error')),
-    })
+    algod.assetById = vi.fn().mockRejectedValue(new Error('Network error'))
 
     await expect(boxReader.getAssetInfo(assetId)).rejects.toThrow(/Network error/)
   })
@@ -355,9 +324,7 @@ describe('get asset url', () => {
     // Test getAssetUrl returns URL when present.
     const url = 'https://example.com/metadata'
     const assetInfo = createMockAssetResponse(123n, url)
-    algod.getAssetByID = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(assetInfo),
-    })
+    algod.assetById = vi.fn().mockResolvedValue(assetInfo)
 
     const result = await boxReader.getAssetUrl(123)
 
@@ -367,14 +334,12 @@ describe('get asset url', () => {
   test('get asset url without url', async () => {
     // Test getAssetUrl returns null when URL is not present.
     const assetInfo = {
-      index: 123n,
+      id: 123n,
       params: {
         name: 'Test',
       },
-    } as modelsv2.Asset
-    algod.getAssetByID = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(assetInfo),
-    })
+    } as Asset
+    algod.assetById = vi.fn().mockResolvedValue(assetInfo)
 
     const result = await boxReader.getAssetUrl(123)
 
@@ -385,9 +350,7 @@ describe('get asset url', () => {
     // Test getAssetUrl with empty URL string.
     const assetInfo = createMockAssetResponse(123n)
 
-    algod.getAssetByID = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(assetInfo),
-    })
+    algod.assetById = vi.fn().mockResolvedValue(assetInfo)
 
     const result = await boxReader.getAssetUrl(123)
 
@@ -397,11 +360,9 @@ describe('get asset url', () => {
   test('get asset url no params', async () => {
     // Test getAssetUrl returns null when params is missing.
     const assetInfo = {
-      index: 123n,
-    } as modelsv2.Asset
-    algod.getAssetByID = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(assetInfo),
-    })
+      id: 123n,
+    } as Asset
+    algod.assetById = vi.fn().mockResolvedValue(assetInfo)
 
     const result = await boxReader.getAssetUrl(123)
 
@@ -411,14 +372,12 @@ describe('get asset url', () => {
   test('get asset url numeric value', async () => {
     // Test getAssetUrl converts numeric URL to string.
     const assetInfo = {
-      index: 123n,
+      id: 123n,
       params: {
         url: 12345 as any,
       },
-    } as modelsv2.Asset
-    algod.getAssetByID = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(assetInfo),
-    })
+    } as Asset
+    algod.assetById = vi.fn().mockResolvedValue(assetInfo)
 
     const result = await boxReader.getAssetUrl(123)
 
@@ -433,9 +392,7 @@ describe('resolve metadata uri from asset', () => {
     const assetId = 12345n
     const partialUri = 'algorand://net:testnet/app/456?box='
     const assetInfo = createMockAssetResponse(assetId, partialUri)
-    algod.getAssetByID = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(assetInfo),
-    })
+    algod.assetById = vi.fn().mockResolvedValue(assetInfo)
 
     const result = await boxReader.resolveMetadataUriFromAsset({ assetId })
 
@@ -448,14 +405,12 @@ describe('resolve metadata uri from asset', () => {
   test('resolve metadata uri no url raises', async () => {
     // Test resolveMetadataUriFromAsset raises when ASA has no URL.
     const assetInfo = {
-      index: 123n,
+      id: 123n,
       params: {
         name: 'Test',
       },
-    } as modelsv2.Asset
-    algod.getAssetByID = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(assetInfo),
-    })
+    } as Asset
+    algod.assetById = vi.fn().mockResolvedValue(assetInfo)
 
     await expect(boxReader.resolveMetadataUriFromAsset({ assetId: 123 })).rejects.toThrow(InvalidArc90UriError)
     await expect(boxReader.resolveMetadataUriFromAsset({ assetId: 123 })).rejects.toThrow(
@@ -466,9 +421,7 @@ describe('resolve metadata uri from asset', () => {
   test('resolve metadata uri empty url raises', async () => {
     // Test resolveMetadataUriFromAsset raises when URL is empty.
     const assetInfo = createMockAssetResponse(123n)
-    algod.getAssetByID = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(assetInfo),
-    })
+    algod.assetById = vi.fn().mockResolvedValue(assetInfo)
 
     await expect(boxReader.resolveMetadataUriFromAsset({ assetId: 123 })).rejects.toThrow(InvalidArc90UriError)
     await expect(boxReader.resolveMetadataUriFromAsset({ assetId: 123 })).rejects.toThrow(
@@ -479,9 +432,7 @@ describe('resolve metadata uri from asset', () => {
   test('resolve metadata uri invalid uri format', async () => {
     // Test resolveMetadataUriFromAsset raises on invalid URI format.
     const assetInfo = createMockAssetResponse(123n, 'https://example.com')
-    algod.getAssetByID = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(assetInfo),
-    })
+    algod.assetById = vi.fn().mockResolvedValue(assetInfo)
 
     await expect(boxReader.resolveMetadataUriFromAsset({ assetId: 123 })).rejects.toThrow(InvalidArc90UriError)
   })
@@ -489,9 +440,7 @@ describe('resolve metadata uri from asset', () => {
   test('resolve metadata uri generic parse error', async () => {
     // Test resolveMetadataUriFromAsset raises InvalidArc90UriError for malformed URIs.
     const assetInfo = createMockAssetResponse(123n, 'algorand://net:testnet/app/NOTANUMBER?box=')
-    algod.getAssetByID = vi.fn().mockReturnValue({
-      do: vi.fn().mockResolvedValue(assetInfo),
-    })
+    algod.assetById = vi.fn().mockResolvedValue(assetInfo)
 
     await expect(boxReader.resolveMetadataUriFromAsset({ assetId: 123 })).rejects.toThrow(InvalidArc90UriError)
   })
@@ -510,8 +459,8 @@ describe('algod box reader integration', () => {
   let factory: AsaMetadataRegistryFactory
   let boxReader: AlgodBoxReader
   let writer: AsaMetadataRegistryWrite
-  let deployer: TransactionSignerAccount
-  let assetManager: TransactionSignerAccount
+  let deployer: AddressWithSigners
+  let assetManager: AddressWithSigners
 
   beforeAll(async () => {
     await fixture.newScope()

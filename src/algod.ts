@@ -3,10 +3,9 @@
  *
  * Ported from `asa_metadata_registry/algod.py`.
  * Uses the minimal Algod subset for box reads and ASA params.
- * algosdk.Algodv2 methods follow the request-builder pattern: getX(...).do().
  */
 
-import type { Algodv2, modelsv2 } from 'algosdk'
+import type { AlgodClient, Box, Asset } from '@algorandfoundation/algokit-utils/algod-client'
 import { Arc90Uri, assetIdToBoxName, completePartialAssetUrl } from './codec'
 import { toBigInt } from './internal/numbers'
 import { AsaNotFoundError, BoxNotFoundError, InvalidArc90UriError } from './errors'
@@ -26,7 +25,7 @@ const looksNotFound = (e: unknown): boolean => {
   return msg.includes('404') || msg.includes('not found') || msg.includes('does not exist')
 }
 
-export type AlgodClientSubset = Pick<Algodv2, 'getApplicationBoxByName' | 'getAssetByID'>
+export type AlgodClientSubset = Pick<AlgodClient, 'applicationBoxByName' | 'assetById'>
 
 /**
  * Read ARC-89 metadata by directly reading the registry application box via Algod.
@@ -48,11 +47,11 @@ export class AlgodBoxReader {
    * Fetch a box by name.
    * @throws {BoxNotFoundError} If the box does not exist.
    */
-  async getBoxValue(args: { appId: bigint | number; boxName: Uint8Array }): Promise<modelsv2.Box> {
+  async getBoxValue(args: { appId: bigint | number; boxName: Uint8Array }): Promise<Box> {
     const appId = toBigInt(args.appId)
 
     try {
-      return await this.algod.getApplicationBoxByName(appId, args.boxName).do()
+      return await this.algod.applicationBoxByName(appId, args.boxName)
     } catch (e) {
       if (looksNotFound(e)) throw new BoxNotFoundError('Box not found', { cause: e })
       throw e
@@ -128,11 +127,11 @@ export class AlgodBoxReader {
    * Fetch ASA info from Algod.
    * @throws {AsaNotFoundError} If the ASA does not exist.
    */
-  async getAssetInfo(assetId: bigint | number): Promise<modelsv2.Asset> {
+  async getAssetInfo(assetId: bigint | number): Promise<Asset> {
     const id = toBigInt(assetId)
 
     try {
-      return await this.algod.getAssetByID(id).do()
+      return await this.algod.assetById(id)
     } catch (e) {
       if (looksNotFound(e)) throw new AsaNotFoundError(`ASA ${id} not found`, { cause: e })
       throw e

@@ -14,11 +14,18 @@
  */
 
 import { describe, expect, test, vi, beforeAll, beforeEach } from 'vitest'
-import { Address, type TransactionSigner, modelsv2 } from 'algosdk'
-import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
+import { Address } from '@algorandfoundation/algokit-utils'
+import type {
+  AddressWithSigners,
+  TransactionSigner,
+  MxBytesSigner,
+  DelegatedLsigSigner,
+  ProgramDataSigner,
+} from '@algorandfoundation/algokit-utils/transact'
+import type { SimulateTraceConfig } from '@algorandfoundation/algokit-utils/algod-client'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { microAlgo, type AlgorandClient } from '@algorandfoundation/algokit-utils'
-import type { SimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
+import type { SimulateOptions } from '@algorandfoundation/algokit-utils/composer'
 import {
   InvalidArc3PropertiesError,
   InvalidFlagIndexError,
@@ -79,9 +86,12 @@ const createMockAppClient = (): AsaMetadataRegistryClient => {
   } as unknown as AsaMetadataRegistryClient
 }
 
-const createMockSigningAccount = (): TransactionSignerAccount => ({
+const createMockSigningAccount = (): AddressWithSigners => ({
   addr: Address.fromString('IIOWCOZ6GR5KX23BOV5EAPJ7SI3LVN6BBNEIUGFUYX4X2W65H5UXCMIZKU'),
   signer: vi.fn() as unknown as TransactionSigner,
+  lsigSigner: vi.fn() as unknown as DelegatedLsigSigner,
+  programDataSigner: vi.fn() as unknown as ProgramDataSigner,
+  mxBytesSigner: vi.fn() as unknown as MxBytesSigner,
 })
 
 const createMockComposer = (): AsaMetadataRegistryComposer<unknown[]> => {
@@ -103,7 +113,7 @@ const fixture = algorandFixture()
 let algorand: AlgorandClient
 let client: AsaMetadataRegistryClient
 let factory: AsaMetadataRegistryFactory
-let deployer: TransactionSignerAccount
+let deployer: AddressWithSigners
 
 beforeAll(async () => {
   await fixture.newScope()
@@ -371,8 +381,8 @@ describe('send group helper', () => {
       allowEmptySignatures: true,
       allowUnnamedResources: true,
       extraOpcodeBudget: 4567,
-      execTraceConfig: { enable: true } as modelsv2.SimulateTraceConfig,
-      round: 999,
+      execTraceConfig: { enable: true } as SimulateTraceConfig,
+      round: 999n,
       skipSignatures: false,
     }
 
@@ -391,7 +401,7 @@ describe('send group helper', () => {
 
 describe('send group helper simulate', () => {
   // Test sendGroup helper for simulation.
-  let assetManager: TransactionSignerAccount
+  let assetManager: AddressWithSigners
   let writer: AsaMetadataRegistryWrite
   let boxReader: AlgodBoxReader
   let reader: AsaMetadataRegistryRead
@@ -484,7 +494,7 @@ describe('writer initialization', () => {
 // ================================================================
 
 describe('high-level send methods', () => {
-  let assetManager: TransactionSignerAccount
+  let assetManager: AddressWithSigners
   let writer: AsaMetadataRegistryWrite
   let boxReader: AlgodBoxReader
   let reader: AsaMetadataRegistryRead
@@ -966,7 +976,7 @@ describe('high-level send methods', () => {
 
 describe('write single transaction simulation', () => {
   // Test direct composer.simulate() usage for single-transaction writer flows.
-  let assetManager: TransactionSignerAccount
+  let assetManager: AddressWithSigners
   let writer: AsaMetadataRegistryWrite
   let boxReader: AlgodBoxReader
   let reader: AsaMetadataRegistryRead
@@ -1017,7 +1027,7 @@ describe('write single transaction simulation', () => {
 // ================================================================
 
 describe('group builder methods', () => {
-  let assetManager: TransactionSignerAccount
+  let assetManager: AddressWithSigners
   let writer: AsaMetadataRegistryWrite
 
   beforeAll(async () => {
@@ -1237,7 +1247,7 @@ describe('group builder methods', () => {
 // ================================================================
 
 describe('high-level replace methods', () => {
-  let assetManager: TransactionSignerAccount
+  let assetManager: AddressWithSigners
   let writer: AsaMetadataRegistryWrite
   let boxReader: AlgodBoxReader
   let reader: AsaMetadataRegistryRead

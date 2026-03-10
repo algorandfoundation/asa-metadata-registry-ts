@@ -33,8 +33,8 @@ import { AsaMetadataRegistryClient } from '@/generated'
 
 const createMockAlgod = (): AlgodClientSubset => {
   return {
-    getApplicationBoxByName: vi.fn(),
-    getAssetByID: vi.fn(),
+    applicationBoxByName: vi.fn(),
+    assetById: vi.fn(),
   } as AlgodClientSubset
 }
 
