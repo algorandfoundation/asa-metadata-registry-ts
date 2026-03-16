@@ -33,6 +33,9 @@ export * from './read/reader'
 // Writes (AVM) + send helpers
 export * from './write/writer'
 
+// Migration helpers
+export * from './migrate'
+
 // Facade
 export * from './registry'
 
@@ -55,6 +58,8 @@ export * as avmRead from './read/avm'
 export * as reader from './read/reader'
 
 export * as writer from './write/writer'
+
+export * as migrate from './migrate'
 
 export * as registry from './registry'
 
