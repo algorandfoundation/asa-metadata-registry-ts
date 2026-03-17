@@ -295,12 +295,14 @@ describe('migrate legacy metadata', () => {
     expect(header.flags.irreversible.arc3).toBe(true)
   })
 
-  test('migrate preserves exact metadata', async () => {
+  test('migrate arc69 preserves exact metadata', async () => {
     const originalMetadata: Record<string, unknown> = {
       standard: 'arc69',
       name: 'Test Token',
       description: 'A test token for migration verification',
       image: 'https://example.com/image.png',
+      image_integrity: 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=',
+      image_mimetype: 'image/png',
       properties: {
         string_prop: 'value',
         number_prop: 42,
@@ -309,6 +311,7 @@ describe('migrate legacy metadata', () => {
         array_prop: [1, 2, 3],
         nested_object: { key: 'nested_value' },
       },
+      external_url: 'https://example.com',
       attributes: [
         { trait_type: 'Color', value: 'Blue' },
         { trait_type: 'Size', value: 10 },
@@ -329,12 +332,17 @@ describe('migrate legacy metadata', () => {
       arc3Compliant: false,
     })
 
+    // Verify metadata exists in registry
+    const existence = await registry.read.arc89CheckMetadataExists({ assetId })
+    expect(existence.metadataExists).toBe(true)
+
     // Verify stored metadata exactly matches original
     const stored = await registry.read.getAssetMetadata({ assetId })
     const storedJson = JSON.parse(new TextDecoder().decode(stored.body.rawBytes))
     expect(storedJson).toEqual(originalMetadata)
 
     // Verify specific fields to ensure data types are preserved
+    expect(storedJson.standard).toBe('arc69')
     expect(storedJson.properties.number_prop).toBe(42)
     expect(storedJson.properties.boolean_prop).toBe(true)
     expect(storedJson.properties.null_prop).toBeNull()
@@ -342,6 +350,13 @@ describe('migrate legacy metadata', () => {
     expect(storedJson.properties.nested_object.key).toBe('nested_value')
     expect(storedJson.attributes[0].value).toBe('Blue')
     expect(storedJson.attributes[1].value).toBe(10)
+
+    // Verify RBAC roles are preserved
+    const assetInfo = await algorand.asset.getById(assetId)
+    expect(assetInfo.manager).toBe(assetManager.addr.toString())
+    expect(assetInfo.reserve).toBe(assetManager.addr.toString())
+    expect(assetInfo.freeze).toBe(assetManager.addr.toString())
+    expect(assetInfo.clawback).toBe(assetManager.addr.toString())
   })
 
   test('migrate with custom flags', async () => {
