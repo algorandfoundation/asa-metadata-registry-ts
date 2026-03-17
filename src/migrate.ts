@@ -1,15 +1,12 @@
 /**
  * Legacy ASA migration helpers.
  *
- * Ported from Python `asa_metadata_registry/migrate.py`.
- *
  * Provides helpers to migrate legacy ASA metadata (ARC-3 / ARC-19 / ARC-69)
  * into the ARC-89 metadata registry, emitting an ARC-2 migration message.
  */
 
-import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/account'
+import { AddressWithSigners } from '@algorandfoundation/algokit-utils/transact'
 import { Transaction } from '@algorandfoundation/algokit-utils/transact'
-
 import { ARC2_ARC_NUMBER, ARC2_DATA_FORMAT_JSON, MAX_GROUP_SIZE, MAX_METADATA_SIZE } from './constants'
 import { Arc90Compliance, Arc90Uri } from './codec'
 import { MissingAppClientError } from './errors'
@@ -49,7 +46,7 @@ export function encodeArc2MigrationMessage(uri: string): Uint8Array {
 export async function buildArc2MigrationMessageTxn(args: {
   registry: AsaMetadataRegistry
   assetId: bigint | number
-  assetManager: TransactionSignerAccount
+  assetManager: AddressWithSigners
   metadataUri: string
 }): Promise<Transaction> {
   let write: AsaMetadataRegistryWrite
@@ -102,33 +99,32 @@ function deriveMigrationUri(args: { registry: AsaMetadataRegistry; assetId: bigi
  */
 export async function migrateLegacyMetadataToRegistry(args: {
   registry: AsaMetadataRegistry
-  assetManager: TransactionSignerAccount
+  assetManager: AddressWithSigners
   assetId: bigint | number
   metadata: Record<string, unknown>
   arc3Compliant: boolean
   flags?: MetadataFlags | null
 }): Promise<void> {
-  // 1. Pre-flight: ensure not already migrated
+  // Pre-flight: ensure not already migrated
   const existence = await args.registry.read.arc89CheckMetadataExists({ assetId: args.assetId })
   if (existence.metadataExists) {
     throw new Error(`ASA ${args.assetId} already has metadata in this registry; migration is not allowed`)
   }
 
-  // 2. Validate flags
+  // Validate flags
   if (args.flags?.irreversible.arc89Native) {
     throw new Error('Cannot flag migrated metadata as ARC-89 native')
   }
 
-  // 3. Build AssetMetadata and enforce size bounds
-  const assetMd = AssetMetadata.fromJson({
-    assetId: args.assetId,
-    jsonObj: args.metadata,
-    flags: args.flags ?? undefined,
-    arc3Compliant: args.arc3Compliant,
-  })
-
+  // Build AssetMetadata and enforce size bounds
+  let assetMd: AssetMetadata
   try {
-    assetMd.body.validateSize()
+    assetMd = AssetMetadata.fromJson({
+      assetId: args.assetId,
+      jsonObj: args.metadata,
+      flags: args.flags ?? undefined,
+      arc3Compliant: args.arc3Compliant,
+    })
   } catch (e) {
     if (e instanceof RangeError) {
       throw new Error(
@@ -140,14 +136,14 @@ export async function migrateLegacyMetadataToRegistry(args: {
     throw e
   }
 
-  // 4. Derive migration URI
+  // Derive migration URI
   const metadataUri = deriveMigrationUri({
     registry: args.registry,
     assetId: args.assetId,
     arc3: args.arc3Compliant,
   })
 
-  // 5. Build ARC-2 txn
+  // Build ARC-2 txn
   const arc2Txn = await buildArc2MigrationMessageTxn({
     registry: args.registry,
     assetId: args.assetId,
@@ -155,21 +151,21 @@ export async function migrateLegacyMetadataToRegistry(args: {
     metadataUri,
   })
 
-  // 6. Build create group
+  // Build create group
   const migrateGroup = await args.registry.write.buildCreateMetadataGroup({
     assetManager: args.assetManager,
     metadata: assetMd,
   })
 
-  // 7. Decide send strategy based on group size
+  // Decide send strategy based on group size
   const underlyingComposer = await migrateGroup.composer()
   if (underlyingComposer.count() < MAX_GROUP_SIZE) {
     // Atomic: add ARC-2 txn to the create group
-    migrateGroup.addTransaction(arc2Txn, args.assetManager.signer)
-    await AsaMetadataRegistryWrite.sendGroup({ composer: migrateGroup })
+    migrateGroup.addTransaction(arc2Txn)
+    await migrateGroup.send()
   } else {
     // Sequential: send create first, then ARC-2 separately
-    await AsaMetadataRegistryWrite.sendGroup({ composer: migrateGroup })
-    await args.registry.write.client.algorand.newGroup().addTransaction(arc2Txn, args.assetManager.signer).send()
+    await migrateGroup.send()
+    await args.registry.write.client.algorand.newGroup().addTransaction(arc2Txn).send()
   }
 }

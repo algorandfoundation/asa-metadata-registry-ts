@@ -897,6 +897,9 @@ export class AssetMetadata {
     // Validate round-trip and schema constraints (object)
     decodeMetadataJson(raw)
 
+    const body = new MetadataBody(raw)
+    body.validateSize()
+
     let finalFlags: MetadataFlags
     if (args.flags) {
       finalFlags = args.flags
@@ -911,7 +914,7 @@ export class AssetMetadata {
 
     return new AssetMetadata({
       assetId: args.assetId,
-      body: new MetadataBody(raw),
+      body,
       flags: finalFlags,
       deprecatedBy: args.deprecatedBy ?? 0n,
     })
@@ -929,6 +932,9 @@ export class AssetMetadata {
     const arc3 = Boolean(args.arc3Compliant)
     if (arc3 && !validateJson) throw new Error('arc3Compliant=true requires validateJsonObject=true')
 
+    const body = new MetadataBody(args.metadataBytes)
+    body.validateSize()
+
     if (validateJson) {
       const obj = decodeMetadataJson(args.metadataBytes)
       if (arc3) validateArc3Schema(obj)
@@ -936,7 +942,7 @@ export class AssetMetadata {
 
     return new AssetMetadata({
       assetId: args.assetId,
-      body: new MetadataBody(args.metadataBytes),
+      body,
       flags: args.flags ?? MetadataFlags.empty(),
       deprecatedBy: args.deprecatedBy ?? 0n,
     })
