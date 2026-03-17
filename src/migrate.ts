@@ -77,7 +77,11 @@ export async function buildArc2MigrationMessageTxn(args: {
 // High-level migration helpers
 // ---------------------------------------------------------------------------
 
-function deriveMigrationUri(args: { registry: AsaMetadataRegistry; assetId: bigint | number; arc3: boolean }): string {
+export function deriveMigrationUri(args: {
+  registry: AsaMetadataRegistry
+  assetId: bigint | number
+  arc3: boolean
+}): string {
   const base = args.registry.arc90Uri({ assetId: args.assetId })
   return new Arc90Uri({
     netauth: base.netauth,

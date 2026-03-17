@@ -1,22 +1,9 @@
-/**
- * Comprehensive tests for src/migrate module.
- *
- * Tests cover:
- * - ARC-2 message encoding (JSON format)
- * - ARC-2 migration message transaction building
- * - URI derivation with ARC-90 compliance fragments
- * - Full migration flow with LocalNet integration
- * - RBAC (Role-Based Access Control) preservation
- * - Error handling and edge cases
- */
-
 import { describe, expect, test, beforeAll } from 'vitest'
 import { algo } from '@algorandfoundation/algokit-utils'
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { AddressWithSigners } from '@algorandfoundation/algokit-utils/transact'
 import {
-  Arc90Compliance,
   Arc90Uri,
   AsaMetadataRegistry,
   AssetMetadata,
@@ -27,6 +14,7 @@ import {
   SHORT_METADATA_SIZE,
   encodeArc2MigrationMessage,
   buildArc2MigrationMessageTxn,
+  deriveMigrationUri,
   migrateLegacyMetadataToRegistry,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
 import { AsaMetadataRegistryClient, AsaMetadataRegistryFactory } from '@/generated'
@@ -39,10 +27,6 @@ import {
   createLegacyArc69Asa,
   createArc3Payload,
 } from './helpers'
-
-// ================================================================
-// Test data
-// ================================================================
 
 const ARC90_NETAUTH = process.env.ARC90_NETAUTH ?? 'net:localnet'
 
@@ -69,10 +53,6 @@ const arc3Metadata: Record<string, unknown> = createArc3Payload({
     },
   },
 })
-
-// ================================================================
-// ARC-2 Message Encoding Tests (unit, no blockchain)
-// ================================================================
 
 describe('arc-2 message encoding', () => {
   test('encode basic uri', () => {
@@ -122,10 +102,6 @@ describe('arc-2 message encoding', () => {
   })
 })
 
-// ================================================================
-// Integration test setup
-// ================================================================
-
 const fixture = algorandFixture()
 let algorand: AlgorandClient
 let client: AsaMetadataRegistryClient
@@ -146,42 +122,28 @@ beforeAll(async () => {
   registry = AsaMetadataRegistry.fromAppClient(client, { netauth: ARC90_NETAUTH })
 })
 
-// ================================================================
-// Migration URI Derivation Tests (integration)
-// ================================================================
-
 describe('migration uri derivation', () => {
   test('derive basic uri without compliance fragments', async () => {
     const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
 
-    // Use the public arc90Uri to verify the pattern
-    const baseUri = registry.arc90Uri({ assetId })
-    expect(baseUri.netauth).toBe(ARC90_NETAUTH)
-    expect(baseUri.appId).toBe(client.appId)
-    expect(baseUri.boxName).not.toBeNull()
-    expect(baseUri.compliance.arcs).toEqual([])
+    const uri = deriveMigrationUri({ registry, assetId, arc3: false })
+    const parsed = Arc90Uri.parse(uri)
+
+    expect(parsed.netauth).toBe(ARC90_NETAUTH)
+    expect(parsed.appId).toBe(client.appId)
+    expect(parsed.boxName).not.toBeNull()
+    expect(parsed.compliance.arcs).toEqual([])
   })
 
   test('derive uri with arc3 flag', async () => {
     const assetId = await createLegacyArc3Asa({ assetManager, appClient: client })
 
-    const baseUri = registry.arc90Uri({ assetId })
-    // Construct with ARC-3 compliance as migration would
-    const migrationUri = new Arc90Uri({
-      netauth: baseUri.netauth,
-      appId: baseUri.appId,
-      boxName: baseUri.boxName,
-      compliance: new Arc90Compliance([3]),
-    })
+    const uri = deriveMigrationUri({ registry, assetId, arc3: true })
+    const parsed = Arc90Uri.parse(uri)
 
-    const parsed = Arc90Uri.parse(migrationUri.toUri())
     expect(parsed.compliance.arcs).toEqual([3])
   })
 })
-
-// ================================================================
-// Transaction Building Tests (integration)
-// ================================================================
 
 describe('build arc2 migration message txn', () => {
   test('build txn basic', async () => {
@@ -245,10 +207,6 @@ describe('build arc2 migration message txn', () => {
   })
 })
 
-// ================================================================
-// Pre-flight Checks Tests (integration)
-// ================================================================
-
 describe('pre-flight checks', () => {
   test('asset without metadata passes', async () => {
     const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
@@ -279,10 +237,6 @@ describe('pre-flight checks', () => {
     ).rejects.toThrow('already has metadata')
   })
 })
-
-// ================================================================
-// Full Migration Flow Tests (LocalNet Integration)
-// ================================================================
 
 describe('migrate legacy metadata', () => {
   test('migrate minimal metadata', async () => {
@@ -493,11 +447,22 @@ describe('migrate legacy metadata', () => {
     const existence = await registry.read.arc89CheckMetadataExists({ assetId })
     expect(existence.metadataExists).toBe(true)
   })
-})
 
-// ================================================================
-// RBAC Preservation Tests (integration)
-// ================================================================
+  test('migrate without manager throws', async () => {
+    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const untrustedAccount = await createFundedAccount(fixture, algo(10))
+
+    await expect(
+      migrateLegacyMetadataToRegistry({
+        registry,
+        assetManager: untrustedAccount,
+        assetId,
+        metadata: minimalMetadata,
+        arc3Compliant: false,
+      }),
+    ).rejects.toThrow()
+  })
+})
 
 describe('rbac preservation', () => {
   test('preserve all roles after migration', async () => {
@@ -594,10 +559,6 @@ describe('rbac preservation', () => {
     expect(updatedInfo.clawback).toBe(originalInfo.clawback)
   })
 })
-
-// ================================================================
-// Integration Tests (end-to-end)
-// ================================================================
 
 describe('migration integration', () => {
   test('full migration workflow', async () => {
