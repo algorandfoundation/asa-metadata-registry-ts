@@ -24,10 +24,10 @@ const {
 describe('isPositiveUint64', () => {
   test.each([
     [1, true],
-    [Math.pow(2, 64) - 1, true],
+    [Number.MAX_SAFE_INTEGER, true],
     [0, false],
     [-1, false],
-    [Math.pow(2, 64), false],
+    [Number.MAX_SAFE_INTEGER + 1, false],
     ['1', false],
     [null, false],
     [undefined, false],
