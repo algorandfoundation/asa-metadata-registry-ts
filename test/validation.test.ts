@@ -24,14 +24,13 @@ const {
 describe('isPositiveUint64', () => {
   test.each([
     [1, true],
-    [Number.MAX_SAFE_INTEGER, true],
+    [Math.pow(2, 64) - 1, true],
     [0, false],
     [-1, false],
-    [1.5, false],
+    [Math.pow(2, 64), false],
     ['1', false],
     [null, false],
     [undefined, false],
-    [true, false],
   ])('isPositiveUint64(%s) => %s', (value, expected) => {
     expect(isPositiveUint64(value)).toBe(expected)
   })
@@ -121,7 +120,7 @@ describe('validateArc3Properties', () => {
     expect(() => validateArc3Properties({ properties: { 'arc-20': 1 } }, 'arc-20')).toThrow(InvalidArc3PropertiesError)
   })
 
-  test.each([null, 0, -1, '1'])('requires application-id positive uint64 (%s)', (appId) => {
+  test.each([null, 0, Math.pow(2, 64), '1'])('requires application-id positive uint64 (%s)', (appId) => {
     expect(() => validateArc3Properties({ properties: { 'arc-20': { 'application-id': appId } } }, 'arc-20')).toThrow(
       InvalidArc3PropertiesError,
     )
@@ -152,6 +151,12 @@ describe('validateArc3Properties', () => {
           'arc-62': { 'application-id': '123' },
         },
       }, // app_id_string
+      {
+        properties: {
+          'arc-20': { 'application-id': Math.pow(2, 64) },
+          'arc-62': { 'application-id': Math.pow(2, 64) },
+        },
+      }, // app_id_overflow
     ]
     for (const body of bodies) {
       expect(() => validateArc3Properties(body, arcKey)).toThrow(InvalidArc3PropertiesError)

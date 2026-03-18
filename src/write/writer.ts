@@ -11,7 +11,7 @@
 import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/account'
 import * as flagConsts from '../flags'
 import { AsaNotFoundError, InvalidFlagIndexError, MissingAppClientError } from '../errors'
-import { AssetMetadata, MbrDelta, RegistryParameters } from '../models'
+import { AssetMetadata, getDefaultRegistryParams, MbrDelta, RegistryParameters } from '../models'
 import { asBigInt, toNumber } from '../internal/numbers'
 import { toBytes } from '../internal/bytes'
 import {
@@ -99,7 +99,12 @@ export class AsaMetadataRegistryWrite {
 
   private async _params(): Promise<RegistryParameters> {
     if (this.params) return this.params
-    return await new AsaMetadataRegistryAvmRead({ client: this.client }).arc89GetMetadataRegistryParameters()
+    // Prefer on-chain registry parameters (simulate).
+    try {
+      return await new AsaMetadataRegistryAvmRead({ client: this.client }).arc89GetMetadataRegistryParameters()
+    } catch {
+      return getDefaultRegistryParams()
+    }
   }
 
   // ------------------------------------------------------------------

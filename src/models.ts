@@ -419,14 +419,6 @@ export class MetadataHeader {
     return this.flags.reversible.arc62
   }
 
-  get isArc54Burnable(): boolean {
-    return this.flags.irreversible.burnable
-  }
-
-  get isNttCrossChain(): boolean {
-    return this.flags.reversible.ntt
-  }
-
   get isDeprecated(): boolean {
     return this.deprecatedBy !== 0n
   }
@@ -816,14 +808,6 @@ export class AssetMetadata {
     return this.flags.reversible.arc62
   }
 
-  get isArc54Burnable(): boolean {
-    return this.flags.irreversible.burnable
-  }
-
-  get isNttCrossChain(): boolean {
-    return this.flags.reversible.ntt
-  }
-
   get isDeprecated(): boolean {
     return this.deprecatedBy !== 0n
   }
@@ -910,9 +894,9 @@ export class AssetMetadata {
    * If `flags` is provided, enforce flag consistency and validate the declared
    * ARC-20/62 properties structure.
    */
-  private static _deriveAndValidateFlagsFromArc3Json(args: {
+  private static deriveAndValidateFlagsFromArc3Json(args: {
     jsonObj: Record<string, unknown>
-    flags: MetadataFlags | null
+    flags?: MetadataFlags | null
   }): MetadataFlags {
     if (!args.flags) {
       const irr = new IrreversibleFlags({ arc3: true })
@@ -972,9 +956,9 @@ export class AssetMetadata {
     let finalFlags: MetadataFlags
     if (args.arc3Compliant) {
       validateArc3Schema(args.jsonObj)
-      finalFlags = AssetMetadata._deriveAndValidateFlagsFromArc3Json({
+      finalFlags = AssetMetadata.deriveAndValidateFlagsFromArc3Json({
         jsonObj: args.jsonObj,
-        flags: args.flags ?? null,
+        flags: args.flags,
       })
     } else {
       finalFlags = args.flags ?? MetadataFlags.empty()
@@ -1029,7 +1013,7 @@ export class AssetMetadata {
       const obj = decodeMetadataJson(args.metadataBytes)
       if (arc3) {
         validateArc3Schema(obj)
-        finalFlags = AssetMetadata._deriveAndValidateFlagsFromArc3Json({
+        finalFlags = AssetMetadata.deriveAndValidateFlagsFromArc3Json({
           jsonObj: obj,
           flags: args.flags ?? null,
         })

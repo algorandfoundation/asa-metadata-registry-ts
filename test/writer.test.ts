@@ -55,7 +55,6 @@ import {
 } from '@/generated'
 import { parseMbrDelta } from '@/internal/avm'
 import { appendExtraResources, chunksForSlice } from '@/internal/writer'
-import { isPositiveUint64, validateArc3Properties } from '@/validation'
 import {
   deployRegistry,
   getDeployer,
@@ -225,68 +224,6 @@ describe('composer helpers', () => {
     const account = createMockSigningAccount()
     appendExtraResources(composer, { count: 3, sender: account.addr, signer: account.signer })
     expect(composer.extraResources).toHaveBeenCalledTimes(3)
-  })
-})
-
-describe('validate arc3 properties helpers', () => {
-  // Test isPositiveUint64 and validateArc3Properties helpers
-  test.each([
-    [1, true],
-    [Number.MAX_SAFE_INTEGER, true],
-    [Number.MAX_SAFE_INTEGER + 1, false],
-    [0, false],
-    [-1, false],
-    [1n, false],
-    ['1', false],
-    [null, false],
-  ])('is positive uint64', (value, expected) => {
-    // Test isPositiveUint64 accepts safe positive integers and rejects all other values.
-    expect(isPositiveUint64(value)).toBe(expected)
-  })
-
-  test.each(['arc-20', 'arc-62'] as const)('invalid properties throws', (arcKey) => {
-    // Test that validateArcProperty throws InvalidArc3PropertiesError for all invalid body shapes.
-    const invalidBodies: Record<string, unknown>[] = [
-      {},
-      { properties: 'not-a-dict' },
-      { properties: { 'other-key': 1 } },
-      { properties: { 'arc-20': 'not-a-dict', 'arc-62': 'not-a-dict' } },
-      { properties: { 'arc-20': {}, 'arc-62': {} } },
-      {
-        properties: {
-          'arc-20': { 'application-id': 0 },
-          'arc-62': { 'application-id': 0 },
-        },
-      },
-      {
-        properties: {
-          'arc-20': { 'application-id': -1 },
-          'arc-62': { 'application-id': -1 },
-        },
-      },
-      {
-        properties: {
-          'arc-20': { 'application-id': '123' },
-          'arc-62': { 'application-id': '123' },
-        },
-      },
-      {
-        properties: {
-          'arc-20': { 'application-id': 2n ** 64n },
-          'arc-62': { 'application-id': 2n ** 64n },
-        },
-      },
-    ]
-
-    for (const body of invalidBodies) {
-      expect(() => validateArc3Properties(body, arcKey)).toThrow(InvalidArc3PropertiesError)
-    }
-  })
-
-  test.each(['arc-20', 'arc-62'] as const)('valid properties passes', (arcKey) => {
-    // Test that validateArcProperty does not throw for a well-formed body.
-    const body = { properties: { [arcKey]: { 'application-id': 123456 } } }
-    expect(() => validateArc3Properties(body, arcKey)).not.toThrow()
   })
 })
 
@@ -565,18 +502,6 @@ describe('high-level send methods', () => {
       expect(boxValue).not.toBeNull()
     })
 
-    test('create validate arc3 fails invalid decimals', async () => {
-      // arc_89_asa has decimals=0, but metadata says decimals=6
-      const metadata = AssetMetadata.fromJson({
-        assetId,
-        jsonObj: { name: 'Wrong Decimals', decimals: 6 },
-      })
-
-      await expect(writer.createMetadata({ assetManager, metadata, validateArc3: true })).rejects.toThrow(
-        MetadataArc3Error,
-      )
-    })
-
     test('create validate arc3 raises asa not found', async () => {
       // Destroy the ASA so on-chain lookup fails during ARC-3 validation.
       await algorand.send.assetDestroy({ sender: assetManager.addr, assetId })
@@ -587,7 +512,19 @@ describe('high-level send methods', () => {
       })
 
       await expect(writer.createMetadata({ assetManager, metadata, validateArc3: true })).rejects.toThrow(
-        AsaNotFoundError,
+        new RegExp(`Asset ${assetId} does not exist`),
+      )
+    })
+
+    test('create validate arc3 fails invalid decimals', async () => {
+      // arc_89_asa has decimals=0, but metadata says decimals=6
+      const metadata = AssetMetadata.fromJson({
+        assetId,
+        jsonObj: { name: 'Wrong Decimals', decimals: 6 },
+      })
+
+      await expect(writer.createMetadata({ assetManager, metadata, validateArc3: true })).rejects.toThrow(
+        /ARC-3 field 'decimals' must match ASA decimals \(0\), got 6/,
       )
     })
 

@@ -315,60 +315,6 @@ describe('metadata header', () => {
     expect(header.isArc62CirculatingSupply).toBe(true)
   })
 
-  test('is arc54 burnable false', () => {
-    const flags = MetadataFlags.empty()
-    const header = new MetadataHeader({
-      identifiers: 0,
-      flags,
-      metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
-      deprecatedBy: 0,
-    })
-    expect(header.isArc54Burnable).toBe(false)
-  })
-
-  test('is arc54 burnable true', () => {
-    const flags = new MetadataFlags({
-      reversible: ReversibleFlags.empty(),
-      irreversible: new IrreversibleFlags({ burnable: true }),
-    })
-    const header = new MetadataHeader({
-      identifiers: 0,
-      flags,
-      metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
-      deprecatedBy: 0,
-    })
-    expect(header.isArc54Burnable).toBe(true)
-  })
-
-  test('is ntt cross chain false', () => {
-    const flags = MetadataFlags.empty()
-    const header = new MetadataHeader({
-      identifiers: 0,
-      flags,
-      metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
-      deprecatedBy: 0,
-    })
-    expect(header.isNttCrossChain).toBe(false)
-  })
-
-  test('is ntt cross chain true', () => {
-    const flags = new MetadataFlags({
-      reversible: new ReversibleFlags({ ntt: true }),
-      irreversible: IrreversibleFlags.empty(),
-    })
-    const header = new MetadataHeader({
-      identifiers: 0,
-      flags,
-      metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
-      deprecatedBy: 0,
-    })
-    expect(header.isNttCrossChain).toBe(true)
-  })
-
   test('from tuple', () => {
     // Test fromTuple parsing.
     const tupleData = [
@@ -741,60 +687,6 @@ describe('asset metadata', () => {
     })
     expect(result).toEqual(wrongHash)
   })
-
-  test('is arc54 burnable false', () => {
-    const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
-    const flags = MetadataFlags.empty()
-    const metadata = new AssetMetadata({
-      assetId: 123n,
-      body,
-      flags,
-      deprecatedBy: 0,
-    })
-    expect(metadata.isArc54Burnable).toBe(false)
-  })
-
-  test('is arc54 burnable true', () => {
-    const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
-    const flags = new MetadataFlags({
-      reversible: ReversibleFlags.empty(),
-      irreversible: new IrreversibleFlags({ burnable: true }),
-    })
-    const metadata = new AssetMetadata({
-      assetId: 123n,
-      body,
-      flags,
-      deprecatedBy: 0,
-    })
-    expect(metadata.isArc54Burnable).toBe(true)
-  })
-
-  test('is ntt cross chain false', () => {
-    const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
-    const flags = MetadataFlags.empty()
-    const metadata = new AssetMetadata({
-      assetId: 123n,
-      body,
-      flags,
-      deprecatedBy: 0,
-    })
-    expect(metadata.isNttCrossChain).toBe(false)
-  })
-
-  test('is ntt cross chain true', () => {
-    const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
-    const flags = new MetadataFlags({
-      reversible: new ReversibleFlags({ ntt: true }),
-      irreversible: IrreversibleFlags.empty(),
-    })
-    const metadata = new AssetMetadata({
-      assetId: 123n,
-      body,
-      flags,
-      deprecatedBy: 0,
-    })
-    expect(metadata.isNttCrossChain).toBe(true)
-  })
 })
 
 describe('asset metadata record', () => {
@@ -876,10 +768,10 @@ describe('asset metadata record', () => {
   })
 })
 
-describe('AssetMetadata._deriveAndValidateFlagsFromArc3Json', () => {
+describe('AssetMetadata.deriveAndValidateFlagsFromArc3Json', () => {
   // Access private static via bracket notation for testing
   const derive = (jsonObj: Record<string, unknown>, flags: InstanceType<typeof MetadataFlags> | null) =>
-    (AssetMetadata as any)._deriveAndValidateFlagsFromArc3Json({ jsonObj, flags })
+    (AssetMetadata as any).deriveAndValidateFlagsFromArc3Json({ jsonObj, flags })
 
   test('flags null returns arc3 true and empty reversible', () => {
     const obj = { name: 'T' }
