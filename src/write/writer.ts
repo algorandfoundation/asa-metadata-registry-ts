@@ -10,8 +10,8 @@
 
 import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/account'
 import * as flagConsts from '../flags'
-import { InvalidFlagIndexError, MissingAppClientError } from '../errors'
-import { AssetMetadata, MbrDelta, RegistryParameters, getDefaultRegistryParams } from '../models'
+import { AsaNotFoundError, InvalidFlagIndexError, MissingAppClientError } from '../errors'
+import { AssetMetadata, getDefaultRegistryParams, MbrDelta, RegistryParameters } from '../models'
 import { asBigInt, toNumber } from '../internal/numbers'
 import { toBytes } from '../internal/bytes'
 import {
@@ -21,7 +21,7 @@ import {
 } from '../generated'
 import { AsaMetadataRegistryAvmRead } from '../read/avm'
 import { parseMbrDelta, returnValues } from '../internal/avm'
-import { ARC3_PROPERTIES_FLAG_TO_KEY, validateArc3Properties } from '../validation'
+import { ARC3_PROPERTIES_FLAG_TO_KEY, validateArc3Properties, validateArc3Values } from '../validation'
 import { microAlgo } from '@algorandfoundation/algokit-utils'
 import type { SendParams } from '@algorandfoundation/algokit-utils/transaction'
 import { appendExtraPayload, appendExtraResources, chunksForSlice, parseMetadataBox } from '../internal/writer'
@@ -61,6 +61,19 @@ const createSendParams = (options: WriteOptions): SendParams => ({
   coverAppCallInnerTransactionFees: options.coverAppCallInnerTransactionFees,
   populateAppCallResources: options.populateAppCallResources,
 })
+
+/** Raise AsaNotFoundError if the ASA does not exist on-chain. */
+const getAsaParams = async (client: AsaMetadataRegistryClient, assetId: bigint | number) => {
+  try {
+    return await client.algorand.asset.getById(BigInt(assetId))
+  } catch (ex: unknown) {
+    const msg = String(ex).toLowerCase()
+    if (msg.includes('not exist')) {
+      throw new AsaNotFoundError(`Asset ${assetId} does not exist.`, { cause: ex })
+    }
+    throw ex
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Writer
@@ -405,11 +418,14 @@ export class AsaMetadataRegistryWrite {
     metadata: AssetMetadata
     options?: WriteOptions
     sendParams?: SendParams | null
+    validateArc3?: boolean
   }): Promise<MbrDelta> {
-    if (args.metadata.flags.irreversible.arc3) {
-      const rev = args.metadata.flags.reversible
-      if (rev.arc20) validateArc3Properties(args.metadata.body.json, 'arc-20')
-      if (rev.arc62) validateArc3Properties(args.metadata.body.json, 'arc-62')
+    if (args.validateArc3 ?? true) {
+      const bodyJson = args.metadata.body.json
+      if ('decimals' in bodyJson) {
+        const asaParams = await getAsaParams(this.client, args.metadata.assetId)
+        validateArc3Values(bodyJson, asaParams.decimals)
+      }
     }
 
     const composer = await this.buildCreateMetadataGroup({
@@ -433,7 +449,16 @@ export class AsaMetadataRegistryWrite {
     options?: WriteOptions
     sendParams?: SendParams | null
     assumeCurrentSize?: number | null
+    validateArc3?: boolean
   }): Promise<MbrDelta> {
+    if (args.validateArc3 ?? true) {
+      const bodyJson = args.metadata.body.json
+      if ('decimals' in bodyJson) {
+        const asaParams = await getAsaParams(this.client, args.metadata.assetId)
+        validateArc3Values(bodyJson, asaParams.decimals)
+      }
+    }
+
     const composer = await this.buildReplaceMetadataGroup({
       assetManager: args.assetManager,
       metadata: args.metadata,
@@ -543,9 +568,9 @@ export class AsaMetadataRegistryWrite {
     options?: WriteOptions
     sendParams?: SendParams | null
   }): Promise<void> {
-    if (!(flagConsts.IRR_FLG_ARC54 <= args.flagIndex && args.flagIndex <= flagConsts.IRR_FLG_IMMUTABLE)) {
+    if (!(flagConsts.IRR_FLG_ARC54 <= args.flagIndex && args.flagIndex <= flagConsts.IRR_FLG_RESERVED_6)) {
       throw new InvalidFlagIndexError(
-        `Invalid irreversible flag index: ${args.flagIndex}, must be in [2, 7]. Flags 0, 1 are creation only.`,
+        `Invalid irreversible flag index: ${args.flagIndex}, must be in [2, 6]. Flags 0, 1 are creation only. Flag 7 is reserved to set_immutable.`,
       )
     }
     const opt = args.options ?? writeOptionsDefault

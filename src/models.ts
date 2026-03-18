@@ -7,9 +7,16 @@
 import * as bitmasks from './bitmasks'
 import * as enums from './enums'
 import * as consts from './constants'
-import { BoxParseError, InvalidPageIndexError, MetadataHashMismatchError } from './errors'
+import { BoxParseError, InvalidPageIndexError, MetadataArc3Error, MetadataHashMismatchError } from './errors'
 import { computeHeaderHash, computeMetadataHash, computePageHash } from './hashing'
-import { decodeMetadataJson, encodeMetadataJson, validateArc3Schema } from './validation'
+import {
+  decodeMetadataJson,
+  encodeMetadataJson,
+  isPlainObject,
+  validateArc3Properties,
+  validateArc3Schema,
+  validateArc20Arc62RequireArc3,
+} from './validation'
 import { asBigInt, asNumber, asUint8, MAX_UINT8 } from './internal/numbers'
 import { bytesEqual, toBytes, uint64ToBytesBE } from './internal/bytes'
 import { setBit, isNonzero32, chunkMetadataPayload, readUint64BE } from './internal/models'
@@ -517,10 +524,8 @@ export class MetadataBody {
     }
   }
 
-  static fromJson(obj: Record<string, unknown>, args?: { arc3Compliant?: boolean }): MetadataBody {
-    if (args?.arc3Compliant) {
-      validateArc3Schema(obj)
-    }
+  /** Create a metadata body from a JSON object. JSON encoding validation only; semantic validation in AssetMetadata. */
+  static fromJson(obj: Record<string, unknown>): MetadataBody {
     return new MetadataBody(encodeMetadataJson(obj))
   }
 
@@ -883,6 +888,57 @@ export class AssetMetadata {
     return p.mbrDelta({ oldMetadataSize: this.body.size, newMetadataSize: 0, delete: true })
   }
 
+  /**
+   * If `flags` is null, auto-set irreversible ARC-3 and auto-detect reversible
+   * ARC-20/ARC-62 based on `properties`.
+   * If `flags` is provided, enforce flag consistency and validate the declared
+   * ARC-20/62 properties structure.
+   */
+  private static deriveAndValidateFlagsFromArc3Json(args: {
+    jsonObj: Record<string, unknown>
+    flags?: MetadataFlags | null
+  }): MetadataFlags {
+    if (!args.flags) {
+      const irr = new IrreversibleFlags({ arc3: true })
+
+      let revArc20 = false
+      let revArc62 = false
+      const props = args.jsonObj['properties']
+      if (isPlainObject(props)) {
+        if (consts.ARC3_PROPERTIES_KEY_ARC20 in props) {
+          validateArc3Properties(args.jsonObj, 'arc-20')
+          revArc20 = true
+        }
+        if (consts.ARC3_PROPERTIES_KEY_ARC62 in props) {
+          validateArc3Properties(args.jsonObj, 'arc-62')
+          revArc62 = true
+        }
+      }
+
+      const rev = new ReversibleFlags({ arc20: revArc20, arc62: revArc62 })
+      return new MetadataFlags({ reversible: rev, irreversible: irr })
+    }
+
+    // Flags provided: validate consistency
+    validateArc20Arc62RequireArc3({
+      revArc20: args.flags.reversible.arc20,
+      revArc62: args.flags.reversible.arc62,
+      irrArc3: args.flags.irreversible.arc3,
+    })
+    if (!args.flags.irreversible.arc3) {
+      throw new MetadataArc3Error('ARC3 metadata flag is not set')
+    }
+    if (args.flags.reversible.arc20) validateArc3Properties(args.jsonObj, 'arc-20')
+    if (args.flags.reversible.arc62) validateArc3Properties(args.jsonObj, 'arc-62')
+    return args.flags
+  }
+
+  /**
+   * Create a new AssetMetadata object from a JSON object.
+   *
+   * ARC-3 compliance validation (arc3Compliant=true) validates ARC-3 JSON schema
+   * and flags (if provided) or derives them (if not provided).
+   */
   static fromJson(args: {
     assetId: bigint | number
     jsonObj: Record<string, unknown>
@@ -890,33 +946,46 @@ export class AssetMetadata {
     deprecatedBy?: bigint | number
     arc3Compliant?: boolean
   }): AssetMetadata {
-    const arc3 = Boolean(args.arc3Compliant)
-    if (arc3) validateArc3Schema(args.jsonObj)
-
     const raw = encodeMetadataJson(args.jsonObj)
     // Validate round-trip and schema constraints (object)
     decodeMetadataJson(raw)
 
+    const body = new MetadataBody(raw)
+    body.validateSize()
+
     let finalFlags: MetadataFlags
-    if (args.flags) {
-      finalFlags = args.flags
-    } else if (arc3) {
-      finalFlags = new MetadataFlags({
-        reversible: ReversibleFlags.empty(),
-        irreversible: new IrreversibleFlags({ arc3: true }),
+    if (args.arc3Compliant) {
+      validateArc3Schema(args.jsonObj)
+      finalFlags = AssetMetadata.deriveAndValidateFlagsFromArc3Json({
+        jsonObj: args.jsonObj,
+        flags: args.flags,
       })
     } else {
-      finalFlags = MetadataFlags.empty()
+      finalFlags = args.flags ?? MetadataFlags.empty()
     }
 
     return new AssetMetadata({
       assetId: args.assetId,
-      body: new MetadataBody(raw),
+      body,
       flags: finalFlags,
       deprecatedBy: args.deprecatedBy ?? 0n,
     })
   }
 
+  /**
+   * Create a new AssetMetadata object from raw metadata bytes.
+   *
+   * If validateJsonObject=true (default), bytes must decode to a JSON object per ARC-89
+   * (empty bytes are allowed and treated as `{}`).
+   *
+   * ARC-3 compliance validation (arc3Compliant=true) requires JSON object validation,
+   * it validates ARC-3 JSON schema and flags (if provided) or derives them (if not provided).
+   *
+   * Important:
+   * - Empty metadata bytes (new Uint8Array()) decode to an empty object ({}). This is valid
+   *   for ARC-89, but it is not valid ARC-3; arc3Compliant=true will raise during ARC-3
+   *   schema validation.
+   */
   static fromBytes(args: {
     assetId: bigint | number
     metadataBytes: Uint8Array
@@ -927,17 +996,34 @@ export class AssetMetadata {
   }): AssetMetadata {
     const validateJson = args.validateJsonObject ?? true
     const arc3 = Boolean(args.arc3Compliant)
-    if (arc3 && !validateJson) throw new Error('arc3Compliant=true requires validateJsonObject=true')
 
+    if (arc3 && !validateJson) {
+      throw new Error('arc3Compliant=true requires validateJsonObject=true')
+    }
+
+    if (!(args.metadataBytes instanceof Uint8Array)) {
+      throw new TypeError('metadataBytes must be Uint8Array')
+    }
+
+    const body = new MetadataBody(args.metadataBytes)
+    body.validateSize()
+
+    let finalFlags = args.flags ?? MetadataFlags.empty()
     if (validateJson) {
       const obj = decodeMetadataJson(args.metadataBytes)
-      if (arc3) validateArc3Schema(obj)
+      if (arc3) {
+        validateArc3Schema(obj)
+        finalFlags = AssetMetadata.deriveAndValidateFlagsFromArc3Json({
+          jsonObj: obj,
+          flags: args.flags ?? null,
+        })
+      }
     }
 
     return new AssetMetadata({
       assetId: args.assetId,
-      body: new MetadataBody(args.metadataBytes),
-      flags: args.flags ?? MetadataFlags.empty(),
+      body,
+      flags: finalFlags,
       deprecatedBy: args.deprecatedBy ?? 0n,
     })
   }
