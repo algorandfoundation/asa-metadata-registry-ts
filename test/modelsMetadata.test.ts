@@ -17,6 +17,7 @@ import {
   computeMetadataHash,
   MetadataHashMismatchError,
   MetadataArc3Error,
+  InvalidArc3PropertiesError,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
 
 const {
@@ -174,24 +175,6 @@ describe('metadata body', () => {
     expect(decodeMetadataJson(body.rawBytes)).toEqual(obj)
     expect(body.size).toBeGreaterThan(0)
   })
-
-  test('from json arc3 compliant valid', () => {
-    // Test fromJson with ARC-3 compliant metadata.
-    const obj = {
-      name: 'My NFT',
-      decimals: 0,
-      description: 'A test NFT',
-    }
-    const body = MetadataBody.fromJson(obj, { arc3Compliant: true })
-
-    expect(decodeMetadataJson(body.rawBytes)).toEqual(obj)
-  })
-
-  test('from json arc3 compliant invalid raises', () => {
-    // Test fromJson with invalid ARC-3 metadata raises.
-    const obj = { decimals: 'not an integer' }
-    expect(() => MetadataBody.fromJson(obj, { arc3Compliant: true })).toThrow(MetadataArc3Error)
-  })
 })
 
 describe('metadata header', () => {
@@ -330,6 +313,60 @@ describe('metadata header', () => {
       deprecatedBy: 0,
     })
     expect(header.isArc62CirculatingSupply).toBe(true)
+  })
+
+  test('is arc54 burnable false', () => {
+    const flags = MetadataFlags.empty()
+    const header = new MetadataHeader({
+      identifiers: 0,
+      flags,
+      metadataHash: new Uint8Array(32),
+      lastModifiedRound: 1000,
+      deprecatedBy: 0,
+    })
+    expect(header.isArc54Burnable).toBe(false)
+  })
+
+  test('is arc54 burnable true', () => {
+    const flags = new MetadataFlags({
+      reversible: ReversibleFlags.empty(),
+      irreversible: new IrreversibleFlags({ burnable: true }),
+    })
+    const header = new MetadataHeader({
+      identifiers: 0,
+      flags,
+      metadataHash: new Uint8Array(32),
+      lastModifiedRound: 1000,
+      deprecatedBy: 0,
+    })
+    expect(header.isArc54Burnable).toBe(true)
+  })
+
+  test('is ntt cross chain false', () => {
+    const flags = MetadataFlags.empty()
+    const header = new MetadataHeader({
+      identifiers: 0,
+      flags,
+      metadataHash: new Uint8Array(32),
+      lastModifiedRound: 1000,
+      deprecatedBy: 0,
+    })
+    expect(header.isNttCrossChain).toBe(false)
+  })
+
+  test('is ntt cross chain true', () => {
+    const flags = new MetadataFlags({
+      reversible: new ReversibleFlags({ ntt: true }),
+      irreversible: IrreversibleFlags.empty(),
+    })
+    const header = new MetadataHeader({
+      identifiers: 0,
+      flags,
+      metadataHash: new Uint8Array(32),
+      lastModifiedRound: 1000,
+      deprecatedBy: 0,
+    })
+    expect(header.isNttCrossChain).toBe(true)
   })
 
   test('from tuple', () => {
@@ -704,6 +741,60 @@ describe('asset metadata', () => {
     })
     expect(result).toEqual(wrongHash)
   })
+
+  test('is arc54 burnable false', () => {
+    const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
+    const flags = MetadataFlags.empty()
+    const metadata = new AssetMetadata({
+      assetId: 123n,
+      body,
+      flags,
+      deprecatedBy: 0,
+    })
+    expect(metadata.isArc54Burnable).toBe(false)
+  })
+
+  test('is arc54 burnable true', () => {
+    const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
+    const flags = new MetadataFlags({
+      reversible: ReversibleFlags.empty(),
+      irreversible: new IrreversibleFlags({ burnable: true }),
+    })
+    const metadata = new AssetMetadata({
+      assetId: 123n,
+      body,
+      flags,
+      deprecatedBy: 0,
+    })
+    expect(metadata.isArc54Burnable).toBe(true)
+  })
+
+  test('is ntt cross chain false', () => {
+    const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
+    const flags = MetadataFlags.empty()
+    const metadata = new AssetMetadata({
+      assetId: 123n,
+      body,
+      flags,
+      deprecatedBy: 0,
+    })
+    expect(metadata.isNttCrossChain).toBe(false)
+  })
+
+  test('is ntt cross chain true', () => {
+    const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
+    const flags = new MetadataFlags({
+      reversible: new ReversibleFlags({ ntt: true }),
+      irreversible: IrreversibleFlags.empty(),
+    })
+    const metadata = new AssetMetadata({
+      assetId: 123n,
+      body,
+      flags,
+      deprecatedBy: 0,
+    })
+    expect(metadata.isNttCrossChain).toBe(true)
+  })
 })
 
 describe('asset metadata record', () => {
@@ -782,5 +873,86 @@ describe('asset metadata record', () => {
     expect(metadata.body).toBe(body)
     expect(metadata.flags).toBe(header.flags)
     expect(metadata.deprecatedBy).toBe(500n)
+  })
+})
+
+describe('AssetMetadata._deriveAndValidateFlagsFromArc3Json', () => {
+  // Access private static via bracket notation for testing
+  const derive = (jsonObj: Record<string, unknown>, flags: InstanceType<typeof MetadataFlags> | null) =>
+    (AssetMetadata as any)._deriveAndValidateFlagsFromArc3Json({ jsonObj, flags })
+
+  test('flags null returns arc3 true and empty reversible', () => {
+    const obj = { name: 'T' }
+    const flags = derive(obj, null)
+    expect(flags.irreversible.arc3).toBe(true)
+    expect(flags.reversible).toEqual(ReversibleFlags.empty())
+  })
+
+  test('flags null with decimals and no properties sets arc3 only', () => {
+    const obj = { name: 'T', decimals: 0 }
+    const flags = derive(obj, null)
+    expect(flags.irreversible.arc3).toBe(true)
+    expect(flags.reversible.arc20).toBe(false)
+    expect(flags.reversible.arc62).toBe(false)
+  })
+
+  test('flags null auto-detects arc20 and arc62 from properties', () => {
+    const obj = {
+      name: 'T',
+      decimals: 0,
+      properties: {
+        'arc-20': { 'application-id': 123 },
+        'arc-62': { 'application-id': 456 },
+      },
+    }
+    const flags = derive(obj, null)
+    expect(flags.irreversible.arc3).toBe(true)
+    expect(flags.reversible.arc20).toBe(true)
+    expect(flags.reversible.arc62).toBe(true)
+  })
+
+  test('flags provided but arc3 flag missing raises', () => {
+    const obj = { name: 'T', decimals: 0 }
+    expect(() =>
+      derive(
+        obj,
+        new MetadataFlags({
+          reversible: ReversibleFlags.empty(),
+          irreversible: IrreversibleFlags.empty(),
+        }),
+      ),
+    ).toThrow(/ARC3 metadata flag is not set/)
+  })
+
+  test('flags provided arc20 requires arc3 raises', () => {
+    const obj = { name: 'T' }
+    expect(() =>
+      derive(
+        obj,
+        new MetadataFlags({
+          reversible: new ReversibleFlags({ arc20: true }),
+          irreversible: new IrreversibleFlags({ arc3: false }),
+        }),
+      ),
+    ).toThrow(MetadataArc3Error)
+  })
+
+  test('flags provided arc3 true arc20 true invalid properties raises', () => {
+    const obj = {
+      name: 'T',
+      decimals: 0,
+      properties: {
+        'arc-20': { 'application-id': 0 }, // must be a positive uint64
+      },
+    }
+    expect(() =>
+      derive(
+        obj,
+        new MetadataFlags({
+          reversible: new ReversibleFlags({ arc20: true }),
+          irreversible: new IrreversibleFlags({ arc3: true }),
+        }),
+      ),
+    ).toThrow(InvalidArc3PropertiesError)
   })
 })

@@ -32,4 +32,4 @@ export const IRR_FLG_RESERVED_3 = 3 as const // reserved; default init False
 export const IRR_FLG_RESERVED_4 = 4 as const // reserved; default init False
 export const IRR_FLG_RESERVED_5 = 5 as const // reserved; default init False
 export const IRR_FLG_RESERVED_6 = 6 as const // reserved; default init False
-export const IRR_FLG_IMMUTABLE = 7 as const
+export const IRR_FLG_IMMUTABLE = 7 as const // any time
