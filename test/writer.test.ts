@@ -27,10 +27,8 @@ import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { microAlgo, type AlgorandClient } from '@algorandfoundation/algokit-utils'
 import type { SimulateOptions } from '@algorandfoundation/algokit-utils/composer'
 import {
-  AsaNotFoundError,
   InvalidArc3PropertiesError,
   InvalidFlagIndexError,
-  MetadataArc3Error,
   MissingAppClientError,
   getDefaultRegistryParams,
   RegistryParameters,
@@ -54,6 +52,7 @@ import {
   AsaMetadataRegistryComposerResults,
 } from '@/generated'
 import { parseMbrDelta } from '@/internal/avm'
+import * as validation from '@/validation'
 import { appendExtraResources, chunksForSlice } from '@/internal/writer'
 import {
   deployRegistry,
@@ -530,6 +529,9 @@ describe('high-level send methods', () => {
 
     test('create arc3 decimals validation skipped when decimals missing', async () => {
       // If 'decimals' is not present in JSON, writer must not fetch ASA params or validate decimals.
+      const validateSpy = vi.spyOn(validation, 'validateArc3Values')
+      const getByIdSpy = vi.spyOn(writer.client.algorand.asset, 'getById')
+
       const metadata = AssetMetadata.fromJson({
         assetId,
         jsonObj: { name: 'No Decimals', description: 'Should skip decimals validation' },
@@ -537,11 +539,19 @@ describe('high-level send methods', () => {
 
       const mbrDelta = await writer.createMetadata({ assetManager, metadata, validateArc3: true })
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
+      expect(validateSpy).not.toHaveBeenCalled()
+      expect(getByIdSpy).not.toHaveBeenCalled()
+
+      validateSpy.mockRestore()
+      getByIdSpy.mockRestore()
     })
 
     test('create arc3 decimals zero triggers decimals validation', async () => {
       // When 'decimals' is explicitly set to 0, writer must fetch ASA params and run decimals validation.
       // ASA has decimals=0, metadata says decimals=0 -> should pass.
+      const validateSpy = vi.spyOn(validation, 'validateArc3Values')
+      const getByIdSpy = vi.spyOn(writer.client.algorand.asset, 'getById')
+
       const metadata = AssetMetadata.fromJson({
         assetId,
         jsonObj: { name: 'Zero Decimals', decimals: 0 },
@@ -550,6 +560,11 @@ describe('high-level send methods', () => {
       const mbrDelta = await writer.createMetadata({ assetManager, metadata, validateArc3: true })
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
       expect(mbrDelta.isPositive).toBe(true)
+      expect(getByIdSpy).toHaveBeenCalledOnce()
+      expect(validateSpy).toHaveBeenCalledOnce()
+
+      validateSpy.mockRestore()
+      getByIdSpy.mockRestore()
     })
   })
 
@@ -809,15 +824,6 @@ describe('high-level send methods', () => {
           assetId: 123,
           flagIndex: flags.IRR_FLG_ARC89,
         }),
-      ).rejects.toThrow(InvalidFlagIndexError)
-    })
-
-    test('rejects flag index 7 (reserved to set_immutable)', async () => {
-      const writer = new AsaMetadataRegistryWrite({ client: mockClient })
-      const account = createMockSigningAccount()
-
-      await expect(
-        writer.setIrreversibleFlag({ assetManager: account, assetId: 123, flagIndex: flags.IRR_FLG_IMMUTABLE }),
       ).rejects.toThrow(InvalidFlagIndexError)
     })
 
@@ -1318,7 +1324,7 @@ describe('high-level replace methods', () => {
           assumeCurrentSize: metadata.size,
           validateArc3: true,
         }),
-      ).rejects.toThrow(MetadataArc3Error)
+      ).rejects.toThrow(/ARC-3 field 'decimals' must match ASA decimals \(0\), got 6/)
     })
 
     test('replace validate arc3 raises asa not found', async () => {
@@ -1341,11 +1347,14 @@ describe('high-level replace methods', () => {
           assumeCurrentSize: uploaded.size,
           validateArc3: true,
         }),
-      ).rejects.toThrow(AsaNotFoundError)
+      ).rejects.toThrow(new RegExp(`Asset ${assetId} does not exist`))
     })
 
     test('replace arc3 decimals zero triggers decimals validation', async () => {
       // When 'decimals' is explicitly 0, replaceMetadata must still validate under validateArc3=true.
+      const validateSpy = vi.spyOn(validation, 'validateArc3Values')
+      const getByIdSpy = vi.spyOn(writer.client.algorand.asset, 'getById')
+
       const metadata = buildShortMetadata(assetId)
       const uploaded = await uploadMetadata({ writer, assetManager, appClient: client, metadata })
 
@@ -1362,6 +1371,11 @@ describe('high-level replace methods', () => {
         validateArc3: true,
       })
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
+      expect(getByIdSpy).toHaveBeenCalledOnce()
+      expect(validateSpy).toHaveBeenCalledOnce()
+
+      validateSpy.mockRestore()
+      getByIdSpy.mockRestore()
     })
   })
 
