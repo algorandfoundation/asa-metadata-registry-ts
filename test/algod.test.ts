@@ -562,7 +562,7 @@ describe('algod box reader integration', () => {
     // Test reading metadata box with maximum size metadata.
     const assetId = await createArc89Asa({ assetManager, appClient: client })
     const metadata = buildMaxedMetadata(assetId)
-    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata, validateArc3: false })
 
     const appId = client.appId
     const box = await boxReader.getMetadataBox({ appId, assetId })

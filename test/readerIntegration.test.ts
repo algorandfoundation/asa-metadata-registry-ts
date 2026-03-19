@@ -102,7 +102,13 @@ beforeAll(async () => {
   // Upload mutable maxed metadata
   const maxedAsaId = await createArc89Asa({ assetManager, appClient: client })
   const maxedMeta = buildMaxedMetadata(maxedAsaId)
-  mutableMaxedMetadata = await uploadMetadata({ writer, assetManager, appClient: client, metadata: maxedMeta })
+  mutableMaxedMetadata = await uploadMetadata({
+    writer,
+    assetManager,
+    appClient: client,
+    metadata: maxedMeta,
+    validateArc3: false,
+  })
 
   // Upload mutable empty metadata
   const emptyAsaId = await createArc89Asa({ assetManager, appClient: client })

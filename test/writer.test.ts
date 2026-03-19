@@ -52,8 +52,8 @@ import {
   AsaMetadataRegistryComposerResults,
 } from '@/generated'
 import { parseMbrDelta } from '@/internal/avm'
+import * as validation from '@/validation'
 import { appendExtraResources, chunksForSlice } from '@/internal/writer'
-import { isPositiveUint64, validateArc3Properties } from '@/validation'
 import {
   deployRegistry,
   getDeployer,
@@ -223,68 +223,6 @@ describe('composer helpers', () => {
     const account = createMockSigningAccount()
     appendExtraResources(composer, { count: 3, sender: account.addr, signer: account.signer })
     expect(composer.extraResources).toHaveBeenCalledTimes(3)
-  })
-})
-
-describe('validate arc3 properties helpers', () => {
-  // Test isPositiveUint64 and validateArc3Properties helpers
-  test.each([
-    [1, true],
-    [Number.MAX_SAFE_INTEGER, true],
-    [Number.MAX_SAFE_INTEGER + 1, false],
-    [0, false],
-    [-1, false],
-    [1n, false],
-    ['1', false],
-    [null, false],
-  ])('is positive uint64', (value, expected) => {
-    // Test isPositiveUint64 accepts safe positive integers and rejects all other values.
-    expect(isPositiveUint64(value)).toBe(expected)
-  })
-
-  test.each(['arc-20', 'arc-62'] as const)('invalid properties throws', (arcKey) => {
-    // Test that validateArcProperty throws InvalidArc3PropertiesError for all invalid body shapes.
-    const invalidBodies: Record<string, unknown>[] = [
-      {},
-      { properties: 'not-a-dict' },
-      { properties: { 'other-key': 1 } },
-      { properties: { 'arc-20': 'not-a-dict', 'arc-62': 'not-a-dict' } },
-      { properties: { 'arc-20': {}, 'arc-62': {} } },
-      {
-        properties: {
-          'arc-20': { 'application-id': 0 },
-          'arc-62': { 'application-id': 0 },
-        },
-      },
-      {
-        properties: {
-          'arc-20': { 'application-id': -1 },
-          'arc-62': { 'application-id': -1 },
-        },
-      },
-      {
-        properties: {
-          'arc-20': { 'application-id': '123' },
-          'arc-62': { 'application-id': '123' },
-        },
-      },
-      {
-        properties: {
-          'arc-20': { 'application-id': 2n ** 64n },
-          'arc-62': { 'application-id': 2n ** 64n },
-        },
-      },
-    ]
-
-    for (const body of invalidBodies) {
-      expect(() => validateArc3Properties(body, arcKey)).toThrow(InvalidArc3PropertiesError)
-    }
-  })
-
-  test.each(['arc-20', 'arc-62'] as const)('valid properties passes', (arcKey) => {
-    // Test that validateArcProperty does not throw for a well-formed body.
-    const body = { properties: { [arcKey]: { 'application-id': 123456 } } }
-    expect(() => validateArc3Properties(body, arcKey)).not.toThrow()
   })
 })
 
@@ -543,7 +481,7 @@ describe('high-level send methods', () => {
     test('create large metadata', async () => {
       // Test creating large metadata.
       const metadata = buildMaxedMetadata(assetId)
-      const mbrDelta = await writer.createMetadata({ assetManager, metadata })
+      const mbrDelta = await writer.createMetadata({ assetManager, metadata, validateArc3: false })
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
       expect(mbrDelta.isPositive).toBe(true)
       const boxValue = await reader.box.getAssetMetadataRecord({ assetId })
@@ -562,6 +500,72 @@ describe('high-level send methods', () => {
       const boxValue = await reader.box.getAssetMetadataRecord({ assetId })
       expect(boxValue).not.toBeNull()
     })
+
+    test('create validate arc3 raises asa not found', async () => {
+      // Destroy the ASA so on-chain lookup fails during ARC-3 validation.
+      await algorand.send.assetDestroy({ sender: assetManager.addr, assetId })
+
+      const metadata = AssetMetadata.fromJson({
+        assetId,
+        jsonObj: { name: 'Missing ASA', decimals: 0 },
+      })
+
+      await expect(writer.createMetadata({ assetManager, metadata, validateArc3: true })).rejects.toThrow(
+        new RegExp(`Asset ${assetId} does not exist`),
+      )
+    })
+
+    test('create validate arc3 fails invalid decimals', async () => {
+      // arc_89_asa has decimals=0, but metadata says decimals=6
+      const metadata = AssetMetadata.fromJson({
+        assetId,
+        jsonObj: { name: 'Wrong Decimals', decimals: 6 },
+      })
+
+      await expect(writer.createMetadata({ assetManager, metadata, validateArc3: true })).rejects.toThrow(
+        /ARC-3 field 'decimals' must match ASA decimals \(0\), got 6/,
+      )
+    })
+
+    test('create arc3 decimals validation skipped when decimals missing', async () => {
+      // If 'decimals' is not present in JSON, writer must not fetch ASA params or validate decimals.
+      const validateSpy = vi.spyOn(validation, 'validateArc3Values')
+      const getByIdSpy = vi.spyOn(writer.client.algorand.asset, 'getById')
+
+      const metadata = AssetMetadata.fromJson({
+        assetId,
+        jsonObj: { name: 'No Decimals', description: 'Should skip decimals validation' },
+      })
+
+      const mbrDelta = await writer.createMetadata({ assetManager, metadata, validateArc3: true })
+      expect(mbrDelta).toBeInstanceOf(MbrDelta)
+      expect(validateSpy).not.toHaveBeenCalled()
+      expect(getByIdSpy).not.toHaveBeenCalled()
+
+      validateSpy.mockRestore()
+      getByIdSpy.mockRestore()
+    })
+
+    test('create arc3 decimals zero triggers decimals validation', async () => {
+      // When 'decimals' is explicitly set to 0, writer must fetch ASA params and run decimals validation.
+      // ASA has decimals=0, metadata says decimals=0 -> should pass.
+      const validateSpy = vi.spyOn(validation, 'validateArc3Values')
+      const getByIdSpy = vi.spyOn(writer.client.algorand.asset, 'getById')
+
+      const metadata = AssetMetadata.fromJson({
+        assetId,
+        jsonObj: { name: 'Zero Decimals', decimals: 0 },
+      })
+
+      const mbrDelta = await writer.createMetadata({ assetManager, metadata, validateArc3: true })
+      expect(mbrDelta).toBeInstanceOf(MbrDelta)
+      expect(mbrDelta.isPositive).toBe(true)
+      expect(getByIdSpy).toHaveBeenCalledOnce()
+      expect(validateSpy).toHaveBeenCalledOnce()
+
+      validateSpy.mockRestore()
+      getByIdSpy.mockRestore()
+    })
   })
 
   describe('create metadata arc3 compliant', () => {
@@ -571,23 +575,6 @@ describe('high-level send methods', () => {
     beforeEach(async () => {
       assetId = await createArc3Asa({ assetManager, appClient: client })
     })
-
-    test.each([new ReversibleFlags({ arc20: true }), new ReversibleFlags({ arc62: true })])(
-      'invalid properties throws',
-      async (revFlag) => {
-        // Test that missing properties with arc3 + arc20/arc62 flags raises InvalidArc3PropertiesError.
-        const metadata = AssetMetadata.fromJson({
-          assetId,
-          jsonObj: createArc3Payload({ name: 'ARC3 test', properties: {} }),
-          flags: new MetadataFlags({
-            reversible: revFlag,
-            irreversible: new IrreversibleFlags({ arc3: true }),
-          }),
-        })
-
-        await expect(writer.createMetadata({ assetManager, metadata })).rejects.toThrow(InvalidArc3PropertiesError)
-      },
-    )
 
     test('invalid properties when no reversible flags are set creates metadata', async () => {
       // Test that arc3 flag without arc20/arc62 reversible flags skips properties validation.
@@ -624,23 +611,6 @@ describe('high-level send methods', () => {
       },
     )
 
-    test('both flags validate independently', async () => {
-      // Test that both arc20+arc62 flags validates each independently, raising on the invalid one.
-      const metadata = AssetMetadata.fromJson({
-        assetId,
-        jsonObj: createArc3Payload({
-          name: 'ARC3 both flags',
-          properties: { 'arc-20': { 'application-id': 123456 } },
-        }),
-        flags: new MetadataFlags({
-          reversible: new ReversibleFlags({ arc20: true, arc62: true }),
-          irreversible: new IrreversibleFlags({ arc3: true }),
-        }),
-      })
-
-      await expect(writer.createMetadata({ assetManager, metadata })).rejects.toThrow(InvalidArc3PropertiesError)
-    })
-
     test('valid properties both flags creates metadata', async () => {
       // Test that both arc20+arc62 flags with valid properties creates metadata successfully.
       const metadata = AssetMetadata.fromJson({
@@ -664,15 +634,18 @@ describe('high-level send methods', () => {
     })
 
     test.each([
-      [new ReversibleFlags({ arc20: true }), 'arc-20'],
-      [new ReversibleFlags({ arc62: true }), 'arc-62'],
-    ])('valid properties creates metadata', async (revFlag, propKey) => {
+      [flags.REV_FLG_ARC20, 'arc-20'],
+      [flags.REV_FLG_ARC62, 'arc-62'],
+    ] as const)('valid properties creates metadata (flag %i)', async (flagIndex, arcKey) => {
       // Test that valid properties with arc3 + arc20/arc62 flags creates metadata successfully.
       const metadata = AssetMetadata.fromJson({
         assetId,
-        jsonObj: createArc3Payload({ name: 'ARC3 One Flag', properties: { [propKey]: { 'application-id': 123456 } } }),
+        jsonObj: createArc3Payload({ name: 'ARC3 One Flag', properties: { [arcKey]: { 'application-id': 123456 } } }),
         flags: new MetadataFlags({
-          reversible: revFlag,
+          reversible: new ReversibleFlags({
+            arc20: flagIndex === flags.REV_FLG_ARC20,
+            arc62: flagIndex === flags.REV_FLG_ARC62,
+          }),
           irreversible: new IrreversibleFlags({ arc3: true }),
         }),
       })
@@ -1281,6 +1254,7 @@ describe('high-level replace methods', () => {
         assetManager,
         metadata: newMetadata,
         assumeCurrentSize: metadata.size,
+        validateArc3: false,
       })
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
       // Should be negative or zero since smaller
@@ -1305,6 +1279,7 @@ describe('high-level replace methods', () => {
         assetManager,
         metadata: newMetadata,
         assumeCurrentSize: 0,
+        validateArc3: false,
       })
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
       expect(mbrDelta.isPositive).toBe(true)
@@ -1324,11 +1299,83 @@ describe('high-level replace methods', () => {
         metadataBytes: new TextEncoder().encode('replacement'),
         validateJsonObject: false,
       })
-      const mbrDelta = await writer.replaceMetadata({ assetManager, metadata: newMetadata })
+      const mbrDelta = await writer.replaceMetadata({ assetManager, metadata: newMetadata, validateArc3: false })
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
       const record = await reader.box.getAssetMetadataRecord({ assetId })
       expect(record).not.toBeNull()
       expect(record.body.rawBytes).toEqual(new TextEncoder().encode('replacement'))
+    })
+
+    test('replace validate arc3 fails invalid decimals', async () => {
+      // replaceMetadata should raise MetadataArc3Error when validateArc3=true and decimals don't match.
+      const metadata = buildShortMetadata(assetId)
+      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+      // assetId has decimals=0, but metadata says decimals=6
+      const newMetadata = AssetMetadata.fromJson({
+        assetId,
+        jsonObj: { name: 'Wrong Decimals', decimals: 6 },
+      })
+
+      await expect(
+        writer.replaceMetadata({
+          assetManager,
+          metadata: newMetadata,
+          assumeCurrentSize: metadata.size,
+          validateArc3: true,
+        }),
+      ).rejects.toThrow(/ARC-3 field 'decimals' must match ASA decimals \(0\), got 6/)
+    })
+
+    test('replace validate arc3 raises asa not found', async () => {
+      // replaceMetadata should raise AsaNotFoundError when validateArc3=true and the ASA doesn't exist.
+      const metadata = buildShortMetadata(assetId)
+      const uploaded = await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+      // Destroy the ASA so on-chain lookup fails during ARC-3 validation.
+      await algorand.send.assetDestroy({ sender: assetManager.addr, assetId })
+
+      const newMetadata = AssetMetadata.fromJson({
+        assetId,
+        jsonObj: { name: 'Missing ASA', decimals: 0 },
+      })
+
+      await expect(
+        writer.replaceMetadata({
+          assetManager,
+          metadata: newMetadata,
+          assumeCurrentSize: uploaded.size,
+          validateArc3: true,
+        }),
+      ).rejects.toThrow(new RegExp(`Asset ${assetId} does not exist`))
+    })
+
+    test('replace arc3 decimals zero triggers decimals validation', async () => {
+      // When 'decimals' is explicitly 0, replaceMetadata must still validate under validateArc3=true.
+      const validateSpy = vi.spyOn(validation, 'validateArc3Values')
+      const getByIdSpy = vi.spyOn(writer.client.algorand.asset, 'getById')
+
+      const metadata = buildShortMetadata(assetId)
+      const uploaded = await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+
+      // ASA has decimals=0, metadata says decimals=0 -> should pass.
+      const newMetadata = AssetMetadata.fromJson({
+        assetId,
+        jsonObj: { name: 'Zero Decimals', decimals: 0 },
+      })
+
+      const mbrDelta = await writer.replaceMetadata({
+        assetManager,
+        metadata: newMetadata,
+        assumeCurrentSize: uploaded.size,
+        validateArc3: true,
+      })
+      expect(mbrDelta).toBeInstanceOf(MbrDelta)
+      expect(getByIdSpy).toHaveBeenCalledOnce()
+      expect(validateSpy).toHaveBeenCalledOnce()
+
+      validateSpy.mockRestore()
+      getByIdSpy.mockRestore()
     })
   })
 

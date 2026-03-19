@@ -235,9 +235,10 @@ export const uploadMetadata = async (args: {
   appClient: AsaMetadataRegistryClient
   metadata: AssetMetadata
   immutable?: boolean
+  validateArc3?: boolean
 }): Promise<AssetMetadata> => {
   const { metadata } = args
-  await args.writer.createMetadata({ assetManager: args.assetManager, metadata })
+  await args.writer.createMetadata({ assetManager: args.assetManager, metadata, validateArc3: args.validateArc3 })
   if (args.immutable) {
     await args.writer.setImmutable({ assetManager: args.assetManager, assetId: metadata.assetId })
   }

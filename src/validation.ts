@@ -18,7 +18,7 @@ const startsWith = (data: Uint8Array, prefix: Uint8Array): boolean => {
   return true
 }
 
-const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+export const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
 /**
@@ -159,6 +159,24 @@ export const validateArc3Schema = (obj: Record<string, unknown>): void => {
 }
 
 /**
+ * Validate that ARC-3 metadata JSON object has valid values for ARC-3 fields.
+ *
+ * Currently validates that the `decimals` field (when present) matches the on-chain ASA decimals.
+ */
+export const validateArc3Values = (obj: Record<string, unknown>, asaDecimals: number): void => {
+  if (!('decimals' in obj)) return // ARC-3 allows omission; only enforce when present
+
+  const dec = obj['decimals']
+  if (typeof dec !== 'number' || !Number.isInteger(dec)) {
+    throw new MetadataArc3Error(`ARC-3 field 'decimals' must be an integer, got ${typeof dec}`)
+  }
+
+  if (dec !== asaDecimals) {
+    throw new MetadataArc3Error(`ARC-3 field 'decimals' must match ASA decimals (${asaDecimals}), got ${dec}`)
+  }
+}
+
+/**
  * Check if a JSON object contains ARC-3 specific fields.
  *
  * Returns true if the object contains ARC-3 indicator fields like decimals,
@@ -178,6 +196,21 @@ export type Arc3PropertiesKeys = (typeof ARC3_PROPERTIES_KEYS)[number]
 export const ARC3_PROPERTIES_FLAG_TO_KEY: Partial<Record<number, Arc3PropertiesKeys>> = {
   [REV_FLG_ARC20]: ARC3_PROPERTIES_KEY_ARC20,
   [REV_FLG_ARC62]: ARC3_PROPERTIES_KEY_ARC62,
+}
+
+/**
+ * Enforce: if metadata is declared ARC-20 and/or ARC-62, then it must be ARC-3.
+ *
+ * Raises `MetadataArc3Error` if ARC-20 or ARC-62 is set without ARC-3.
+ */
+export const validateArc20Arc62RequireArc3 = (args: {
+  revArc20: boolean
+  revArc62: boolean
+  irrArc3: boolean
+}): void => {
+  if ((args.revArc20 || args.revArc62) && !args.irrArc3) {
+    throw new MetadataArc3Error('ARC-20 and ARC-62 require ARC-3 metadata')
+  }
 }
 
 /**
