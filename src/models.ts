@@ -423,6 +423,14 @@ export class MetadataHeader {
     return this.deprecatedBy !== 0n
   }
 
+  get isArc54Burnable(): boolean {
+    return this.flags.irreversible.burnable
+  }
+
+  get isNttCrossChain(): boolean {
+    return this.flags.reversible.ntt
+  }
+
   get serialized(): Uint8Array {
     const out = new Uint8Array(consts.HEADER_SIZE)
     out[0] = this.identifiers & 0xff
@@ -810,6 +818,14 @@ export class AssetMetadata {
 
   get isDeprecated(): boolean {
     return this.deprecatedBy !== 0n
+  }
+
+  get isArc54Burnable(): boolean {
+    return this.flags.irreversible.burnable
+  }
+
+  get isNttCrossChain(): boolean {
+    return this.flags.reversible.ntt
   }
 
   /** Compute the identifiers byte for hashing/writes (reserved bits default to 0). */
