@@ -119,6 +119,49 @@ export const createArc3Asa = async (args: {
   return result.assetId
 }
 
+/** Create a legacy ARC-3 ASA (without ARC-89 registry URL). */
+export const createLegacyArc3Asa = async (args: {
+  assetManager: AddressWithSigners
+  appClient: AsaMetadataRegistryClient
+}): Promise<bigint> => {
+  const arc3Suffix = new TextDecoder().decode(ARC3_NAME_SUFFIX)
+  const result = await args.appClient.algorand.send.assetCreate({
+    sender: args.assetManager.addr,
+    total: 1000n,
+    assetName: `Legacy NFT${arc3Suffix}`,
+    unitName: 'LNFT',
+    url: 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi',
+    decimals: 0,
+    manager: args.assetManager.addr,
+    reserve: args.assetManager.addr,
+    freeze: args.assetManager.addr,
+    clawback: args.assetManager.addr,
+  })
+  return result.assetId
+}
+
+/** Create a legacy ARC-69 ASA with metadata in the note field. */
+export const createLegacyArc69Asa = async (args: {
+  assetManager: AddressWithSigners
+  appClient: AsaMetadataRegistryClient
+  metadata?: Record<string, unknown>
+}): Promise<bigint> => {
+  const note = new TextEncoder().encode(JSON.stringify(args.metadata ?? { name: 'Test Asset' }))
+  const result = await args.appClient.algorand.send.assetCreate({
+    sender: args.assetManager.addr,
+    total: 1_000_000n,
+    assetName: 'Legacy Token',
+    unitName: 'LTK',
+    decimals: 6,
+    manager: args.assetManager.addr,
+    reserve: args.assetManager.addr,
+    freeze: args.assetManager.addr,
+    clawback: args.assetManager.addr,
+    note,
+  })
+  return result.assetId
+}
+
 // ================================================================
 // Metadata builders
 // ================================================================
