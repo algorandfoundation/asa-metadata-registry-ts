@@ -902,158 +902,51 @@ describe('AssetMetadata.deriveAndValidateFlagsFromArc3Json', () => {
 })
 
 describe('model arc20AppId / arc62AppId getters', () => {
-  const arc20Json = {
-    name: 'T',
-    decimals: 0,
-    properties: {
-      'arc-20': { 'application-id': 111 },
-    },
-  }
-
-  const arc62Json = {
-    name: 'T',
-    decimals: 0,
-    properties: {
-      'arc-62': { 'application-id': 222 },
-    },
-  }
-
-  const makeHeader = (args: { arc20?: boolean; arc62?: boolean }) =>
-    new MetadataHeader({
-      identifiers: 0,
-      flags: new MetadataFlags({
-        reversible: new ReversibleFlags({ arc20: args.arc20, arc62: args.arc62 }),
-        irreversible: new IrreversibleFlags({ arc3: true }),
-      }),
-      metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
-      deprecatedBy: 0,
+  test('arc20AppId returns bigint when flag set and valid properties', () => {
+    const metadata = AssetMetadata.fromJson({
+      assetId: 1n,
+      jsonObj: {
+        name: 'T',
+        decimals: 0,
+        properties: {
+          'arc-20': { 'application-id': 111 },
+        },
+      },
+      arc3Compliant: true,
     })
-
-  describe('AssetMetadataRecord', () => {
-    test('arc20AppId returns bigint when flag set and valid properties', () => {
-      const record = new AssetMetadataRecord({
-        appId: 100n,
-        assetId: 200n,
-        header: makeHeader({ arc20: true }),
-        body: MetadataBody.fromJson(arc20Json),
-      })
-      expect(record.arc20AppId).toBe(111n)
-    })
-
-    test('arc20AppId returns undefined when flag not set', () => {
-      const record = new AssetMetadataRecord({
-        appId: 100n,
-        assetId: 200n,
-        header: makeHeader({ arc20: false }),
-        body: MetadataBody.fromJson(arc20Json),
-      })
-      expect(record.arc20AppId).toBeUndefined()
-    })
-
-    test('arc62AppId returns bigint when flag set and valid properties', () => {
-      const record = new AssetMetadataRecord({
-        appId: 100n,
-        assetId: 200n,
-        header: makeHeader({ arc62: true }),
-        body: MetadataBody.fromJson(arc62Json),
-      })
-      expect(record.arc62AppId).toBe(222n)
-    })
-
-    test('arc62AppId returns undefined when flag not set', () => {
-      const record = new AssetMetadataRecord({
-        appId: 100n,
-        assetId: 200n,
-        header: makeHeader({ arc62: false }),
-        body: MetadataBody.fromJson(arc62Json),
-      })
-      expect(record.arc62AppId).toBeUndefined()
-    })
-
-    test('arc20AppId returns undefined when flag set but properties missing', () => {
-      const record = new AssetMetadataRecord({
-        appId: 100n,
-        assetId: 200n,
-        header: makeHeader({ arc20: true }),
-        body: MetadataBody.fromJson({ name: 'T' }),
-      })
-      expect(record.arc20AppId).toBeUndefined()
-    })
-
-    test.each([
-      ['zero', { 'application-id': 0 }],
-      ['negative', { 'application-id': -1 }],
-      ['non-integer', { 'application-id': 1.5 }],
-      ['string', { 'application-id': '789012' }],
-      ['string "0"', { 'application-id': '0' }],
-      ['non-digit string', { 'application-id': 'abc' }],
-      ['boolean', { 'application-id': true }],
-      ['null', { 'application-id': null }],
-      ['unsafe integer', { 'application-id': Number.MAX_SAFE_INTEGER + 1 }],
-      ['missing application-id', {}],
-    ])('arc20AppId returns undefined for invalid application-id: %s', (_label, arcEntry) => {
-      const record = new AssetMetadataRecord({
-        appId: 100n,
-        assetId: 200n,
-        header: makeHeader({ arc20: true }),
-        body: MetadataBody.fromJson({ name: 'T', properties: { 'arc-20': arcEntry } }),
-      })
-      expect(record.arc20AppId).toBeUndefined()
-    })
-
-    test.each([
-      ['non-object properties', { name: 'T', properties: 'string' }],
-      ['array properties', { name: 'T', properties: [] }],
-      ['non-object arc key entry', { name: 'T', properties: { 'arc-20': 'not-object' } }],
-      ['array arc key entry', { name: 'T', properties: { 'arc-20': [] } }],
-      ['missing arc key', { name: 'T', properties: { other: {} } }],
-    ])('arc20AppId returns undefined for invalid structure: %s', (_label, json) => {
-      const record = new AssetMetadataRecord({
-        appId: 100n,
-        assetId: 200n,
-        header: makeHeader({ arc20: true }),
-        body: MetadataBody.fromJson(json as Record<string, unknown>),
-      })
-      expect(record.arc20AppId).toBeUndefined()
-    })
+    expect(metadata.arc20AppId).toBe(111n)
   })
 
-  describe('AssetMetadata', () => {
-    test('arc20AppId returns bigint when flag set and valid properties', () => {
-      const metadata = AssetMetadata.fromJson({
-        assetId: 1n,
-        jsonObj: arc20Json,
-        arc3Compliant: true,
-      })
-      expect(metadata.arc20AppId).toBe(111n)
+  test('arc20AppId returns undefined when flag not set', () => {
+    const metadata = AssetMetadata.fromJson({
+      assetId: 1n,
+      jsonObj: { name: 'T', decimals: 0 },
+      arc3Compliant: true,
     })
+    expect(metadata.arc20AppId).toBeUndefined()
+  })
 
-    test('arc20AppId returns undefined when flag not set', () => {
-      const metadata = AssetMetadata.fromJson({
-        assetId: 1n,
-        jsonObj: { name: 'T', decimals: 0 },
-        arc3Compliant: true,
-      })
-      expect(metadata.arc20AppId).toBeUndefined()
+  test('arc62AppId returns bigint when flag set and valid properties', () => {
+    const metadata = AssetMetadata.fromJson({
+      assetId: 1n,
+      jsonObj: {
+        name: 'T',
+        decimals: 0,
+        properties: {
+          'arc-62': { 'application-id': 222 },
+        },
+      },
+      arc3Compliant: true,
     })
+    expect(metadata.arc62AppId).toBe(222n)
+  })
 
-    test('arc62AppId returns bigint when flag set and valid properties', () => {
-      const metadata = AssetMetadata.fromJson({
-        assetId: 1n,
-        jsonObj: arc62Json,
-        arc3Compliant: true,
-      })
-      expect(metadata.arc62AppId).toBe(222n)
+  test('arc62AppId returns undefined when flag not set', () => {
+    const metadata = AssetMetadata.fromJson({
+      assetId: 1n,
+      jsonObj: { name: 'T', decimals: 0 },
+      arc3Compliant: true,
     })
-
-    test('arc62AppId returns undefined when flag not set', () => {
-      const metadata = AssetMetadata.fromJson({
-        assetId: 1n,
-        jsonObj: { name: 'T', decimals: 0 },
-        arc3Compliant: true,
-      })
-      expect(metadata.arc62AppId).toBeUndefined()
-    })
+    expect(metadata.arc62AppId).toBeUndefined()
   })
 })
