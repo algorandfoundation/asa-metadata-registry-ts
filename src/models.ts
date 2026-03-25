@@ -21,7 +21,6 @@ import {
 import { asBigInt, asNumber, asUint8, MAX_UINT8 } from './internal/numbers'
 import { bytesEqual, toBytes, uint64ToBytesBE } from './internal/bytes'
 import { setBit, isNonzero32, chunkMetadataPayload, readUint64BE } from './internal/models'
-import { ARC3_PROPERTIES_KEY_ARC20, ARC3_PROPERTIES_KEY_ARC62 } from './constants'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -740,18 +739,6 @@ export class AssetMetadataRecord {
     return decodeMetadataJson(this.body.rawBytes)
   }
 
-  /** ARC-20 Smart ASA application ID extracted from ARC-3 metadata JSON, or `undefined`. */
-  get arc20AppId(): bigint | undefined {
-    if (!this.header.isArc20SmartAsa) return undefined
-    return getArc20AppId(this.json)
-  }
-
-  /** ARC-62 Circulating Supply application ID extracted from ARC-3 metadata JSON, or `undefined`. */
-  get arc62AppId(): bigint | undefined {
-    if (!this.header.isArc62CirculatingSupply) return undefined
-    return getArc62AppId(this.json)
-  }
-
   asAssetMetadata(): AssetMetadata {
     return new AssetMetadata({
       assetId: this.assetId,
@@ -842,13 +829,13 @@ export class AssetMetadata {
     return this.flags.reversible.ntt
   }
 
-  /** ARC-20 Smart ASA application ID extracted from ARC-3 metadata JSON, or `undefined`. */
+  /** ARC-20 Smart ASA application ID extracted from metadata JSON, or `undefined`. */
   get arc20AppId(): bigint | undefined {
     if (!this.isArc20SmartAsa) return undefined
     return getArc20AppId(this.body.json)
   }
 
-  /** ARC-62 Circulating Supply application ID extracted from ARC-3 metadata JSON, or `undefined`. */
+  /** ARC-62 Circulating Supply application ID extracted from metadata JSON, or `undefined`. */
   get arc62AppId(): bigint | undefined {
     if (!this.isArc62CirculatingSupply) return undefined
     return getArc62AppId(this.body.json)
@@ -1080,13 +1067,13 @@ const getArc3PropertyAppId = (metadataJson: Record<string, unknown>, key: string
 
   const appId = entry['application-id']
   if (!isPositiveUint64(appId)) return undefined
-  return BigInt(appId as number)
+  return BigInt(appId)
 }
 
 const getArc20AppId = (metadataJson: Record<string, unknown>): bigint | undefined => {
-  return getArc3PropertyAppId(metadataJson, ARC3_PROPERTIES_KEY_ARC20)
+  return getArc3PropertyAppId(metadataJson, consts.ARC3_PROPERTIES_KEY_ARC20)
 }
 
 const getArc62AppId = (metadataJson: Record<string, unknown>): bigint | undefined => {
-  return getArc3PropertyAppId(metadataJson, ARC3_PROPERTIES_KEY_ARC62)
+  return getArc3PropertyAppId(metadataJson, consts.ARC3_PROPERTIES_KEY_ARC62)
 }
