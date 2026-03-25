@@ -513,4 +513,56 @@ describe('metadata header integration', () => {
     expect(header.isArc20SmartAsa).toBe(true)
     expect(header.isArc62CirculatingSupply).toBe(true)
   })
+
+  test('metadata header isArc54Burnable', () => {
+    const flags = new MetadataFlags({
+      reversible: ReversibleFlags.empty(),
+      irreversible: new IrreversibleFlags({ burnable: true }),
+    })
+    const header = new MetadataHeader({
+      identifiers: 0,
+      flags,
+      metadataHash: new Uint8Array(32),
+      lastModifiedRound: 1000,
+      deprecatedBy: 0,
+    })
+    expect(header.isArc54Burnable).toBe(true)
+  })
+
+  test('metadata header isArc54Burnable false', () => {
+    const header = new MetadataHeader({
+      identifiers: 0,
+      flags: MetadataFlags.empty(),
+      metadataHash: new Uint8Array(32),
+      lastModifiedRound: 1000,
+      deprecatedBy: 0,
+    })
+    expect(header.isArc54Burnable).toBe(false)
+  })
+
+  test('metadata header isNttCrossChain', () => {
+    const flags = new MetadataFlags({
+      reversible: new ReversibleFlags({ ntt: true }),
+      irreversible: IrreversibleFlags.empty(),
+    })
+    const header = new MetadataHeader({
+      identifiers: 0,
+      flags,
+      metadataHash: new Uint8Array(32),
+      lastModifiedRound: 1000,
+      deprecatedBy: 0,
+    })
+    expect(header.isNttCrossChain).toBe(true)
+  })
+
+  test('metadata header isNttCrossChain false', () => {
+    const header = new MetadataHeader({
+      identifiers: 0,
+      flags: MetadataFlags.empty(),
+      metadataHash: new Uint8Array(32),
+      lastModifiedRound: 1000,
+      deprecatedBy: 0,
+    })
+    expect(header.isNttCrossChain).toBe(false)
+  })
 })

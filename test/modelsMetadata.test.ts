@@ -687,6 +687,58 @@ describe('asset metadata', () => {
     })
     expect(result).toEqual(wrongHash)
   })
+
+  test('isArc54Burnable', () => {
+    const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
+    const flags = new MetadataFlags({
+      reversible: ReversibleFlags.empty(),
+      irreversible: new IrreversibleFlags({ burnable: true }),
+    })
+    const metadata = new AssetMetadata({
+      assetId: 123n,
+      body,
+      flags,
+      deprecatedBy: 0,
+    })
+    expect(metadata.isArc54Burnable).toBe(true)
+  })
+
+  test('isArc54Burnable false', () => {
+    const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
+    const metadata = new AssetMetadata({
+      assetId: 123n,
+      body,
+      flags: MetadataFlags.empty(),
+      deprecatedBy: 0,
+    })
+    expect(metadata.isArc54Burnable).toBe(false)
+  })
+
+  test('isNttCrossChain', () => {
+    const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
+    const flags = new MetadataFlags({
+      reversible: new ReversibleFlags({ ntt: true }),
+      irreversible: IrreversibleFlags.empty(),
+    })
+    const metadata = new AssetMetadata({
+      assetId: 123n,
+      body,
+      flags,
+      deprecatedBy: 0,
+    })
+    expect(metadata.isNttCrossChain).toBe(true)
+  })
+
+  test('isNttCrossChain false', () => {
+    const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
+    const metadata = new AssetMetadata({
+      assetId: 123n,
+      body,
+      flags: MetadataFlags.empty(),
+      deprecatedBy: 0,
+    })
+    expect(metadata.isNttCrossChain).toBe(false)
+  })
 })
 
 describe('asset metadata record', () => {
