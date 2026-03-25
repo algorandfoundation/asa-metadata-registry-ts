@@ -19,51 +19,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+      - name: Run CI
+        uses: ./.github/actions/ci
         with:
-          node-version-file: .nvmrc
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Resolve pnpm store path
-        id: pnpm-store
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache pnpm store
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
-        with:
-          path: ${{ steps.pnpm-store.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
-
-      - name: Install packages
-        run: pnpm install --frozen-lockfile
-
-      - name: Commit lint
-        run: pnpm exec commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
-
-      - name: Lint
-        run: pnpm run lint
-
-      - name: Format check
-        run: pnpm run format:check
-
-      - name: Build
-        run: pnpm run build
-
-      - name: Install AlgoKit
-        run: |
-          pipx install algokit
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Start LocalNet
-        run: |
-          algokit --skip-version-check localnet start
-          algokit localnet status
-
-      - name: Test
-        run: pnpm run test
-
-      - name: Security audit
-        run: pnpm audit --audit-level=high
+          commit-lint-from: ${{ github.event.pull_request.base.sha }}
+          commit-lint-to: ${{ github.event.pull_request.head.sha }}
