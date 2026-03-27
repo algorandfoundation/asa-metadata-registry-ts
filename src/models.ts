@@ -13,6 +13,7 @@ import {
   decodeMetadataJson,
   encodeMetadataJson,
   isPlainObject,
+  isPositiveUint64,
   validateArc3Properties,
   validateArc3Schema,
   validateArc20Arc62RequireArc3,
@@ -738,6 +739,18 @@ export class AssetMetadataRecord {
     return decodeMetadataJson(this.body.rawBytes)
   }
 
+  /** ARC-20 Smart ASA application ID extracted from metadata JSON, or `undefined`. */
+  get arc20AppId(): bigint | undefined {
+    if (!this.header.isArc20SmartAsa) return undefined
+    return getArc20AppId(this.body.json)
+  }
+
+  /** ARC-62 Circulating Supply application ID extracted from metadata JSON, or `undefined`. */
+  get arc62AppId(): bigint | undefined {
+    if (!this.header.isArc62CirculatingSupply) return undefined
+    return getArc62AppId(this.body.json)
+  }
+
   asAssetMetadata(): AssetMetadata {
     return new AssetMetadata({
       assetId: this.assetId,
@@ -1043,4 +1056,24 @@ export class AssetMetadata {
       deprecatedBy: args.deprecatedBy ?? 0n,
     })
   }
+}
+
+const getArc3PropertyAppId = (metadataJson: Record<string, unknown>, key: string): bigint | undefined => {
+  const properties = metadataJson['properties']
+  if (!isPlainObject(properties)) return undefined
+
+  const entry = properties[key]
+  if (!isPlainObject(entry)) return undefined
+
+  const appId = entry['application-id']
+  if (!isPositiveUint64(appId)) return undefined
+  return BigInt(appId)
+}
+
+const getArc20AppId = (metadataJson: Record<string, unknown>): bigint | undefined => {
+  return getArc3PropertyAppId(metadataJson, consts.ARC3_PROPERTIES_KEY_ARC20)
+}
+
+const getArc62AppId = (metadataJson: Record<string, unknown>): bigint | undefined => {
+  return getArc3PropertyAppId(metadataJson, consts.ARC3_PROPERTIES_KEY_ARC62)
 }

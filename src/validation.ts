@@ -28,7 +28,7 @@ export const isPlainObject = (v: unknown): v is Record<string, unknown> =>
  * @returns `true` if the value is type `number` and fits within the safe
  * integer range (2**53 - 1) and is greater than 0, `false` otherwise
  */
-export const isPositiveUint64 = (value: unknown): boolean => {
+export const isPositiveUint64 = (value: unknown): value is number => {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
 }
 

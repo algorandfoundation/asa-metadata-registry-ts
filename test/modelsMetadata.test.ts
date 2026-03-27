@@ -900,3 +900,41 @@ describe('AssetMetadata.deriveAndValidateFlagsFromArc3Json', () => {
     ).toThrow(InvalidArc3PropertiesError)
   })
 })
+
+describe('model arc20AppId / arc62AppId getters', () => {
+  const buildRecord = (jsonObj: Record<string, unknown>, reversible?: { arc20?: boolean; arc62?: boolean }) => {
+    const body = new MetadataBody(new TextEncoder().encode(JSON.stringify(jsonObj)))
+    const flags = new MetadataFlags({
+      reversible: new ReversibleFlags(reversible),
+      irreversible: IrreversibleFlags.empty(),
+    })
+    const header = new MetadataHeader({
+      identifiers: 0,
+      flags,
+      metadataHash: new Uint8Array(32),
+      lastModifiedRound: 0n,
+      deprecatedBy: 0n,
+    })
+    return new AssetMetadataRecord({ appId: 1n, assetId: 1n, header, body })
+  }
+
+  test('arc20AppId returns bigint when flag set and valid properties', () => {
+    const record = buildRecord({ properties: { 'arc-20': { 'application-id': 111 } } }, { arc20: true })
+    expect(record.arc20AppId).toBe(111n)
+  })
+
+  test('arc20AppId returns undefined when flag not set', () => {
+    const record = buildRecord({ name: 'T' })
+    expect(record.arc20AppId).toBeUndefined()
+  })
+
+  test('arc62AppId returns bigint when flag set and valid properties', () => {
+    const record = buildRecord({ properties: { 'arc-62': { 'application-id': 222 } } }, { arc62: true })
+    expect(record.arc62AppId).toBe(222n)
+  })
+
+  test('arc62AppId returns undefined when flag not set', () => {
+    const record = buildRecord({ name: 'T' })
+    expect(record.arc62AppId).toBeUndefined()
+  })
+})
