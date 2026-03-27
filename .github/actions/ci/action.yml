@@ -38,7 +38,7 @@ runs:
 
     - name: Commit lint
       shell: bash
-      run: pnpm exec commitlint --from ${{ inputs.commit-lint-from }} --to ${{ inputs.commit-lint-to }} --verbose
+      run: pnpm exec commitlint --from "${{ inputs.commit-lint-from }}" --to "${{ inputs.commit-lint-to }}" --verbose
 
     - name: Lint
       shell: bash

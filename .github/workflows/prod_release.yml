@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Generate bot token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
         id: app_token
         with:
           app-id: ${{ secrets.BOT_ID }}
@@ -39,5 +39,5 @@ jobs:
           type: now
           from_branch: release
           target_branch: main
-          message: Merge release back to main to get version increment [no ci]
+          message: Merge release back to main to sync release changes [no ci]
           github_token: ${{ steps.app_token.outputs.token }}

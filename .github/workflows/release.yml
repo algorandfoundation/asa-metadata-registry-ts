@@ -29,12 +29,12 @@ jobs:
       - name: Run CI
         uses: ./.github/actions/ci
         with:
-          commit-lint-from: ${{ github.event.before }}
+          commit-lint-from: ${{ (github.event_name == 'workflow_dispatch' || github.event.before == '0000000000000000000000000000000000000000') && format('{0}~1', github.sha) || github.event.before }}
           commit-lint-to: ${{ github.sha }}
 
   build:
     name: Build
-    uses: makerxstudio/shared-config/.github/workflows/node-build-zip.yml@main
+    uses: makerxstudio/shared-config/.github/workflows/node-build-zip.yml@e2a191efce8f601e56cb5bfdceffc23bb1c2496b # main
     needs:
       - ci
     with:
@@ -50,7 +50,7 @@ jobs:
       id-token: write
     steps:
       - name: Generate bot token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
         id: app_token
         with:
           app-id: ${{ secrets.BOT_ID }}
@@ -75,7 +75,7 @@ jobs:
         run: corepack enable
 
       - name: Download built package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package
           path: artifacts
