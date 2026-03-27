@@ -739,6 +739,18 @@ export class AssetMetadataRecord {
     return decodeMetadataJson(this.body.rawBytes)
   }
 
+  /** ARC-20 Smart ASA application ID extracted from metadata JSON, or `undefined`. */
+  get arc20AppId(): bigint | undefined {
+    if (!this.header.isArc20SmartAsa) return undefined
+    return getArc20AppId(this.body.json)
+  }
+
+  /** ARC-62 Circulating Supply application ID extracted from metadata JSON, or `undefined`. */
+  get arc62AppId(): bigint | undefined {
+    if (!this.header.isArc62CirculatingSupply) return undefined
+    return getArc62AppId(this.body.json)
+  }
+
   asAssetMetadata(): AssetMetadata {
     return new AssetMetadata({
       assetId: this.assetId,
@@ -827,18 +839,6 @@ export class AssetMetadata {
 
   get isNttCrossChain(): boolean {
     return this.flags.reversible.ntt
-  }
-
-  /** ARC-20 Smart ASA application ID extracted from metadata JSON, or `undefined`. */
-  get arc20AppId(): bigint | undefined {
-    if (!this.isArc20SmartAsa) return undefined
-    return getArc20AppId(this.body.json)
-  }
-
-  /** ARC-62 Circulating Supply application ID extracted from metadata JSON, or `undefined`. */
-  get arc62AppId(): bigint | undefined {
-    if (!this.isArc62CirculatingSupply) return undefined
-    return getArc62AppId(this.body.json)
   }
 
   /** Compute the identifiers byte for hashing/writes (reserved bits default to 0). */
