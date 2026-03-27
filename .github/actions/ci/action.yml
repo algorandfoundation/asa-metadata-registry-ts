@@ -1,0 +1,73 @@
+name: 'CI'
+description: 'Run CI checks: commitlint, lint, format, build, test, and security audit'
+
+inputs:
+  commit-lint-from:
+    description: 'Git SHA to lint commits from'
+    required: true
+  commit-lint-to:
+    description: 'Git SHA to lint commits to'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node
+      uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+      with:
+        node-version-file: .nvmrc
+
+    - name: Enable Corepack
+      shell: bash
+      run: corepack enable
+
+    - name: Resolve pnpm store path
+      id: pnpm-store
+      shell: bash
+      run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache pnpm store
+      uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+      with:
+        path: ${{ steps.pnpm-store.outputs.STORE_PATH }}
+        key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+
+    - name: Install packages
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - name: Commit lint
+      shell: bash
+      run: pnpm exec commitlint --from "${{ inputs.commit-lint-from }}" --to "${{ inputs.commit-lint-to }}" --verbose
+
+    - name: Lint
+      shell: bash
+      run: pnpm run lint
+
+    - name: Format check
+      shell: bash
+      run: pnpm run format:check
+
+    - name: Build
+      shell: bash
+      run: pnpm run build
+
+    - name: Install AlgoKit
+      shell: bash
+      run: |
+        pipx install algokit
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Start LocalNet
+      shell: bash
+      run: |
+        algokit --skip-version-check localnet start
+        algokit localnet status
+
+    - name: Test
+      shell: bash
+      run: pnpm run test
+
+    - name: Security audit
+      shell: bash
+      run: pnpm audit --audit-level=high
