@@ -68,15 +68,7 @@
     "@algorandfoundation/algokit-utils": "10.0.0-alpha.40"
   },
   "pnpm": {
-    "overrides": {
-      "minimatch": ">=10.2.3",
-      "rollup@>=4.0.0 <4.59.0": ">=4.59.0",
-      "picomatch@<2.3.2": "2.3.2",
-      "picomatch@>=4.0.0 <4.0.4": ">=4.0.4",
-      "yaml@>=2.0.0 <2.8.3": ">=2.8.3",
-      "brace-expansion@<5.0.5": ">=5.0.5",
-      "handlebars@>=4.0.0 <4.7.9": ">=4.7.9"
-    }
+    "overrides": {}
   },
   "lint-staged": {
     "*.{ts,js,mjs,cjs}": [
