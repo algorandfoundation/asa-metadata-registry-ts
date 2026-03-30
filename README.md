@@ -21,3 +21,5 @@ pnpm run lint
 ```
 
 This project uses **Husky** and **lint-staged** to automatically lint and format staged files before they are committed.
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for dependency policy and lockfile rules.
