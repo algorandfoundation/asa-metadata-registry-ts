@@ -2,17 +2,17 @@
 
 ## Dependency Management
 
-This SDK has no runtime dependencies, this keeps things lean for consumers and avoids security issues from packages we don't control. The published package is TypeScript-compiled output only. All dependencies are either `devDependencies` (build/test tooling) or `peerDependencies` (installed by the consumer).
+This SDK has no runtime dependencies; this keeps things lean for consumers and avoids security issues from packages we don't control. The published package is TypeScript-compiled output only. All dependencies are either `devDependencies` (build/test tooling) or `peerDependencies` (installed by the consumer).
 
 ### Version specifiers
 
-- DevDependencies use caret ranges (`^`). The lockfile pins exact versions with SHA-512 hashes — the caret is the update policy, not what actually gets installed.
-- `@algorandfoundation/*` alpha packages are pinned to exact versions. Pre-releases can break without warning, so bumps should be deliberate.
+- DevDependencies use caret ranges (`^`). The lockfile pins exact versions with SHA-512 hashes; the caret is the update policy, not what actually gets installed.
+- `@algorandfoundation/*` alpha packages are pinned to exact versions. Pre-releases can break without warning, so bumps should be deliberate until stable releases are ready.
 
 ### Lockfile
 
 - `pnpm-lock.yaml` is committed. It's what makes installs reproducible.
-- CI runs `pnpm install --frozen-lockfile --ignore-scripts` — fails if the lockfile is out of sync, and blocks postinstall scripts as a supply chain precaution.
+- CI runs `pnpm install --frozen-lockfile --ignore-scripts`, failing if the lockfile is out of sync, and blocking postinstall scripts as a supply chain precaution.
 
 ### Transitive dependency overrides (`pnpm.overrides`)
 

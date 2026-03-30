@@ -67,9 +67,6 @@
   "peerDependencies": {
     "@algorandfoundation/algokit-utils": "10.0.0-alpha.40"
   },
-  "pnpm": {
-    "overrides": {}
-  },
   "lint-staged": {
     "*.{ts,js,mjs,cjs}": [
       "prettier --write",
