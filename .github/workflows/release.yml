@@ -80,7 +80,6 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: write
       id-token: write
     steps:
       - name: Generate bot token
@@ -103,6 +102,7 @@ jobs:
         uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version-file: .nvmrc
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Enable Corepack
         run: corepack enable
@@ -123,6 +123,6 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Semantic release
-        run: pnpm exec semantic-release
+        run: pnpm exec semantic-release --debug
         env:
           GITHUB_TOKEN: ${{ steps.app_token.outputs.token }}
