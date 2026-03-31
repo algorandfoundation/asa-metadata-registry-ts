@@ -104,8 +104,7 @@ jobs:
           node-version-file: .nvmrc
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Enable Corepack
-        run: corepack enable
+      - uses: pnpm/action-setup@v4
 
       - name: Download built package
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -123,6 +122,6 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Semantic release
-        run: pnpm exec semantic-release --debug
+        run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ steps.app_token.outputs.token }}
