@@ -11,7 +11,10 @@ Node: 22.17.0 (see `.nvmrc`)
 ```sh
 git submodule update --init --recursive
 pnpm install
+pnpm exec husky
 ```
+
+> `ignore-scripts=true` is set in `.npmrc` to block postinstall scripts from running on install. This means husky won't set up git hooks automatically and should be manually executed after cloning.
 
 ### Code Quality
 
