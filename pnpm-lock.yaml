@@ -18,8 +18,8 @@ importers:
   .:
     devDependencies:
       '@algorandfoundation/algokit-client-generator':
-        specifier: 7.0.0-alpha.6
-        version: 7.0.0-alpha.6(@algorandfoundation/algokit-utils@10.0.0-alpha.40)
+        specifier: 7.0.0-alpha.8
+        version: 7.0.0-alpha.8(@algorandfoundation/algokit-utils@10.0.0-alpha.40)
       '@algorandfoundation/algokit-utils':
         specifier: 10.0.0-alpha.40
         version: 10.0.0-alpha.40
@@ -98,12 +98,12 @@ packages:
   '@actions/io@3.0.2':
     resolution: {integrity: sha512-nRBchcMM+QK1pdjO7/idu86rbJI5YHUKCvKs0KxnSYbVe3F51UfGxuZX4Qy/fWlp6l7gWFwIkrOzN+oUK03kfw==}
 
-  '@algorandfoundation/algokit-client-generator@7.0.0-alpha.6':
-    resolution: {integrity: sha512-ZwzX4EuMuPdTgSU+rNlwKywZeZ9m+/ovimmbyhMUJkVj1fGLK3PY08Rmk5hkdIKM83ntX9BUTPjenx2T+1KuaA==}
+  '@algorandfoundation/algokit-client-generator@7.0.0-alpha.8':
+    resolution: {integrity: sha512-BHhHZwFrLR87bJ3dmRNzWqQ0xiaYIVkHnROmIhYyAntosR6Tvk+B/l3OYPm1HRcr85ZGn2rddPRaNG4rO6qB/w==}
     engines: {node: '>=20.0'}
     hasBin: true
     peerDependencies:
-      '@algorandfoundation/algokit-utils': ^10.0.0-alpha.25
+      '@algorandfoundation/algokit-utils': ^10.0.0-alpha.41
 
   '@algorandfoundation/algokit-utils@10.0.0-alpha.40':
     resolution: {integrity: sha512-Sso2WBGWgPCgEe3WdJfkld1n+yS3vZ3D44GNcj/5FEfvfQm1fFolGahV0y6BWW+hg1GXkt2ubbL3/EaBbxTvYw==}
@@ -2523,7 +2523,7 @@ snapshots:
 
   '@actions/io@3.0.2': {}
 
-  '@algorandfoundation/algokit-client-generator@7.0.0-alpha.6(@algorandfoundation/algokit-utils@10.0.0-alpha.40)':
+  '@algorandfoundation/algokit-client-generator@7.0.0-alpha.8(@algorandfoundation/algokit-utils@10.0.0-alpha.40)':
     dependencies:
       '@algorandfoundation/algokit-utils': 10.0.0-alpha.40
       chalk: 5.6.2
