@@ -15,6 +15,10 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "provenance": true
+  },
   "scripts": {
     "clean": "rm -rf dist/",
     "build:cjs": "tsc --project tsconfig.cjs.json",
@@ -27,8 +31,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "prepare": "husky"
+    "format:check": "prettier --check ."
   },
   "repository": {
     "type": "git",
@@ -67,17 +70,6 @@
   "peerDependencies": {
     "@algorandfoundation/algokit-utils": "10.0.0-alpha.40"
   },
-  "pnpm": {
-    "overrides": {
-      "minimatch": ">=10.2.3",
-      "rollup@>=4.0.0 <4.59.0": ">=4.59.0",
-      "picomatch@<2.3.2": "2.3.2",
-      "picomatch@>=4.0.0 <4.0.4": ">=4.0.4",
-      "yaml@>=2.0.0 <2.8.3": ">=2.8.3",
-      "brace-expansion@<5.0.5": ">=5.0.5",
-      "handlebars@>=4.0.0 <4.7.9": ">=4.7.9"
-    }
-  },
   "lint-staged": {
     "*.{ts,js,mjs,cjs}": [
       "prettier --write",
@@ -86,6 +78,9 @@
     "*.{json,md,yml,yaml}": [
       "prettier --write"
     ]
+  },
+  "engines": {
+    "node": ">=22.17.0"
   },
   "packageManager": "pnpm@9.15.4",
   "release": {
@@ -146,7 +141,12 @@
           }
         }
       ],
-      "@semantic-release/npm",
+      [
+        "@semantic-release/npm",
+        {
+          "provenance": true
+        }
+      ],
       "@semantic-release/github"
     ]
   }

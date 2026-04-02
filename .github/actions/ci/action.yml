@@ -34,7 +34,7 @@ runs:
 
     - name: Install packages
       shell: bash
-      run: pnpm install --frozen-lockfile
+      run: pnpm install --frozen-lockfile --ignore-scripts
 
     - name: Commit lint
       shell: bash

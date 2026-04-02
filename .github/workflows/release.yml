@@ -60,7 +60,7 @@ jobs:
           key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Install packages
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Build
         run: pnpm run build
@@ -123,7 +123,7 @@ jobs:
           unzip -q "artifacts/package.zip" -d dist
 
       - name: Install dependencies to get semantic release components and plugins
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Semantic release
         run: npx semantic-release

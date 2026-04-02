@@ -8,11 +8,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   ci:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - name: Checkout source code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -24,3 +25,17 @@ jobs:
         with:
           commit-lint-from: ${{ github.event.pull_request.base.sha }}
           commit-lint-to: ${{ github.event.pull_request.head.sha }}
+
+  check-provenance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Check dependency provenance
+        uses: danielroe/provenance-action@41bcc969e579d9e29af08ba44fcbfdf95cee6e6c # v0.1.1
+        with:
+          fail-on-downgrade: 'true'
+          fail-on-provenance-change: 'true'
