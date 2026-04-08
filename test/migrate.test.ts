@@ -1,5 +1,6 @@
 import { describe, expect, test, beforeAll } from 'vitest'
-import { algo } from '@algorandfoundation/algokit-utils'
+import { algo, Config } from '@algorandfoundation/algokit-utils'
+import { nullLogger } from '@algorandfoundation/algokit-utils/logging'
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { AddressWithSigners } from '@algorandfoundation/algokit-utils/transact'
@@ -23,8 +24,8 @@ import {
   getDeployer,
   createFactory,
   createFundedAccount,
-  createLegacyArc3Asa,
-  createLegacyArc69Asa,
+  createArc3Asa,
+  createArc69Asa,
   createArc3Payload,
 } from './helpers'
 
@@ -124,7 +125,7 @@ beforeAll(async () => {
 
 describe('migration uri derivation', () => {
   test('derive basic uri without compliance fragments', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
 
     const uri = deriveMigrationUri({ registry, assetId, arc3: false })
     const parsed = Arc90Uri.parse(uri)
@@ -136,7 +137,7 @@ describe('migration uri derivation', () => {
   })
 
   test('derive uri with arc3 flag', async () => {
-    const assetId = await createLegacyArc3Asa({ assetManager, appClient: client })
+    const assetId = await createArc3Asa({ assetManager, appClient: client, preRegistry: true })
 
     const uri = deriveMigrationUri({ registry, assetId, arc3: true })
     const parsed = Arc90Uri.parse(uri)
@@ -147,7 +148,7 @@ describe('migration uri derivation', () => {
 
 describe('build arc2 migration message txn', () => {
   test('build txn basic', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
     const metadataUri = 'arc90://net:testnet/123?box=AAAAAAAAAAM'
 
     const txn = await buildArc2MigrationMessageTxn({
@@ -172,7 +173,7 @@ describe('build arc2 migration message txn', () => {
   })
 
   test('build txn preserves manager', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
     const metadataUri = 'arc90://net:testnet/123?box=AAAAAAAAAAM'
 
     const txn = await buildArc2MigrationMessageTxn({
@@ -187,7 +188,7 @@ describe('build arc2 migration message txn', () => {
   })
 
   test('build txn preserves all roles', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
     const metadataUri = 'arc90://net:testnet/123?box=AAAAAAAAAAM'
 
     const txn = await buildArc2MigrationMessageTxn({
@@ -203,7 +204,7 @@ describe('build arc2 migration message txn', () => {
   })
 
   test('build txn without write capability error', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
 
     // Create read-only registry (no appClient)
     const readOnlyRegistry = AsaMetadataRegistry.fromAlgod({
@@ -224,14 +225,14 @@ describe('build arc2 migration message txn', () => {
 
 describe('pre-flight checks', () => {
   test('asset without metadata passes', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
 
     const existence = await registry.read.arc89CheckMetadataExists({ assetId })
     expect(existence.metadataExists).toBe(false)
   })
 
   test('asset with existing metadata throws', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
 
     // Create metadata first
     const metadata = AssetMetadata.fromJson({
@@ -255,7 +256,7 @@ describe('pre-flight checks', () => {
 
 describe('migrate legacy metadata', () => {
   test('migrate minimal metadata', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
 
     await migrateLegacyMetadataToRegistry({
       registry,
@@ -276,7 +277,7 @@ describe('migrate legacy metadata', () => {
   })
 
   test('migrate arc3 metadata', async () => {
-    const assetId = await createLegacyArc3Asa({ assetManager, appClient: client })
+    const assetId = await createArc3Asa({ assetManager, appClient: client, preRegistry: true })
 
     await migrateLegacyMetadataToRegistry({
       registry,
@@ -296,7 +297,7 @@ describe('migrate legacy metadata', () => {
   })
 
   test('migrate arc3 asa with metadataHash auto-sets immutable', async () => {
-    const assetId = await createLegacyArc3Asa({ assetManager, appClient: client, withMetadataHash: true })
+    const assetId = await createArc3Asa({ assetManager, appClient: client, preRegistry: true, withMetadataHash: true })
 
     // No flags provided - SDK should auto-set immutable
     await migrateLegacyMetadataToRegistry({
@@ -313,7 +314,7 @@ describe('migrate legacy metadata', () => {
   })
 
   test('migrate arc3 asa with metadataHash and explicit immutable=false throws readable error', async () => {
-    const assetId = await createLegacyArc3Asa({ assetManager, appClient: client, withMetadataHash: true })
+    const assetId = await createArc3Asa({ assetManager, appClient: client, preRegistry: true, withMetadataHash: true })
 
     const flags = new MetadataFlags({
       reversible: ReversibleFlags.empty(),
@@ -355,7 +356,7 @@ describe('migrate legacy metadata', () => {
       ],
     }
 
-    const assetId = await createLegacyArc69Asa({
+    const assetId = await createArc69Asa({
       assetManager,
       appClient: client,
       metadata: originalMetadata,
@@ -397,7 +398,7 @@ describe('migrate legacy metadata', () => {
   })
 
   test('migrate with custom flags', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
 
     const flags = new MetadataFlags({
       reversible: new ReversibleFlags({ reserved3: true }),
@@ -419,7 +420,7 @@ describe('migrate legacy metadata', () => {
   })
 
   test('migrate with arc89 native flag throws', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
 
     const flags = new MetadataFlags({
       reversible: ReversibleFlags.empty(),
@@ -439,7 +440,7 @@ describe('migrate legacy metadata', () => {
   })
 
   test('migrate already migrated throws', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
 
     // First migration
     await migrateLegacyMetadataToRegistry({
@@ -463,7 +464,7 @@ describe('migrate legacy metadata', () => {
   })
 
   test('migrate oversized metadata throws', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
 
     const oversizedMetadata = {
       name: 'Oversized Asset',
@@ -482,7 +483,7 @@ describe('migrate legacy metadata', () => {
   })
 
   test('migrate max size metadata', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
 
     // Create metadata that fits within MAX_METADATA_SIZE
     const contentSize = MAX_METADATA_SIZE - 20 // Leave room for JSON structure
@@ -503,7 +504,7 @@ describe('migrate legacy metadata', () => {
 
 describe('rbac preservation', () => {
   test('preserve all roles after migration', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
 
     // Get original asset info
     const originalInfo = await algorand.asset.getById(assetId)
@@ -599,7 +600,7 @@ describe('rbac preservation', () => {
 
 describe('migration error handling', () => {
   test('migrate empty metadata', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
 
     await migrateLegacyMetadataToRegistry({
       registry,
@@ -614,24 +615,29 @@ describe('migration error handling', () => {
   })
 
   test('migrate without manager throws', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
     const untrustedAccount = await createFundedAccount(fixture, algo(10))
-
-    await expect(
-      migrateLegacyMetadataToRegistry({
-        registry,
-        assetManager: untrustedAccount,
-        assetId,
-        metadata: minimalMetadata,
-        arc3Compliant: false,
-      }),
-    ).rejects.toThrow()
+    const prevLogger = Config.logger
+    Config.configure({ logger: nullLogger })
+    try {
+      await expect(
+        migrateLegacyMetadataToRegistry({
+          registry,
+          assetManager: untrustedAccount,
+          assetId,
+          metadata: minimalMetadata,
+          arc3Compliant: false,
+        }),
+      ).rejects.toThrow()
+    } finally {
+      Config.configure({ logger: prevLogger })
+    }
   })
 })
 
 describe('migration integration', () => {
   test('full migration workflow', async () => {
-    const assetId = await createLegacyArc3Asa({ assetManager, appClient: client })
+    const assetId = await createArc3Asa({ assetManager, appClient: client, preRegistry: true })
 
     // 1. Verify asset has no metadata initially
     const existenceBefore = await registry.read.arc89CheckMetadataExists({ assetId })
@@ -669,7 +675,7 @@ describe('migration integration', () => {
   })
 
   test('migration with subsequent updates', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
 
     // 1. Migrate
     await migrateLegacyMetadataToRegistry({
@@ -699,7 +705,7 @@ describe('migration integration', () => {
   })
 
   test('migration metadata size boundary', async () => {
-    const assetId = await createLegacyArc69Asa({ assetManager, appClient: client })
+    const assetId = await createArc69Asa({ assetManager, appClient: client })
 
     // Test short metadata
     const shortMeta = { x: 'a'.repeat(100) }

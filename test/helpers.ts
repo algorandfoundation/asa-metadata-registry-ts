@@ -104,51 +104,46 @@ export const createArc89Asa = async (args: {
   return result.assetId
 }
 
-/** Create a valid ARC-3 ASA (`assetName` ends with `@arc3`) */
+/**
+ * Create a legacy ARC-3 ASA (`assetName` ends with `@arc3`).
+ * When `preRegistry` is true, simulates a pre-registry ARC-3 with an IPFS URL, all manager addresses set,
+ * and an optional `withMetadataHash` flag. If `withMetadataHash` is true, includes a non-zero metadata
+ * hash to trigger ARC-3 logic in the registry.
+ */
 export const createArc3Asa = async (args: {
   assetManager: AddressWithSigners
   appClient: AsaMetadataRegistryClient
-}): Promise<bigint> => {
-  const arc3Suffix = new TextDecoder().decode(ARC3_NAME_SUFFIX)
-  const result = await args.appClient.algorand.send.assetCreate({
-    sender: args.assetManager.addr,
-    total: 42n,
-    assetName: `ARC3 Test ASA${arc3Suffix}`,
-    manager: args.assetManager.addr,
-  })
-  return result.assetId
-}
-
-/** Create a legacy ARC-3 ASA (without ARC-89 registry URL).
- * If `withMetadataHash` is true, includes a non-zero metadata hash to trigger ARC-3 logic in the registry.
- */
-export const createLegacyArc3Asa = async (args: {
-  assetManager: AddressWithSigners
-  appClient: AsaMetadataRegistryClient
+  preRegistry?: boolean
   withMetadataHash?: boolean
 }): Promise<bigint> => {
   const arc3Suffix = new TextDecoder().decode(ARC3_NAME_SUFFIX)
-  const metadataHash = args.withMetadataHash
-    ? new Uint8Array(32).fill(0xab) // non-zero 32-byte placeholder
-    : undefined
-  const result = await args.appClient.algorand.send.assetCreate({
-    sender: args.assetManager.addr,
-    total: 1000n,
-    assetName: `Legacy NFT${arc3Suffix}`,
-    unitName: 'LNFT',
-    url: 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi',
-    decimals: 0,
-    manager: args.assetManager.addr,
-    reserve: args.assetManager.addr,
-    freeze: args.assetManager.addr,
-    clawback: args.assetManager.addr,
-    metadataHash,
-  })
+  const result = await args.appClient.algorand.send.assetCreate(
+    args.preRegistry
+      ? {
+          sender: args.assetManager.addr,
+          total: 1000n,
+          assetName: `Legacy NFT${arc3Suffix}`,
+          unitName: 'LNFT',
+          url: 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi',
+          decimals: 0,
+          manager: args.assetManager.addr,
+          reserve: args.assetManager.addr,
+          freeze: args.assetManager.addr,
+          clawback: args.assetManager.addr,
+          metadataHash: args.withMetadataHash ? new Uint8Array(32).fill(0xab) : undefined,
+        }
+      : {
+          sender: args.assetManager.addr,
+          total: 42n,
+          assetName: `ARC3 Test ASA${arc3Suffix}`,
+          manager: args.assetManager.addr,
+        },
+  )
   return result.assetId
 }
 
 /** Create a legacy ARC-69 ASA with metadata in the note field. */
-export const createLegacyArc69Asa = async (args: {
+export const createArc69Asa = async (args: {
   assetManager: AddressWithSigners
   appClient: AsaMetadataRegistryClient
   metadata?: Record<string, unknown>
