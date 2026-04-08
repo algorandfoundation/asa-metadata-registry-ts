@@ -10,7 +10,7 @@ import { Transaction } from '@algorandfoundation/algokit-utils/transact'
 import { ARC2_ARC_NUMBER, ARC2_DATA_FORMAT_JSON, MAX_GROUP_SIZE, MAX_METADATA_SIZE } from './constants'
 import { Arc90Compliance, Arc90Uri } from './codec'
 import { MissingAppClientError } from './errors'
-import { MASK_IRR_ARC3, MASK_IRR_IMMUTABLE } from './bitmasks'
+import { MASK_IRR_IMMUTABLE } from './bitmasks'
 import { AssetMetadata, MetadataFlags } from './models'
 import { concatBytes } from './internal/bytes'
 import type { AsaMetadataRegistry } from './registry'
@@ -97,7 +97,7 @@ export function deriveMigrationUri(args: {
  * in the ASA Metadata Registry, then emitting an ARC-2 migration message.
  *
  * Flow:
- * 1) Error if metadata already exists in the Registry for the given ASA.
+ * 1) Error if metadata already exists in the Registry for the given ASA; error if the ASA does not exist.
  * 2) Error if metadata is flagged as ARC-89 native.
  * 3) If the ASA has a non-zero asset metadata hash (am): auto-set immutable when no flags provided,
  *    or error early if flags are provided without immutable: true.
@@ -140,13 +140,21 @@ export async function migrateLegacyMetadataToRegistry(args: {
     assetMd = AssetMetadata.fromJson({
       assetId: args.assetId,
       jsonObj: args.metadata,
-      flags:
-        args.flags ??
-        (hasMetadataHash
-          ? MetadataFlags.fromBytes(0, MASK_IRR_IMMUTABLE | (args.arc3Compliant ? MASK_IRR_ARC3 : 0))
-          : undefined),
+      flags: args.flags ?? undefined,
       arc3Compliant: args.arc3Compliant,
     })
+    // Set immutable flag after derivation to preserve auto-detected reversible flags (e.g. ARC-20/ARC-62)
+    if (hasMetadataHash && args.flags == null) {
+      assetMd = new AssetMetadata({
+        assetId: assetMd.assetId,
+        body: assetMd.body,
+        flags: MetadataFlags.fromBytes(
+          assetMd.flags.reversibleByte,
+          assetMd.flags.irreversibleByte | MASK_IRR_IMMUTABLE,
+        ),
+        deprecatedBy: assetMd.deprecatedBy,
+      })
+    }
   } catch (e) {
     if (e instanceof RangeError) {
       throw new Error(

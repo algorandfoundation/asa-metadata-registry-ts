@@ -333,6 +333,28 @@ describe('migrate legacy metadata', () => {
     ).rejects.toThrow('IMMUTABLE flag')
   })
 
+  test('migrate arc3 asa with metadataHash and arc20 properties preserves arc20 flag', async () => {
+    const assetId = await createArc3Asa({ assetManager, appClient: client, preRegistry: true, withMetadataHash: true })
+
+    const arc3WithArc20: Record<string, unknown> = {
+      name: 'ARC-20 Token',
+      properties: { 'arc-20': { 'application-id': 999 } },
+    }
+
+    await migrateLegacyMetadataToRegistry({
+      registry,
+      assetManager,
+      assetId,
+      metadata: arc3WithArc20,
+      arc3Compliant: true,
+    })
+
+    const header = await registry.read.arc89GetMetadataHeader({ assetId })
+    expect(header.flags.irreversible.immutable).toBe(true)
+    expect(header.flags.irreversible.arc3).toBe(true)
+    expect(header.flags.reversible.arc20).toBe(true)
+  })
+
   test('migrate arc69 preserves exact metadata', async () => {
     const originalMetadata: Record<string, unknown> = {
       standard: 'arc69',
