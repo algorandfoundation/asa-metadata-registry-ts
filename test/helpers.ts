@@ -119,12 +119,18 @@ export const createArc3Asa = async (args: {
   return result.assetId
 }
 
-/** Create a legacy ARC-3 ASA (without ARC-89 registry URL). */
+/** Create a legacy ARC-3 ASA (without ARC-89 registry URL).
+ * If `withMetadataHash` is true, includes a non-zero metadata hash to trigger ARC-3 logic in the registry.
+ */
 export const createLegacyArc3Asa = async (args: {
   assetManager: AddressWithSigners
   appClient: AsaMetadataRegistryClient
+  withMetadataHash?: boolean
 }): Promise<bigint> => {
   const arc3Suffix = new TextDecoder().decode(ARC3_NAME_SUFFIX)
+  const metadataHash = args.withMetadataHash
+    ? new Uint8Array(32).fill(0xab) // non-zero 32-byte placeholder
+    : undefined
   const result = await args.appClient.algorand.send.assetCreate({
     sender: args.assetManager.addr,
     total: 1000n,
@@ -136,6 +142,7 @@ export const createLegacyArc3Asa = async (args: {
     reserve: args.assetManager.addr,
     freeze: args.assetManager.addr,
     clawback: args.assetManager.addr,
+    metadataHash,
   })
   return result.assetId
 }

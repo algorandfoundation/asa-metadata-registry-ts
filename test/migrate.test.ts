@@ -295,6 +295,43 @@ describe('migrate legacy metadata', () => {
     expect(header.flags.irreversible.arc3).toBe(true)
   })
 
+  test('migrate arc3 asa with metadataHash auto-sets immutable', async () => {
+    const assetId = await createLegacyArc3Asa({ assetManager, appClient: client, withMetadataHash: true })
+
+    // No flags provided - SDK should auto-set immutable
+    await migrateLegacyMetadataToRegistry({
+      registry,
+      assetManager,
+      assetId,
+      metadata: arc3Metadata,
+      arc3Compliant: true,
+    })
+
+    const header = await registry.read.arc89GetMetadataHeader({ assetId })
+    expect(header.flags.irreversible.immutable).toBe(true)
+    expect(header.flags.irreversible.arc3).toBe(true)
+  })
+
+  test('migrate arc3 asa with metadataHash and explicit immutable=false throws readable error', async () => {
+    const assetId = await createLegacyArc3Asa({ assetManager, appClient: client, withMetadataHash: true })
+
+    const flags = new MetadataFlags({
+      reversible: ReversibleFlags.empty(),
+      irreversible: new IrreversibleFlags({ immutable: false }),
+    })
+
+    await expect(
+      migrateLegacyMetadataToRegistry({
+        registry,
+        assetManager,
+        assetId,
+        metadata: arc3Metadata,
+        arc3Compliant: true,
+        flags,
+      }),
+    ).rejects.toThrow('IMMUTABLE flag')
+  })
+
   test('migrate arc69 preserves exact metadata', async () => {
     const originalMetadata: Record<string, unknown> = {
       standard: 'arc69',
