@@ -45,7 +45,7 @@
   "homepage": "https://github.com/algorandfoundation/asa-metadata-registry-ts#readme",
   "devDependencies": {
     "@algorandfoundation/algokit-client-generator": "7.0.0-beta.3",
-    "@algorandfoundation/algokit-utils": "10.0.0-beta.1",
+    "@algorandfoundation/algokit-utils": "10.0.0-beta.2",
     "@commitlint/cli": "^20.5.0",
     "@commitlint/config-conventional": "^20.5.0",
     "@eslint/js": "^9.39.3",
@@ -68,7 +68,7 @@
     "vitest": "^4.0.18"
   },
   "peerDependencies": {
-    "@algorandfoundation/algokit-utils": "10.0.0-beta.1"
+    "@algorandfoundation/algokit-utils": "10.0.0-beta.2"
   },
   "lint-staged": {
     "*.{ts,js,mjs,cjs}": [
