@@ -13,11 +13,11 @@ importers:
   .:
     devDependencies:
       '@algorandfoundation/algokit-client-generator':
-        specifier: 7.0.0-alpha.8
-        version: 7.0.0-alpha.8(@algorandfoundation/algokit-utils@10.0.0-alpha.40)
+        specifier: 7.0.0-beta.3
+        version: 7.0.0-beta.3(@algorandfoundation/algokit-utils@10.0.0-beta.1)
       '@algorandfoundation/algokit-utils':
-        specifier: 10.0.0-alpha.40
-        version: 10.0.0-alpha.40
+        specifier: 10.0.0-beta.1
+        version: 10.0.0-beta.1
       '@commitlint/cli':
         specifier: ^20.5.0
         version: 20.5.0(@types/node@25.3.3)(conventional-commits-filter@5.0.0)(conventional-commits-parser@6.3.0)(typescript@5.9.3)
@@ -93,16 +93,16 @@ packages:
   '@actions/io@3.0.2':
     resolution: {integrity: sha512-nRBchcMM+QK1pdjO7/idu86rbJI5YHUKCvKs0KxnSYbVe3F51UfGxuZX4Qy/fWlp6l7gWFwIkrOzN+oUK03kfw==}
 
-  '@algorandfoundation/algokit-client-generator@7.0.0-alpha.8':
-    resolution: {integrity: sha512-BHhHZwFrLR87bJ3dmRNzWqQ0xiaYIVkHnROmIhYyAntosR6Tvk+B/l3OYPm1HRcr85ZGn2rddPRaNG4rO6qB/w==}
-    engines: {node: '>=20.0'}
+  '@algorandfoundation/algokit-client-generator@7.0.0-beta.3':
+    resolution: {integrity: sha512-M+lb4ewJTLadJVXX8YtWBZ0+tddkiaSx4cw2mRDHtO2L7B02YBdKzRArMxH7/cuBeBh1J74MenkrfDmi9mhSnQ==}
+    engines: {node: '>=24.0'}
     hasBin: true
     peerDependencies:
-      '@algorandfoundation/algokit-utils': ^10.0.0-alpha.41
+      '@algorandfoundation/algokit-utils': ^10.0.0-beta.1
 
-  '@algorandfoundation/algokit-utils@10.0.0-alpha.40':
-    resolution: {integrity: sha512-Sso2WBGWgPCgEe3WdJfkld1n+yS3vZ3D44GNcj/5FEfvfQm1fFolGahV0y6BWW+hg1GXkt2ubbL3/EaBbxTvYw==}
-    engines: {node: '>=20.0'}
+  '@algorandfoundation/algokit-utils@10.0.0-beta.1':
+    resolution: {integrity: sha512-ShiMGqUHdhpQAG0JCkhFnVN9NRDd4IwXAOW8yIY1xoG/1tjjbrS9qaSxIxmCPLhOgFrePFmT6Wc/PT9pMjs7pQ==}
+    engines: {node: '>=24.0'}
 
   '@algorandfoundation/xhd-wallet-api@2.0.0-canary.1':
     resolution: {integrity: sha512-U6rSWMO6FKDLvMxWtfKyW5ctqSy2NrONWTU/jOA+BX0SGru0GPXsxwzFdcPa5w+X055V/xVVsr8eA3xA+m/5jA==}
@@ -448,19 +448,19 @@ packages:
       '@emnapi/core': ^1.7.1
       '@emnapi/runtime': ^1.7.1
 
-  '@noble/ciphers@2.1.1':
-    resolution: {integrity: sha512-bysYuiVfhxNJuldNXlFEitTVdNnYUc+XNJZd7Qm2a5j1vZHgY+fazadNFWFaMK/2vye0JVlxV3gHmC0WDfAOQw==}
+  '@noble/ciphers@2.2.0':
+    resolution: {integrity: sha512-Z6pjIZ/8IJcCGzb2S/0Px5J81yij85xASuk1teLNeg75bfT07MV3a/O2Mtn1I2se43k3lkVEcFaR10N4cgQcZA==}
     engines: {node: '>= 20.19.0'}
 
-  '@noble/curves@2.0.1':
-    resolution: {integrity: sha512-vs1Az2OOTBiP4q0pwjW5aF0xp9n4MxVrmkFBxc6EKZc6ddYx5gaZiAsZoq0uRRXWbi3AT/sBqn05eRPtn1JCPw==}
+  '@noble/curves@2.2.0':
+    resolution: {integrity: sha512-T/BoHgFXirb0ENSPBquzX0rcjXeM6Lo892a2jlYJkqk83LqZx0l1Of7DzlKJ6jkpvMrkHSnAcgb5JegL8SeIkQ==}
     engines: {node: '>= 20.19.0'}
 
-  '@noble/ed25519@3.0.0':
-    resolution: {integrity: sha512-QyteqMNm0GLqfa5SoYbSC3+Pvykwpn95Zgth4MFVSMKBB75ELl9tX1LAVsN4c3HXOrakHsF2gL4zWDAYCcsnzg==}
+  '@noble/ed25519@3.1.0':
+    resolution: {integrity: sha512-pfcObRY3CtvwfaG9Mt5XqZdKmAQppl37tHUeuBhDUbiwJBCVY4/A4lbMvb1xKhMDx96AqAqZpMWuBX1HulhX4g==}
 
-  '@noble/hashes@2.0.1':
-    resolution: {integrity: sha512-XlOlEbQcE9fmuXxrVTXCTlG2nlRXa9Rj3rr5Ue/+tX+nmkgbX720YHh0VR3hBF9xDvwnb8D2shVGOwNx+ulArw==}
+  '@noble/hashes@2.2.0':
+    resolution: {integrity: sha512-IYqDGiTXab6FniAgnSdZwgWbomxpy9FtYvLKs7wCUs2a8RkITG+DFGO1DM9cr+E3/RgADRpFjrKVaJ1z6sjtEg==}
     engines: {node: '>= 20.19.0'}
 
   '@octokit/auth-token@6.0.0':
@@ -565,36 +565,42 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-arm64-musl@1.0.0-rc.13':
     resolution: {integrity: sha512-bmRg3O6Z0gq9yodKKWCIpnlH051sEfdVwt+6m5UDffAQMUUqU0xjnQqqAUm+Gu7ofAAly9DqiQDtKu2nPDEABA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@rolldown/binding-linux-ppc64-gnu@1.0.0-rc.13':
     resolution: {integrity: sha512-8Wtnbw4k7pMYN9B/mOEAsQ8HOiq7AZ31Ig4M9BKn2So4xRaFEhtCSa4ZJaOutOWq50zpgR4N5+L/opnlaCx8wQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [ppc64]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-s390x-gnu@1.0.0-rc.13':
     resolution: {integrity: sha512-D/0Nlo8mQuxSMohNJUF2lDXWRsFDsHldfRRgD9bRgktj+EndGPj4DOV37LqDKPYS+osdyhZEH7fTakTAEcW7qg==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-x64-gnu@1.0.0-rc.13':
     resolution: {integrity: sha512-eRrPvat2YaVQcwwKi/JzOP6MKf1WRnOCr+VaI3cTWz3ZoLcP/654z90lVCJ4dAuMEpPdke0n+qyAqXDZdIC4rA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-x64-musl@1.0.0-rc.13':
     resolution: {integrity: sha512-PsdONiFRp8hR8KgVjTWjZ9s7uA3uueWL0t74/cKHfM4dR5zXYv4AjB8BvA+QDToqxAFg4ZkcVEqeu5F7inoz5w==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@rolldown/binding-openharmony-arm64@1.0.0-rc.13':
     resolution: {integrity: sha512-hCNXgC5dI3TVOLrPT++PKFNZ+1EtS0mLQwfXXXSUD/+rGlB65gZDwN/IDuxLpQP4x8RYYHqGomlUXzpO8aVI2w==}
@@ -1604,24 +1610,28 @@ packages:
     engines: {node: '>= 12.0.0'}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   lightningcss-linux-arm64-musl@1.32.0:
     resolution: {integrity: sha512-UpQkoenr4UJEzgVIYpI80lDFvRmPVg6oqboNHfoH4CQIfNA+HOrZ7Mo7KZP02dC6LjghPQJeBsvXhJod/wnIBg==}
     engines: {node: '>= 12.0.0'}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   lightningcss-linux-x64-gnu@1.32.0:
     resolution: {integrity: sha512-V7Qr52IhZmdKPVr+Vtw8o+WLsQJYCTd8loIfpDaMRWGUZfBOYEJeyJIkqGIDMZPwPx24pUMfwSxxI8phr/MbOA==}
     engines: {node: '>= 12.0.0'}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   lightningcss-linux-x64-musl@1.32.0:
     resolution: {integrity: sha512-bYcLp+Vb0awsiXg/80uCRezCYHNg1/l3mt0gzHnWV9XP1W5sKa5/TCdGWaR/zBM2PeF/HbsQv/j2URNOiVuxWg==}
     engines: {node: '>= 12.0.0'}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   lightningcss-win32-arm64-msvc@1.32.0:
     resolution: {integrity: sha512-8SbC8BR40pS6baCM8sbtYDSwEVQd4JlFTOlaD3gWGHfThTcABnNDBda6eTZeqbofalIJhFx0qKzgHJmcPTnGdw==}
@@ -2583,19 +2593,20 @@ snapshots:
 
   '@actions/io@3.0.2': {}
 
-  '@algorandfoundation/algokit-client-generator@7.0.0-alpha.8(@algorandfoundation/algokit-utils@10.0.0-alpha.40)':
+  '@algorandfoundation/algokit-client-generator@7.0.0-beta.3(@algorandfoundation/algokit-utils@10.0.0-beta.1)':
     dependencies:
-      '@algorandfoundation/algokit-utils': 10.0.0-alpha.40
+      '@algorandfoundation/algokit-utils': 10.0.0-beta.1
       chalk: 5.6.2
       change-case: 5.4.4
       commander: 14.0.3
       jsonschema: 1.5.0
 
-  '@algorandfoundation/algokit-utils@10.0.0-alpha.40':
+  '@algorandfoundation/algokit-utils@10.0.0-beta.1':
     dependencies:
       '@algorandfoundation/xhd-wallet-api': 2.0.0-canary.1
-      '@noble/ed25519': 3.0.0
-      '@noble/hashes': 2.0.1
+      '@noble/curves': 2.2.0
+      '@noble/ed25519': 3.1.0
+      '@noble/hashes': 2.2.0
       algorand-msgpack: 1.1.0
       buffer: 6.0.3
       dotenv: 16.6.1
@@ -2606,9 +2617,9 @@ snapshots:
 
   '@algorandfoundation/xhd-wallet-api@2.0.0-canary.1':
     dependencies:
-      '@noble/ciphers': 2.1.1
-      '@noble/curves': 2.0.1
-      '@noble/hashes': 2.0.1
+      '@noble/ciphers': 2.2.0
+      '@noble/curves': 2.2.0
+      '@noble/hashes': 2.2.0
       ajv: 8.18.0
       algo-msgpack-with-bigint: 2.1.1
       bn.js: 5.2.3
@@ -2913,15 +2924,15 @@ snapshots:
       '@tybys/wasm-util': 0.10.1
     optional: true
 
-  '@noble/ciphers@2.1.1': {}
+  '@noble/ciphers@2.2.0': {}
 
-  '@noble/curves@2.0.1':
+  '@noble/curves@2.2.0':
     dependencies:
-      '@noble/hashes': 2.0.1
+      '@noble/hashes': 2.2.0
 
-  '@noble/ed25519@3.0.0': {}
+  '@noble/ed25519@3.1.0': {}
 
-  '@noble/hashes@2.0.1': {}
+  '@noble/hashes@2.2.0': {}
 
   '@octokit/auth-token@6.0.0': {}
 
