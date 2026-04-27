@@ -112,7 +112,7 @@ export const asUint64BigInt = (v: unknown, name: string): bigint => {
     return toUint64BigInt(v)
   } catch (e) {
     if (e instanceof Error) {
-      throw new Error(`${name}: ${e.message}`)
+      throw new Error(`${name}: ${e.message}`, { cause: e })
     }
     throw e
   }
@@ -123,7 +123,7 @@ export const asBigInt = (v: bigint | number, name: string): bigint => {
     return toNonNegativeBigInt(v)
   } catch (e) {
     if (e instanceof Error) {
-      throw new Error(`${name}: ${e.message}`)
+      throw new Error(`${name}: ${e.message}`, { cause: e })
     }
     throw e
   }
@@ -134,7 +134,7 @@ export const asNumber = (v: unknown, name: string): number => {
     return toNumber(v)
   } catch (e) {
     if (e instanceof Error) {
-      throw new Error(`${name}: ${e.message}`)
+      throw new Error(`${name}: ${e.message}`, { cause: e })
     }
     throw e
   }
@@ -145,7 +145,7 @@ export const asUint8 = (v: unknown, name: string): number => {
     return toUint8(v)
   } catch (e) {
     if (e instanceof Error) {
-      throw new Error(`${name}: ${e.message}`)
+      throw new Error(`${name}: ${e.message}`, { cause: e })
     }
     throw e
   }

@@ -55,7 +55,7 @@ export async function buildArc2MigrationMessageTxn(args: {
     write = args.registry.write
   } catch (e) {
     if (e instanceof MissingAppClientError) {
-      throw new Error('Building asset config requires registry constructed with write capabilities.')
+      throw new Error('Building asset config requires registry constructed with write capabilities.', { cause: e })
     }
     throw e
   }
@@ -161,6 +161,7 @@ export async function migrateLegacyMetadataToRegistry(args: {
         `Legacy metadata is too large to migrate into ARC-89 registry, ` +
           `MAX_METADATA_SIZE=${MAX_METADATA_SIZE}. Consider hosting a smaller ` +
           `JSON document or storing a pointer in short metadata.`,
+        { cause: e },
       )
     }
     throw e
