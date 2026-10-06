@@ -13,7 +13,6 @@ import {
   decodeMetadataJson,
   encodeMetadataJson,
   isPlainObject,
-  isPositiveUint64,
   validateArc3Properties,
   validateArc3Schema,
   validateArc20Arc62RequireArc3,
@@ -21,6 +20,9 @@ import {
 import { asBigInt, asNumber, asUint8, MAX_UINT8 } from './internal/numbers'
 import { bytesEqual, toBytes, uint64ToBytesBE } from './internal/bytes'
 import { setBit, isNonzero32, chunkMetadataPayload, readUint64BE } from './internal/models'
+import { jsonIntegerMember } from './internal/json'
+
+const MAX_UINT64 = (1n << 64n) - 1n
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1065,9 +1067,9 @@ const getArc3PropertyAppId = (metadataJson: Record<string, unknown>, key: string
   const entry = properties[key]
   if (!isPlainObject(entry)) return undefined
 
-  const appId = entry['application-id']
-  if (!isPositiveUint64(appId)) return undefined
-  return BigInt(appId)
+  const appId = jsonIntegerMember(entry, 'application-id')
+  if (appId === undefined || appId <= 0n || appId > MAX_UINT64) return undefined
+  return appId
 }
 
 const getArc20AppId = (metadataJson: Record<string, unknown>): bigint | undefined => {

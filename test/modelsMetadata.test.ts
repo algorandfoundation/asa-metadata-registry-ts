@@ -937,4 +937,20 @@ describe('model arc20AppId / arc62AppId getters', () => {
     const record = buildRecord({ name: 'T' })
     expect(record.arc62AppId).toBeUndefined()
   })
+
+  test('app id getters read large application ids exactly', () => {
+    const record = buildRecord({}, { arc20: true })
+    const body = new MetadataBody(
+      new TextEncoder().encode('{"properties":{"arc-20":{"application-id":18446744073709551615}}}'),
+    )
+    const exact = new AssetMetadataRecord({ appId: 1n, assetId: 1n, header: record.header, body })
+    expect(exact.arc20AppId).toBe(18446744073709551615n)
+  })
+
+  test('app id getters ignore float literal application ids', () => {
+    const record = buildRecord({}, { arc62: true })
+    const body = new MetadataBody(new TextEncoder().encode('{"properties":{"arc-62":{"application-id":222.0}}}'))
+    const floatLiteral = new AssetMetadataRecord({ appId: 1n, assetId: 1n, header: record.header, body })
+    expect(floatLiteral.arc62AppId).toBeUndefined()
+  })
 })

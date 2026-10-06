@@ -1042,4 +1042,27 @@ describe('compute arc3 metadata hash', () => {
     // Different ordering should produce different hashes
     expect(result1).not.toEqual(result2)
   })
+  // TS-only: Python's default `json.loads` (used by `compute_arc3_metadata_hash`) is lenient on
+  // non-finite literals and strict on a UTF-8 BOM; `JSON.parse` alone is the opposite.
+  test('non-finite literals are accepted like python json loads', () => {
+    for (const text of ['{"name":"x","v":NaN}', '{"v":[Infinity,-Infinity]}']) {
+      const jsonBytes = new TextEncoder().encode(text)
+      expect(computeArc3MetadataHash(jsonBytes)).toEqual(sha256(jsonBytes))
+    }
+  })
+
+  test('invalid non-finite literal raises', () => {
+    expect(() => computeArc3MetadataHash(new TextEncoder().encode('{"v":-NaN}'))).toThrow('Invalid JSON metadata file.')
+  })
+
+  test('non-finite extra metadata raises', () => {
+    expect(() => computeArc3MetadataHash(new TextEncoder().encode('{"extra_metadata":NaN}'))).toThrow(
+      '"extra_metadata" must be a base64 string when present.',
+    )
+  })
+
+  test('utf-8 bom raises', () => {
+    const jsonBytes = concatBytes([new Uint8Array([0xef, 0xbb, 0xbf]), new TextEncoder().encode('{"name":"x"}')])
+    expect(() => computeArc3MetadataHash(jsonBytes)).toThrow('Invalid JSON metadata file.')
+  })
 })

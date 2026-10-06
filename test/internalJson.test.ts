@@ -1,0 +1,186 @@
+/**
+ * Unit tests for the strict JSON helpers in src/internal/json.
+ *
+ * These helpers make `JSON.parse` / `JSON.stringify` as strict as the Python SDK's `json` usage
+ * (duplicate names, lone surrogates, non-finite numbers) and read integer literals exactly.
+ */
+
+import { describe, expect, test } from 'vitest'
+import {
+  hasLoneSurrogate,
+  integerLiteralValue,
+  jsonIntegerMember,
+  parseJsonAllowNonFinite,
+  parseJsonStrict,
+  scanJsonText,
+  stringifyJsonStrict,
+} from '@/internal/json'
+
+describe('hasLoneSurrogate', () => {
+  test.each([
+    ['plain ascii', 'abc', false],
+    ['astral pair', '😀', false],
+    ['lone high', 'a\ud83db', true],
+    ['lone low', 'a\ude00b', true],
+    ['reversed pair', '\ude00\ud83d', true],
+    ['trailing high', 'abc\ud83d', true],
+  ])('%s', (_name, value, expected) => {
+    expect(hasLoneSurrogate(value)).toBe(expected)
+  })
+})
+
+describe('scanJsonText', () => {
+  test('detects duplicate names after unescaping', () => {
+    expect(scanJsonText('{"a":1,"\\u0061":2}').duplicateName).toBe('a')
+  })
+
+  test('detects duplicate names in nested objects', () => {
+    expect(scanJsonText('{"x":{"b":1,"b":2}}').duplicateName).toBe('b')
+  })
+
+  test('same name in different objects is not a duplicate', () => {
+    expect(scanJsonText('{"a":{"a":1},"b":[{"a":1},{"a":2}]}').duplicateName).toBeUndefined()
+  })
+
+  test('string values are not names', () => {
+    expect(scanJsonText('{"a":"a","b":["a","a"]}').duplicateName).toBeUndefined()
+  })
+
+  test('escaped quotes and backslashes do not end strings early', () => {
+    const scan = scanJsonText('{"k\\"\\\\":"v\\"}","k\\"\\\\":0}')
+    expect(scan.duplicateName).toBe('k"\\')
+  })
+
+  test('detects lone surrogate escapes in names and values', () => {
+    expect(scanJsonText('{"a":"\\ud800"}').loneSurrogate).toBe(true)
+    expect(scanJsonText('{"\\udc00":1}').loneSurrogate).toBe(true)
+    expect(scanJsonText('{"a":"\\ud83d\\ude00"}').loneSurrogate).toBe(false)
+    expect(scanJsonText('["\\ud83d","\\ude00"]').loneSurrogate).toBe(true)
+  })
+
+  test('captures raw top-level member values', () => {
+    const scan = scanJsonText(' { "n" : 18446744073709551615 , "o":{"x":[1,2]},"s":"a,b}" , "f": 1.0 } ')
+    expect(scan.topLevelMembers.get('n')).toBe('18446744073709551615')
+    expect(scan.topLevelMembers.get('o')).toBe('{"x":[1,2]}')
+    expect(scan.topLevelMembers.get('s')).toBe('"a,b}"')
+    expect(scan.topLevelMembers.get('f')).toBe('1.0')
+    expect(scan.topLevelMembers.has('x')).toBe(false)
+  })
+
+  test('non-object documents have no top-level members', () => {
+    expect(scanJsonText('[{"a":1}]').topLevelMembers.size).toBe(0)
+  })
+
+  test('deeply nested documents do not overflow the stack', () => {
+    const depth = 20_000
+    const text = '['.repeat(depth) + ']'.repeat(depth)
+    expect(scanJsonText(text).duplicateName).toBeUndefined()
+  })
+})
+
+describe('parseJsonStrict', () => {
+  test('parses valid JSON', () => {
+    expect(parseJsonStrict('{"a":[1,"b"]}').value).toEqual({ a: [1, 'b'] })
+  })
+
+  test('rejects duplicate names', () => {
+    expect(() => parseJsonStrict('{"a":1,"a":2}')).toThrow('Duplicate JSON object names are not allowed')
+  })
+
+  test.each(['{"a":NaN}', '{"a":Infinity}', '{"a":-Infinity}', '{"a":1,}', "{'a':1}"])('rejects %s', (text) => {
+    expect(() => parseJsonStrict(text)).toThrow(SyntaxError)
+  })
+})
+
+describe('integerLiteralValue', () => {
+  test.each([
+    ['0', 0n],
+    ['-0', 0n],
+    ['42', 42n],
+    ['18446744073709551615', 18446744073709551615n],
+    ['-1', -1n],
+  ])('%s is an integer literal', (raw, expected) => {
+    expect(integerLiteralValue(raw)).toBe(expected)
+  })
+
+  test.each(['1.0', '1e3', '01', 'true', '"1"', '{}', ''])('%s is not an integer literal', (raw) => {
+    expect(integerLiteralValue(raw)).toBeUndefined()
+  })
+})
+
+describe('stringifyJsonStrict', () => {
+  test('serializes compactly', () => {
+    expect(stringifyJsonStrict({ a: [1, 'b'], c: { d: null } })).toBe('{"a":[1,"b"],"c":{"d":null}}')
+  })
+
+  test.each([NaN, Infinity, -Infinity])('rejects non-finite %s', (n) => {
+    expect(() => stringifyJsonStrict({ a: { b: [n] } })).toThrow(TypeError)
+  })
+
+  test('rejects lone surrogates in values and names', () => {
+    expect(() => stringifyJsonStrict({ a: '\ud800' })).toThrow(TypeError)
+    expect(() => stringifyJsonStrict({ ['\udc00']: 1 })).toThrow(TypeError)
+  })
+
+  test('accepts surrogate pairs', () => {
+    expect(stringifyJsonStrict({ a: '😀' })).toBe('{"a":"😀"}')
+  })
+
+  test('applies toJSON before checking values', () => {
+    expect(stringifyJsonStrict({ d: new Date(0) })).toBe('{"d":"1970-01-01T00:00:00.000Z"}')
+  })
+
+  test('omits undefined members', () => {
+    expect(stringifyJsonStrict({ a: 1, b: undefined })).toBe('{"a":1}')
+  })
+
+  test.each([
+    ['function', () => 1],
+    ['symbol', Symbol('s')],
+    ['Uint8Array', new Uint8Array([1])],
+    ['Buffer', Buffer.from([1])],
+    ['ArrayBuffer', new ArrayBuffer(1)],
+    ['Map', new Map([['a', 1]])],
+    ['Set', new Set([1])],
+  ])('rejects %s values (nested and top level)', (_name, value) => {
+    expect(() => stringifyJsonStrict({ a: [{ b: value }] })).toThrow(TypeError)
+    expect(() => stringifyJsonStrict(value)).toThrow(/not JSON serializable/)
+  })
+})
+
+describe('parseJsonAllowNonFinite', () => {
+  test.each([
+    ['{"a":NaN}', { a: null }],
+    ['[Infinity,-Infinity]', [null, null]],
+    ['{"s":"NaN Infinity -Infinity","n":NaN}', { s: 'NaN Infinity -Infinity', n: null }],
+    ['{"s":"\\"NaN\\""}', { s: '"NaN"' }],
+  ])('accepts %s', (text, expected) => {
+    expect(parseJsonAllowNonFinite(text)).toEqual(expected)
+  })
+
+  test.each(['{"a":-NaN}', '{"a":+Infinity}', '{"a":NaNx}', '{NaN:1}', '{"a":1,}'])('rejects %s', (text) => {
+    expect(() => parseJsonAllowNonFinite(text)).toThrow(SyntaxError)
+  })
+})
+
+describe('jsonIntegerMember', () => {
+  test('decoded integer literals are exact', () => {
+    const obj = parseJsonStrict('{"a":18446744073709551615,"b":-0,"c":[7]}').value as Record<string, unknown>
+    expect(jsonIntegerMember(obj, 'a')).toBe(18446744073709551615n)
+    expect(jsonIntegerMember(obj, 'b')).toBe(0n)
+    expect(jsonIntegerMember(obj['c'] as object, '0')).toBe(7n)
+  })
+
+  test.each(['1.0', '1e3', '1.5', 'true', '"1"', 'null'])('decoded %s is not an integer', (literal) => {
+    const obj = parseJsonStrict(`{"a":${literal}}`).value as Record<string, unknown>
+    expect(jsonIntegerMember(obj, 'a')).toBeUndefined()
+  })
+
+  test('JS-built numbers must be safe integers', () => {
+    expect(jsonIntegerMember({ a: 6 }, 'a')).toBe(6n)
+    expect(jsonIntegerMember({ a: 1.5 }, 'a')).toBeUndefined()
+    expect(jsonIntegerMember({ a: 2 ** 64 }, 'a')).toBeUndefined()
+    expect(jsonIntegerMember({ a: 6n }, 'a')).toBeUndefined()
+    expect(jsonIntegerMember({}, 'a')).toBeUndefined()
+  })
+})

@@ -8,7 +8,9 @@ import { createHash, getHashes } from 'crypto'
 import * as constants from './constants'
 import { assetIdToBoxName } from './codec'
 import { InvalidPageIndexError } from './errors'
+import { b64DecodeStrict } from './internal/base64'
 import { concatBytes } from './internal/bytes'
+import { parseJsonAllowNonFinite } from './internal/json'
 import { MAX_UINT8, MAX_UINT16 } from './internal/numbers'
 
 // ---------------------------------------------------------------------------
@@ -28,8 +30,11 @@ const uint8ToByte = (n: number, name: string): Uint8Array => {
 /** Cached set of available hash algorithms for O(1) lookup */
 const availableHashes = new Set(getHashes())
 
-/** Reusable UTF-8 decoder with fatal error handling */
-const utf8Decoder = new TextDecoder('utf-8', { fatal: true })
+/**
+ * Reusable UTF-8 decoder with fatal error handling. A leading BOM is kept (and then rejected
+ * as invalid JSON), as Python's `bytes.decode('utf-8')` + `json.loads` do.
+ */
+const utf8Decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 
 const sha = (algo: string, data: Uint8Array): Uint8Array => {
   // Ensure algorithm exists (for clearer errors, and parity with Python's explicit check).
@@ -39,15 +44,6 @@ const sha = (algo: string, data: Uint8Array): Uint8Array => {
   const h = createHash(algo)
   h.update(Buffer.from(data))
   return new Uint8Array(h.digest())
-}
-
-const base64DecodeStrict = (s: string): Uint8Array => {
-  // Mimic Python's base64.b64decode(..., validate=True)
-  // - only base64 alphabet characters
-  // - proper padding
-  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(s)) throw new Error('Could not base64-decode "extra_metadata".')
-  if (s.length % 4 !== 0) throw new Error('Could not base64-decode "extra_metadata".')
-  return new Uint8Array(Buffer.from(s, 'base64'))
 }
 
 // ---------------------------------------------------------------------------
@@ -168,18 +164,29 @@ export const computeArc3MetadataHash = (jsonBytes: Uint8Array): Uint8Array => {
 
   let obj: unknown
   try {
-    obj = JSON.parse(jsonText)
+    // Lenient like Python's default `json.loads`: `NaN` / `Infinity` literals are accepted.
+    obj = parseJsonAllowNonFinite(jsonText)
   } catch {
     throw new Error('Invalid JSON metadata file.')
   }
 
-  if (obj && typeof obj === 'object' && !Array.isArray(obj) && 'extra_metadata' in obj) {
+  if (
+    obj &&
+    typeof obj === 'object' &&
+    !Array.isArray(obj) &&
+    Object.prototype.hasOwnProperty.call(obj, 'extra_metadata')
+  ) {
     const extraB64 = (obj as Record<string, unknown>)['extra_metadata']
     if (typeof extraB64 !== 'string') {
       throw new Error('"extra_metadata" must be a base64 string when present.')
     }
 
-    const extra = base64DecodeStrict(extraB64)
+    let extra: Uint8Array
+    try {
+      extra = b64DecodeStrict(extraB64)
+    } catch (e) {
+      throw new Error('Could not base64-decode "extra_metadata".', { cause: e })
+    }
 
     const jsonH = sha512_256(concatBytes([constants.ARC3_HASH_AMJ_PREFIX, jsonBytes]))
     const am = sha512_256(concatBytes([constants.ARC3_HASH_AM_PREFIX, jsonH, extra]))
