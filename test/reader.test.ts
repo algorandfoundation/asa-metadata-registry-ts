@@ -13,7 +13,7 @@
  */
 
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { modelsv2 } from 'algosdk'
+import { ALGORAND_ZERO_ADDRESS_STRING, modelsv2 } from 'algosdk'
 import {
   AlgodBoxReader,
   type AlgodClientSubset,
@@ -25,22 +25,28 @@ import {
   AssetMetadataRecord,
   B64_STD_ENCODING,
   InvalidArc90UriError,
+  InvalidPageIndexError,
+  InvalidSliceError,
   IrreversibleFlags,
   MbrDelta,
   MbrDeltaSign,
   MetadataBody,
   MetadataDriftError,
+  MetadataEncodingError,
   MetadataExistence,
   MetadataFlags,
   MetadataHeader,
+  MetadataKeyError,
   MetadataSlice,
   MetadataSource,
   MissingAppClientError,
+  PAGE_SIZE,
   PaginatedMetadata,
   Pagination,
   RegistryParameters,
   RegistryResolutionError,
   ReversibleFlags,
+  SHORT_METADATA_SIZE,
   type SimulateOptions,
   bitmasks,
   getDefaultRegistryParams,
@@ -772,6 +778,19 @@ describe('dispatcher methods', () => {
       expect(result).toBe(true)
     })
 
+    test.each([
+      { label: 'manager set', params: { manager: MANAGER_ADDR }, expected: false },
+      { label: 'no manager', params: {}, expected: true },
+      { label: 'zero address manager', params: { manager: ALGORAND_ZERO_ADDRESS_STRING }, expected: true },
+    ])('box applies manager rule: $label', async ({ params, expected }) => {
+      // A mutable record is immutable once the ASA Manager Address is cleared.
+      mockBoxResponse(boxValue(sampleMetadataHeader, '{}'))
+      mockAssetInfo(params)
+      expect(await readerBoxConfig.arc89IsMetadataImmutable({ assetId: 456, source: MetadataSource.BOX })).toBe(
+        expected,
+      )
+    })
+
     test('uses avm fallback', async () => {
       // Test uses AVM when BOX not available.
       const avm = mockAvm(123)
@@ -1021,6 +1040,14 @@ describe('dispatcher methods', () => {
       })
       expect(result).toBe(100n)
     })
+
+    test.each(['1.0', '1e3', '-1', 'true', '18446744073709551616'])('box rejects non uint64 %s', async (value) => {
+      // JSON Uint64 is an integer literal in 0..2^64-1, as json_ref extracts it.
+      mockBoxResponse(boxValue(sampleMetadataHeader, `{"count": ${value}}`))
+      await expect(
+        readerBoxConfig.arc89GetMetadataUint64ByKey({ assetId: 456, key: 'count', source: MetadataSource.BOX }),
+      ).rejects.toThrow(MetadataKeyError)
+    })
   })
 
   describe('get metadata object by key', () => {
@@ -1168,5 +1195,136 @@ describe('edge cases', () => {
     const reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader })
     algod.getAssetByID.mockImplementation(() => rejectedRequest(new Error('asset does not exist')))
     await expect(reader.resolveArc90Uri({ assetId: 999 })).rejects.toThrow(AsaNotFoundError)
+  })
+})
+
+// ================================================================
+// TS-only: Box Reader Strictness Tests
+// ================================================================
+
+describe('box reader strictness', () => {
+  // The BOX getters fail like their AVM counterparts.
+  let reader: AsaMetadataRegistryRead
+
+  beforeEach(() => {
+    reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader })
+  })
+
+  test('check metadata exists maps not found errors', async () => {
+    algod.getApplicationBoxByName.mockImplementation(() => rejectedRequest(new Error('HTTP 404: box not found')))
+    algod.getAssetByID.mockImplementation(() => rejectedRequest(new Error('asset does not exist')))
+
+    const result = await reader.arc89CheckMetadataExists({ assetId: 456, source: MetadataSource.BOX })
+    expect([result.asaExists, result.metadataExists]).toEqual([false, false])
+  })
+
+  test('check metadata exists propagates other algod errors', async () => {
+    algod.getApplicationBoxByName.mockImplementation(() => rejectedRequest(new Error('connection refused')))
+    mockAssetInfo({})
+
+    await expect(reader.arc89CheckMetadataExists({ assetId: 456, source: MetadataSource.BOX })).rejects.toThrow(
+      /connection refused/,
+    )
+  })
+
+  test('get metadata page bounds', async () => {
+    mockBoxResponse(boxValue(sampleMetadataHeader, '{"page": 0}'))
+    for (const page of [-1, 1]) {
+      await expect(reader.arc89GetMetadata({ assetId: 456, page, source: MetadataSource.BOX })).rejects.toThrow(
+        InvalidPageIndexError,
+      )
+      await expect(reader.arc89GetMetadataPageHash({ assetId: 456, page, source: MetadataSource.BOX })).rejects.toThrow(
+        InvalidPageIndexError,
+      )
+    }
+
+    // Page 0 of empty Metadata is valid, but it has no page hash
+    mockBoxResponse(boxValue(sampleMetadataHeader, ''))
+    const empty = await reader.arc89GetMetadata({ assetId: 456, page: 0, source: MetadataSource.BOX })
+    expect([empty.hasNextPage, empty.revision, empty.pageContent]).toEqual([false, 1000n, new Uint8Array()])
+    await expect(
+      reader.arc89GetMetadataPageHash({ assetId: 456, page: 0, source: MetadataSource.BOX }),
+    ).rejects.toThrow(InvalidPageIndexError)
+  })
+
+  test.each([
+    { label: 'negative offset', offset: -1, size: 1, message: /Slice size must be within \[0, PAGE_SIZE\]/ },
+    { label: 'negative size', offset: 0, size: -1, message: /Slice size must be within \[0, PAGE_SIZE\]/ },
+    { label: 'size over PAGE_SIZE', offset: 0, size: PAGE_SIZE + 1, message: /Slice size must be within/ },
+    { label: 'past the Metadata end', offset: 91, size: 10, message: /Slice exceeds the Metadata size/ },
+  ])('get metadata slice rejects $label', async ({ offset, size, message }) => {
+    mockBoxResponse(boxValue(sampleMetadataHeader, '0123456789'.repeat(10)))
+
+    const promise = reader.arc89GetMetadataSlice({ assetId: 456, offset, size, source: MetadataSource.BOX })
+    await expect(promise).rejects.toThrow(InvalidSliceError)
+    await expect(promise).rejects.toThrow(message)
+  })
+
+  const jsonGetters = {
+    string: (r: AsaMetadataRegistryRead, key: string) =>
+      r.arc89GetMetadataStringByKey({ assetId: 456, key, source: MetadataSource.BOX }),
+    uint64: (r: AsaMetadataRegistryRead, key: string) =>
+      r.arc89GetMetadataUint64ByKey({ assetId: 456, key, source: MetadataSource.BOX }),
+    object: (r: AsaMetadataRegistryRead, key: string) =>
+      r.arc89GetMetadataObjectByKey({ assetId: 456, key, source: MetadataSource.BOX }),
+    b64: (r: AsaMetadataRegistryRead, key: string) =>
+      r.arc89GetMetadataB64BytesByKey({ assetId: 456, key, b64Encoding: B64_STD_ENCODING, source: MetadataSource.BOX }),
+  }
+
+  test.each([
+    {
+      label: 'not short metadata',
+      json: `{"name": "${'x'.repeat(SHORT_METADATA_SIZE)}"}`,
+      getter: 'string' as const,
+      key: 'name',
+      error: MetadataEncodingError,
+      message: /JSON getters require short Metadata/,
+    },
+    {
+      label: 'missing key',
+      json: '{"other": "value"}',
+      getter: 'uint64' as const,
+      key: 'name',
+      error: MetadataKeyError,
+      message: /^name$/,
+    },
+    {
+      label: 'not a JSON String',
+      json: '{"name": 1}',
+      getter: 'string' as const,
+      key: 'name',
+      error: MetadataKeyError,
+      message: /name: not a JSON String/,
+    },
+    {
+      label: 'not a JSON Object',
+      json: '{"config": [1]}',
+      getter: 'object' as const,
+      key: 'config',
+      error: MetadataKeyError,
+      message: /config: not a JSON Object/,
+    },
+    {
+      label: 'value exceeds PAGE_SIZE',
+      json: `{"name": "${'x'.repeat(PAGE_SIZE + 1)}"}`,
+      getter: 'string' as const,
+      key: 'name',
+      error: MetadataEncodingError,
+      message: /JSON value exceeds PAGE_SIZE/,
+    },
+    {
+      label: 'invalid base64',
+      json: '{"data": "not base64!"}',
+      getter: 'b64' as const,
+      key: 'data',
+      error: MetadataEncodingError,
+      message: /data: invalid base64 value/,
+    },
+  ])('json getter rejects $label', async ({ json, getter, key, error, message }) => {
+    mockBoxResponse(boxValue(sampleMetadataHeader, json))
+
+    const promise = jsonGetters[getter](reader, key)
+    await expect(promise).rejects.toThrow(error)
+    await expect(promise).rejects.toThrow(message)
   })
 })

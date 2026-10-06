@@ -5,25 +5,40 @@
  * All methods that touch Algod are async.
  */
 
+import { ALGORAND_ZERO_ADDRESS_STRING } from 'algosdk'
 import * as enums from '../enums'
 import { AlgodBoxReader } from '../algod'
+import { b64UrlDecode } from '../codec'
+import {
+  AsaNotFoundError,
+  BoxNotFoundError,
+  InvalidPageIndexError,
+  InvalidSliceError,
+  MetadataEncodingError,
+  MetadataKeyError,
+} from '../errors'
 import { computeHeaderHash, computePageHash, paginate } from '../hashing'
 import {
   AssetMetadataBox,
   AssetMetadataRecord,
+  MetadataBody,
   MetadataHeader,
   MetadataSlice,
   PaginatedMetadata,
   Pagination,
   RegistryParameters,
 } from '../models'
-import { asBigInt, toBigInt } from '../internal/numbers'
-import { AsaNotFoundError, BoxNotFoundError } from '../errors'
+import { isPlainObject } from '../validation'
+import { b64DecodeStrict } from '../internal/base64'
+import { integerLiteralValue, scanJsonText } from '../internal/json'
+import { asBigInt } from '../internal/numbers'
 
 type JsonObject = Record<string, unknown>
 
-const isPlainObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
+const MAX_UINT64 = (1n << 64n) - 1n
+
+const textEncoder = new TextEncoder()
+const textDecoder = new TextDecoder()
 
 /**
  * Reconstruct ARC-89 getter outputs from box contents (Algod).
@@ -49,9 +64,7 @@ export class AsaMetadataRegistryBoxRead {
   // Contract-equivalent getters (reconstructed)
   // ------------------------------------------------------------------
 
-  /**
-   * Off-chain, we can check only metadata existence by box lookup; ASA existence requires getAssetInfo.
-   */
+  /** Metadata existence by box lookup; ASA existence by `getAssetInfo`. */
   async arc89CheckMetadataExists(args: { assetId: bigint | number }): Promise<readonly [boolean, boolean]> {
     const assetId = args.assetId
 
@@ -74,8 +87,11 @@ export class AsaMetadataRegistryBoxRead {
     return [asaExists, metadataExists]
   }
 
+  /** Same rule as the AVM getter: immutable flag, or ASA Manager Address cleared. */
   async arc89IsMetadataImmutable(args: { assetId: bigint | number }): Promise<boolean> {
-    return (await this.box(args.assetId)).header.isImmutable
+    if ((await this.box(args.assetId)).header.isImmutable) return true
+    const manager = (await this.algod.getAssetInfo(args.assetId)).params?.manager
+    return !manager || manager === ALGORAND_ZERO_ADDRESS_STRING
   }
 
   async arc89IsMetadataShort(args: { assetId: bigint | number }): Promise<readonly [boolean, bigint]> {
@@ -101,43 +117,44 @@ export class AsaMetadataRegistryBoxRead {
     })
   }
 
+  /** @throws {InvalidPageIndexError} If the page is out of range (page 0 of empty Metadata is valid). */
   async arc89GetMetadata(args: { assetId: bigint | number; page: number }): Promise<PaginatedMetadata> {
     if (!Number.isInteger(args.page)) {
       throw new TypeError('page must be an integer')
     }
     const b = await this.box(args.assetId)
     const pages = paginate(b.body.rawBytes, this.params.pageSize)
-
-    // Keep Python parity: if out of range, return empty content.
     if (args.page < 0 || args.page >= Math.max(1, pages.length)) {
-      return new PaginatedMetadata({
-        hasNextPage: false,
-        revision: b.header.revision,
-        pageContent: new Uint8Array(),
-      })
+      throw new InvalidPageIndexError(`Page ${args.page} out of range (${pages.length} pages)`)
     }
-
     const content = pages.length ? pages[args.page]! : new Uint8Array()
-    const hasNext = args.page + 1 < pages.length
     return new PaginatedMetadata({
-      hasNextPage: hasNext,
+      hasNextPage: args.page + 1 < pages.length,
       revision: b.header.revision,
       pageContent: content,
     })
   }
 
+  /** @throws {InvalidSliceError} If the slice exceeds `PAGE_SIZE` or the Metadata size. */
   async arc89GetMetadataSlice(args: {
     assetId: bigint | number
     offset: number
     size: number
   }): Promise<MetadataSlice> {
-    const b = await this.box(args.assetId)
     if (!Number.isInteger(args.offset) || !Number.isInteger(args.size)) {
       throw new TypeError('offset and size must be integers')
     }
-    const content =
-      args.offset < 0 || args.size < 0 ? new Uint8Array() : b.body.rawBytes.slice(args.offset, args.offset + args.size)
-    return new MetadataSlice({ revision: b.header.revision, content })
+    const b = await this.box(args.assetId)
+    if (args.offset < 0 || args.size < 0 || args.size > this.params.pageSize) {
+      throw new InvalidSliceError('Slice size must be within [0, PAGE_SIZE]')
+    }
+    if (args.offset + args.size > b.body.size) {
+      throw new InvalidSliceError('Slice exceeds the Metadata size')
+    }
+    return new MetadataSlice({
+      revision: b.header.revision,
+      content: b.body.rawBytes.slice(args.offset, args.offset + args.size),
+    })
   }
 
   /** @returns The Metadata Header Hash and the Revision it was computed at. */
@@ -152,7 +169,10 @@ export class AsaMetadataRegistryBoxRead {
     return [hh, b.header.revision]
   }
 
-  /** @returns The page hash and the Revision it was computed at (an empty hash if out of range). */
+  /**
+   * @returns The page hash and the Revision it was computed at.
+   * @throws {InvalidPageIndexError} If the page is out of range.
+   */
   async arc89GetMetadataPageHash(args: {
     assetId: bigint | number
     page: number
@@ -160,7 +180,7 @@ export class AsaMetadataRegistryBoxRead {
     const b = await this.box(args.assetId)
     const pages = paginate(b.body.rawBytes, this.params.pageSize)
     if (!Number.isInteger(args.page) || args.page < 0 || args.page >= pages.length) {
-      return [new Uint8Array(), b.header.revision]
+      throw new InvalidPageIndexError(`Page ${args.page} out of range (${pages.length} pages)`)
     }
     return [computePageHash({ pageIndex: args.page, pageContent: pages[args.page]! }), b.header.revision]
   }
@@ -183,60 +203,89 @@ export class AsaMetadataRegistryBoxRead {
     return (await this.getAssetMetadataRecord(args)).json
   }
 
-  async getStringByKey(args: { assetId: bigint | number; key: string }): Promise<string> {
-    const obj = await this.getMetadataJson({ assetId: args.assetId })
-    const v = obj[args.key]
-    return typeof v === 'string' ? v : ''
+  /** Same constraints as the AVM JSON getters: short Metadata, existing key. */
+  private async shortJsonValue(args: {
+    assetId: bigint | number
+    key: string
+  }): Promise<{ value: unknown; body: MetadataBody }> {
+    const b = await this.box(args.assetId)
+    if (b.body.size > this.params.shortMetadataSize) {
+      throw new MetadataEncodingError('JSON getters require short Metadata')
+    }
+    const obj = b.body.json
+    if (!Object.prototype.hasOwnProperty.call(obj, args.key)) throw new MetadataKeyError(args.key)
+    return { value: obj[args.key], body: b.body }
   }
 
-  /**
-   * Returns a uint64-like value as bigint.
-   */
-  async getUint64ByKey(args: { assetId: bigint | number; key: string }): Promise<bigint> {
-    const obj = await this.getMetadataJson({ assetId: args.assetId })
-    const v = obj[args.key]
-    if (typeof v === 'boolean') return v ? 1n : 0n
-    if (typeof v === 'number' && Number.isInteger(v) && v >= 0) return toBigInt(v)
-    if (typeof v === 'bigint' && v >= 0n) return v
-    return 0n
-  }
-
-  /**
-   * Contract returns a JSON string for objects (limited by page size);
-   * off-chain we stringify the value when it is an object.
-   */
-  async getObjectByKey(args: { assetId: bigint | number; key: string }): Promise<string> {
-    const obj = await this.getMetadataJson({ assetId: args.assetId })
-    const v = obj[args.key]
-    try {
-      return isPlainObject(v) ? (JSON.stringify(v) ?? '') : ''
-    } catch {
-      return ''
+  private checkValueSize(value: Uint8Array): void {
+    if (value.length > this.params.pageSize) {
+      throw new MetadataEncodingError('JSON value exceeds PAGE_SIZE')
     }
   }
 
+  /** @throws {MetadataKeyError} If the key is missing or its value is not a JSON String. */
+  async getStringByKey(args: { assetId: bigint | number; key: string }): Promise<string> {
+    const { value } = await this.shortJsonValue(args)
+    if (typeof value !== 'string') throw new MetadataKeyError(`${args.key}: not a JSON String`)
+    this.checkValueSize(textEncoder.encode(value))
+    return value
+  }
+
+  /**
+   * Returns the exact uint64 value (integer literals are read from the raw JSON text, so values
+   * beyond `Number.MAX_SAFE_INTEGER` keep full precision).
+   *
+   * @throws {MetadataKeyError} If the key is missing or its value is not a JSON Uint64.
+   */
+  async getUint64ByKey(args: { assetId: bigint | number; key: string }): Promise<bigint> {
+    const { body } = await this.shortJsonValue(args)
+    const raw = scanJsonText(textDecoder.decode(body.rawBytes)).topLevelMembers.get(args.key)
+    const value = raw === undefined ? undefined : integerLiteralValue(raw)
+    if (value === undefined || value < 0n || value > MAX_UINT64) {
+      throw new MetadataKeyError(`${args.key}: not a JSON Uint64`)
+    }
+    return value
+  }
+
+  /**
+   * Returns the compact reserialization of a JSON Object value (the AVM `json_ref` returns the raw
+   * bytes of the value).
+   *
+   * @throws {MetadataKeyError} If the key is missing or its value is not a JSON Object.
+   */
+  async getObjectByKey(args: { assetId: bigint | number; key: string }): Promise<string> {
+    const { value } = await this.shortJsonValue(args)
+    if (!isPlainObject(value)) throw new MetadataKeyError(`${args.key}: not a JSON Object`)
+    const out = JSON.stringify(value)
+    this.checkValueSize(textEncoder.encode(out))
+    return out
+  }
+
+  /**
+   * @throws {MetadataKeyError} If the key is missing or its value is not a JSON String.
+   * @throws {MetadataEncodingError} If the value is not valid base64 for the requested encoding.
+   */
   async getB64BytesByKey(args: {
     assetId: bigint | number
     key: string
     b64Encoding: typeof enums.B64_STD_ENCODING | typeof enums.B64_URL_ENCODING
   }): Promise<Uint8Array> {
-    const { assetId, key, b64Encoding } = args
+    const { key, b64Encoding } = args
     if (b64Encoding !== enums.B64_STD_ENCODING && b64Encoding !== enums.B64_URL_ENCODING) {
       throw new RangeError('b64Encoding must be B64_STD_ENCODING or B64_URL_ENCODING')
     }
 
-    const obj = await this.getMetadataJson({ assetId })
-    const v = obj[key]
-    if (typeof v !== 'string') return new Uint8Array()
+    const { value } = await this.shortJsonValue(args)
+    if (typeof value !== 'string') throw new MetadataKeyError(`${key}: not a JSON String`)
+    this.checkValueSize(textEncoder.encode(value))
 
     try {
-      // Node's Buffer supports both standard and urlsafe base64 strings.
       if (b64Encoding === enums.B64_URL_ENCODING) {
-        return new Uint8Array(Buffer.from(v, 'base64url'))
+        return b64UrlDecode(value.replace(/=+$/, ''))
       }
-      return new Uint8Array(Buffer.from(v, 'base64'))
-    } catch {
-      return new Uint8Array()
+      return b64DecodeStrict(value)
+    } catch (e) {
+      throw new MetadataEncodingError(`${key}: invalid base64 value`, { cause: e })
     }
   }
 }
