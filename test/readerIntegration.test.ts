@@ -33,6 +33,7 @@ import {
 } from '@algorandfoundation/asa-metadata-registry-sdk'
 import { AsaMetadataRegistryClient, AsaMetadataRegistryFactory } from '@/generated'
 import {
+  ARC90_NETAUTH,
   type AddressWithSigners,
   sampleJsonObj,
   deployRegistry,
@@ -90,12 +91,17 @@ beforeAll(async () => {
   boxReader = new AlgodBoxReader(algorand.client.algod)
 
   const avmFactory = (appId: bigint): AsaMetadataRegistryAvmRead =>
-    new AsaMetadataRegistryAvmRead({ client: client.clone({ appId }) })
+    new AsaMetadataRegistryAvmRead({ client: factory.getAppClientById({ appId }) })
 
-  // Reader instances
-  readerWithAlgod = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader })
-  readerWithAvm = new AsaMetadataRegistryRead({ appId: client.appId, avmFactory })
-  readerFull = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader, avmFactory })
+  // Reader instances (LocalNet is not a known deployment: pin the ARC-90 netauth the registry was deployed with)
+  readerWithAlgod = new AsaMetadataRegistryRead({ appId: client.appId, netauth: ARC90_NETAUTH, algod: boxReader })
+  readerWithAvm = new AsaMetadataRegistryRead({ appId: client.appId, netauth: ARC90_NETAUTH, avmFactory })
+  readerFull = new AsaMetadataRegistryRead({
+    appId: client.appId,
+    netauth: ARC90_NETAUTH,
+    algod: boxReader,
+    avmFactory,
+  })
 
   // Upload mutable short metadata
   const shortAsaId = await createArc89Asa({ assetManager, appClient: client })
@@ -572,18 +578,33 @@ describe('reader JSON extraction', () => {
 
 describe('reader ARC-90 URI', () => {
   test('resolve from asset url', async () => {
-    // Test resolving URI from ASA's url field.
+    // Test the canonical look-up by asset id (the Asset URL is not read).
     const uri = await readerWithAlgod.resolveArc90Uri({ assetId: arc89Asa })
 
     expect(uri.assetId).toBe(arc89Asa)
     expect(uri.appId).not.toBeNull()
     expect(uri.appId).toBe(client.appId)
+    expect(uri.netauth).toBe(ARC90_NETAUTH)
+  })
+
+  test('held asset url matches canonical look up', async () => {
+    // The URL helper and the canonical look-up name the same box.
+    expect(readerWithAlgod.algod).not.toBeNull()
+    const assetUrl = await readerWithAlgod.algod!.getAssetUrl(arc89Asa)
+    expect(assetUrl).toBeTruthy()
+
+    const fromUrl = await readerWithAlgod.resolveArc90UriFromAssetUrl({ assetId: arc89Asa, assetUrl: assetUrl! })
+    const canonical = await readerWithAlgod.resolveArc90Uri({ assetId: arc89Asa })
+
+    expect(fromUrl).not.toBeNull()
+    expect([fromUrl!.appId, fromUrl!.assetId]).toStrictEqual([canonical.appId, canonical.assetId])
   })
 
   test('resolve from explicit uri', async () => {
     // Test resolving from explicit metadata URI.
+    // Encode the asset ID as base64url for the box parameter
     const boxEncoded = b64UrlEncode(assetIdToBoxName(arc89Asa))
-    const uriString = `algorand://net:localnet/app/${client.appId}?box=${boxEncoded}`
+    const uriString = `algorand://${ARC90_NETAUTH}/app/${client.appId}?box=${boxEncoded}`
 
     const uri = await readerWithAlgod.resolveArc90Uri({ metadataUri: uriString })
 

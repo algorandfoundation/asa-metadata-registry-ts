@@ -28,6 +28,7 @@ import {
   InvalidPageIndexError,
   InvalidSliceError,
   IrreversibleFlags,
+  MAINNET_GH_B64,
   MbrDelta,
   MbrDeltaSign,
   MetadataBody,
@@ -48,6 +49,10 @@ import {
   ReversibleFlags,
   SHORT_METADATA_SIZE,
   type SimulateOptions,
+  TESTNET_ASA_METADATA_REGISTRY_APP_ID,
+  TESTNET_GH_B64,
+  b64Decode,
+  b64UrlEncode,
   bitmasks,
   getDefaultRegistryParams,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
@@ -71,7 +76,8 @@ const rejectedRequest = (error: Error): AlgodRequest => ({
 /**
  * Mock of the algosdk `Algodv2` subset wrapped by `AlgodBoxReader`.
  *
- * Like the Python `Mock(spec=AlgodClient)`: box and ASA reads fail unless a test mocks them.
+ * Like the Python `Mock(spec=AlgodClient)`: box and ASA reads fail unless a test mocks them, and the
+ * connected network has no genesis hash (`suggested_params().gh` is not a string) unless a test sets it.
  */
 const createMockAlgod = () => ({
   getApplicationBoxByName: vi.fn(
@@ -81,6 +87,7 @@ const createMockAlgod = () => ({
   getAssetByID: vi.fn(
     (_assetId: bigint | number): AlgodRequest => rejectedRequest(new Error('getAssetByID is not mocked')),
   ),
+  getTransactionParams: vi.fn((): AlgodRequest => resolvedRequest({})),
 })
 
 /** Factory of mocked AVM readers, cached per registry app id (Python `mock_avm_factory` fixture). */
@@ -200,8 +207,13 @@ const mockAssetInfo = (params: AssetParamsFields | null) => {
 /** Helper to mock algod response for asset metadata record. */
 const mockAssetMetadataRecord = (record: AssetMetadataRecord) => {
   mockBoxResponse(boxValue(record.header, record.body.rawBytes))
-  // Also mock the ASA (empty URL: the URI resolves to the configured registry)
+  // Also mock the ASA for the canonical look-up (empty URL: the Asset URL is informational)
   mockAssetInfo({ url: '' })
+}
+
+/** Helper to mock the genesis hash of the connected network (unset by default). */
+const mockGenesisHash = (genesisHash: Uint8Array) => {
+  algod.getTransactionParams.mockImplementation(() => resolvedRequest({ genesisHash }))
 }
 
 // ================================================================
@@ -262,6 +274,17 @@ describe('reader initialization', () => {
     expect(reader.appId).toBe(123n)
     expect(reader.algod).toBe(algodReader)
     expect(reader.avmFactory).toBe(avmFactory)
+  })
+
+  test('init trusted registry configuration', () => {
+    // TS-only: netauth and trustedVersions defaults; app ids are normalized to bigint.
+    const minimal = new AsaMetadataRegistryRead({ appId: null })
+    expect(minimal.netauth).toBeNull()
+    expect(minimal.trustedVersions).toEqual([])
+
+    const reader = new AsaMetadataRegistryRead({ appId: 123, netauth: 'net:testnet', trustedVersions: [789, 999n] })
+    expect(reader.netauth).toBe('net:testnet')
+    expect(reader.trustedVersions).toEqual([789n, 999n])
   })
 })
 
@@ -407,6 +430,14 @@ describe('sub readers', () => {
 
 describe('resolve arc90 uri', () => {
   // Test resolveArc90Uri method.
+  test('explicit uri without trusted registry raises', async () => {
+    // An explicit URI is never its own trust anchor.
+    const reader = new AsaMetadataRegistryRead({ appId: null })
+    const promise = reader.resolveArc90Uri({ metadataUri: 'algorand://app/123?box=AAAAAAAAAcg' })
+    await expect(promise).rejects.toThrow(RegistryResolutionError)
+    await expect(promise).rejects.toThrow(/No trusted registry/)
+  })
+
   test('resolve from explicit uri', async () => {
     // Test resolution from explicit metadataUri parameter.
     const reader = new AsaMetadataRegistryRead({ appId: 123 })
@@ -581,7 +612,7 @@ describe('get asset metadata', () => {
 
   test('follows deprecation', async () => {
     // Test metadata follows deprecation chain.
-    const reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader })
+    const reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader, trustedVersions: [789] })
 
     // First record points to deprecatedBy=789
     const deprecatedRecord = new AssetMetadataRecord({
@@ -614,7 +645,7 @@ describe('get asset metadata', () => {
 
   test('stops deprecation loop', async () => {
     // Test deprecation following stops after max hops.
-    const reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader })
+    const reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader, trustedVersions: [999] })
 
     // Circular deprecation: 123 -> 999 -> 123 -> ...
     algod.getApplicationBoxByName.mockImplementation((appId, name) => {
@@ -623,10 +654,34 @@ describe('get asset metadata', () => {
     })
     mockAssetInfo({ url: '' })
 
-    const result = await reader.getAssetMetadata({ assetId: 456, followDeprecation: true, maxDeprecationHops: 3 })
+    const promise = reader.getAssetMetadata({ assetId: 456, followDeprecation: true, maxDeprecationHops: 3 })
+    await expect(promise).rejects.toThrow(RegistryResolutionError)
+    await expect(promise).rejects.toThrow(/exceeded 3 hops/)
+  })
 
-    // Should stop after max hops and return the last result
-    expect(result.appId).toBe(999n)
+  test('untrusted deprecation raises', async () => {
+    // A Deprecated By pointer outside the trusted versions is never followed.
+    const reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader })
+    mockBoxResponse(boxValue(metadataHeader({ deprecatedBy: 789, revision: 1000 }), '{}'))
+    mockAssetInfo({})
+
+    const promise = reader.getAssetMetadata({ assetId: 456, followDeprecation: true })
+    await expect(promise).rejects.toThrow(RegistryResolutionError)
+    await expect(promise).rejects.toThrow(/untrusted registry 789/)
+  })
+
+  test('searches trusted versions', async () => {
+    // Absent from the oldest trusted version, the record is found in a newer one.
+    const reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader, trustedVersions: [789] })
+    const header = metadataHeader({ deprecatedBy: 0, revision: 7 })
+
+    algod.getApplicationBoxByName.mockImplementation((appId, name) => {
+      if (BigInt(appId) === 123n) return rejectedRequest(new Error('HTTP 404: box not found'))
+      return resolvedRequest(boxModel(name, boxValue(header, '{"v": 2}')))
+    })
+    mockAssetInfo({})
+
+    expect((await reader.getAssetMetadata({ assetId: 456 })).appId).toBe(789n)
   })
 
   test('no deprecation follow', async () => {
@@ -1190,11 +1245,147 @@ describe('edge cases', () => {
     expect(uri.assetId).toBe(456n)
   })
 
+  test('metadata uri naming another registry raises', async () => {
+    const reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader })
+    const promise = reader.resolveArc90Uri({ metadataUri: 'algorand://app/789?box=AAAAAAAAAcg' })
+    await expect(promise).rejects.toThrow(RegistryResolutionError)
+    await expect(promise).rejects.toThrow(/trusted registry is 123/)
+  })
+
+  test.each([
+    'algorand://app/4242?box=#arc89', // another registry
+    'algorand://app/123?box=AAAAAAAAMDk#arc89', // pre-filled box
+    'algorand://app/123?box=#arc89', // another network
+    'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi#arc3',
+  ])('asset url is informational %j', async (url) => {
+    // Discovery is the look-up on the trusted registry; the Asset URL is never followed.
+    const reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader, netauth: 'net:testnet' })
+    mockAssetInfo({ url })
+    const uri = await reader.resolveArc90Uri({ assetId: 999 })
+    expect([uri.netauth, uri.appId, uri.assetId]).toEqual(['net:testnet', 123n, 999n])
+  })
+
+  test('resolve from held asset url', async () => {
+    // A held native Asset URL is completed and trust-checked without fetching the ASA.
+    const reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader })
+    const uri = await reader.resolveArc90UriFromAssetUrl({ assetId: 999, assetUrl: 'algorand://app/123?box=#arc89' })
+    expect(uri).not.toBeNull()
+    expect([uri!.appId, uri!.assetId]).toEqual([123n, 999n])
+    expect(algod.getAssetByID).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi#arc3',
+    'algorand://app/123?box=AAAAAAAAMDk#arc89', // pre-filled box
+    '',
+  ])('held asset url not arc89 returns null %j', async (url) => {
+    const reader = new AsaMetadataRegistryRead({ appId: 123 })
+    expect(await reader.resolveArc90UriFromAssetUrl({ assetId: 999, assetUrl: url })).toBeNull()
+  })
+
+  test('held asset url naming another registry raises', async () => {
+    const reader = new AsaMetadataRegistryRead({ appId: 123 })
+    const promise = reader.resolveArc90UriFromAssetUrl({ assetId: 999, assetUrl: 'algorand://app/4242?box=#arc89' })
+    await expect(promise).rejects.toThrow(RegistryResolutionError)
+    await expect(promise).rejects.toThrow(/trusted registry is 123/)
+  })
+
   test('missing asa raises', async () => {
     // A record of a destroyed or unknown ASA is not discovered.
     const reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader })
     algod.getAssetByID.mockImplementation(() => rejectedRequest(new Error('asset does not exist')))
     await expect(reader.resolveArc90Uri({ assetId: 999 })).rejects.toThrow(AsaNotFoundError)
+  })
+})
+
+// ================================================================
+// TS-only: Trusted Registry Resolution Tests
+// ================================================================
+
+describe('trusted registry resolution', () => {
+  // Network-dependent resolution (the default MOCK algod has no genesis hash).
+  test('canonical look-up uses the deployment of the connected network', async () => {
+    mockGenesisHash(b64Decode(TESTNET_GH_B64))
+    mockAssetInfo({})
+    const reader = new AsaMetadataRegistryRead({ appId: null, algod: algodReader })
+
+    const uri = await reader.resolveArc90Uri({ assetId: 456 })
+    expect([uri.netauth, uri.appId, uri.assetId]).toEqual([
+      'net:testnet',
+      BigInt(TESTNET_ASA_METADATA_REGISTRY_APP_ID),
+      456n,
+    ])
+  })
+
+  test('canonical look-up on an unknown network derives a gh netauth', async () => {
+    const genesisHash = new Uint8Array(32).fill(0x01)
+    mockGenesisHash(genesisHash)
+    mockAssetInfo({})
+    const reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader })
+
+    const uri = await reader.resolveArc90Uri({ assetId: 456 })
+    expect([uri.netauth, uri.appId, uri.assetId]).toEqual([`gh:${b64UrlEncode(genesisHash)}`, 123n, 456n])
+  })
+
+  test.each([
+    { label: 'MainNet (registry app id TBD)', genesisHash: b64Decode(MAINNET_GH_B64) },
+    { label: 'unknown network', genesisHash: new Uint8Array(32).fill(0x01) },
+  ])('no trusted registry on $label', async ({ genesisHash }) => {
+    mockGenesisHash(genesisHash)
+    mockAssetInfo({})
+    const reader = new AsaMetadataRegistryRead({ appId: null, algod: algodReader })
+
+    await expect(reader.resolveArc90Uri({ assetId: 456 })).rejects.toThrow(/Cannot resolve registry appId/)
+    await expect(reader.resolveArc90Uri({ metadataUri: 'algorand://app/123?box=AAAAAAAAAcg' })).rejects.toThrow(
+      /No trusted registry/,
+    )
+  })
+
+  test('explicit uri must denote the connected network', async () => {
+    mockGenesisHash(b64Decode(TESTNET_GH_B64))
+    const reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader })
+    const uriFor = (netauth: string | null) =>
+      new Arc90Uri({ netauth, appId: 123, boxName: null }).withAssetId(456).toUri()
+
+    for (const netauth of ['net:testnet', `gh:${b64UrlEncode(b64Decode(TESTNET_GH_B64))}`]) {
+      expect((await reader.resolveArc90Uri({ metadataUri: uriFor(netauth) })).netauth).toBe(netauth)
+    }
+    for (const netauth of [null, 'net:localnet']) {
+      const promise = reader.resolveArc90Uri({ metadataUri: uriFor(netauth) })
+      await expect(promise).rejects.toThrow(RegistryResolutionError)
+      await expect(promise).rejects.toThrow(/does not denote the connected network/)
+    }
+  })
+
+  test('explicit uri must match the configured netauth', async () => {
+    const reader = new AsaMetadataRegistryRead({ appId: 123, netauth: 'net:testnet' })
+
+    const uri = await reader.resolveArc90UriFromAssetUrl({
+      assetId: 999,
+      assetUrl: 'algorand://net:testnet/app/123?box=#arc89',
+    })
+    expect(uri?.netauth).toBe('net:testnet')
+
+    const promise = reader.resolveArc90Uri({ metadataUri: 'algorand://app/123?box=AAAAAAAAAcg' })
+    await expect(promise).rejects.toThrow(RegistryResolutionError)
+    await expect(promise).rejects.toThrow(/does not match/)
+  })
+
+  test('canonical look-up via avm picks the oldest trusted version holding the record', async () => {
+    const reader = new AsaMetadataRegistryRead({ appId: 123, avmFactory, trustedVersions: [789] })
+    mockAvm(123).arc89CheckMetadataExists.mockResolvedValue(
+      new MetadataExistence({ asaExists: true, metadataExists: false }),
+    )
+    const avm789 = mockAvm(789)
+    avm789.arc89CheckMetadataExists.mockResolvedValue(new MetadataExistence({ asaExists: true, metadataExists: true }))
+    avm789.arc89GetMetadataHeader.mockResolvedValue(sampleMetadataHeader)
+    avm789.arc89GetMetadataPagination.mockResolvedValue(
+      new Pagination({ deprecatedBy: 0, metadataSize: 0, pageSize: 100, totalPages: 0, revision: 1000 }),
+    )
+
+    const result = await reader.getAssetMetadata({ assetId: 456 })
+    expect(result.appId).toBe(789n)
+    expect(mockAvm(123).arc89GetMetadataHeader).not.toHaveBeenCalled()
   })
 })
 

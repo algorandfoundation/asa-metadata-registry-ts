@@ -8,19 +8,28 @@
  * - RegistryDeployment constructor validation errors
  * - RegistryDeployment immutability
  * - DEFAULT_DEPLOYMENTS canonical values
+ * - deploymentForGenesis / netauthForGenesis / netauthMatchesGenesis
  */
 
 import { describe, expect, test } from 'vitest'
 
 import {
+  b64Encode,
+  b64UrlEncode,
   DEFAULT_DEPLOYMENTS,
+  deploymentForGenesis,
   MAINNET_GH_B64,
   MAINNET_TRUSTED_DEPLOYER_ADDR,
+  netauthForGenesis,
+  netauthMatchesGenesis,
   RegistryDeployment,
   TESTNET_ASA_METADATA_REGISTRY_APP_ID,
   TESTNET_GH_B64,
   TESTNET_TRUSTED_DEPLOYER_ADDR,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
+
+/** Genesis hash of a network unknown to the SDK (32 zero bytes). */
+const UNKNOWN_GH_B64 = b64Encode(new Uint8Array(32))
 
 describe('registry deployment', () => {
   // Tests for RegistryDeployment construction and validation.
@@ -125,5 +134,52 @@ describe('default deployments', () => {
     // Pin the ARC-89 v1.0.0 TestNet deployment.
     expect(TESTNET_ASA_METADATA_REGISTRY_APP_ID).toBe(772_968_354)
     expect(DEFAULT_DEPLOYMENTS.testnet.appId).toBe(772_968_354)
+  })
+})
+
+describe('netauth matches genesis', () => {
+  test('unknown network rejects labels', () => {
+    const gh = b64Encode(new Uint8Array(32))
+    expect(netauthMatchesGenesis('net:testnet', gh)).toBe(false)
+    expect(netauthMatchesGenesis('net:localnet', gh)).toBe(false)
+    expect(netauthMatchesGenesis(`gh:${b64UrlEncode(new Uint8Array(32))}`, gh)).toBe(true)
+  })
+
+  test('known network label', () => {
+    expect(netauthMatchesGenesis('net:testnet', TESTNET_GH_B64)).toBe(true)
+    expect(netauthMatchesGenesis('net:mainnet', TESTNET_GH_B64)).toBe(false)
+  })
+
+  test('mainnet netauth and gh forms (TS-only)', () => {
+    // A null netauth denotes MainNet only.
+    expect(netauthMatchesGenesis(null, MAINNET_GH_B64)).toBe(true)
+    expect(netauthMatchesGenesis(null, TESTNET_GH_B64)).toBe(false)
+    expect(netauthMatchesGenesis(null, UNKNOWN_GH_B64)).toBe(false)
+    // The `gh:<base64url>` form also denotes a known network.
+    const testnetGh = `gh:${b64UrlEncode(new Uint8Array(Buffer.from(TESTNET_GH_B64, 'base64')))}`
+    expect(netauthMatchesGenesis(testnetGh, TESTNET_GH_B64)).toBe(true)
+    expect(netauthMatchesGenesis(testnetGh, MAINNET_GH_B64)).toBe(false)
+    // Invalid (or non-canonical) base64url never matches.
+    expect(netauthMatchesGenesis('gh:!!!', TESTNET_GH_B64)).toBe(false)
+    expect(netauthMatchesGenesis(`gh:${b64Encode(new Uint8Array(32))}`, UNKNOWN_GH_B64)).toBe(false)
+  })
+})
+
+describe('deployment and netauth for genesis (TS-only)', () => {
+  // Python covers these helpers through the reader tests.
+  test('deployment for genesis', () => {
+    expect(deploymentForGenesis(TESTNET_GH_B64)).toBe(DEFAULT_DEPLOYMENTS.testnet)
+    expect(deploymentForGenesis(MAINNET_GH_B64)).toBe(DEFAULT_DEPLOYMENTS.mainnet)
+    expect(deploymentForGenesis(UNKNOWN_GH_B64)).toBeNull()
+  })
+
+  test('netauth for genesis', () => {
+    // Known networks use the deployment label (none on MainNet), unknown ones `gh:<base64url>`.
+    expect(netauthForGenesis(TESTNET_GH_B64)).toBe('net:testnet')
+    expect(netauthForGenesis(MAINNET_GH_B64)).toBeNull()
+    expect(netauthForGenesis(UNKNOWN_GH_B64)).toBe('gh:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA')
+    for (const gh of [TESTNET_GH_B64, MAINNET_GH_B64, UNKNOWN_GH_B64]) {
+      expect(netauthMatchesGenesis(netauthForGenesis(gh), gh)).toBe(true)
+    }
   })
 })

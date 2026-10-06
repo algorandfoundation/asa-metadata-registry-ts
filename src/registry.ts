@@ -6,6 +6,7 @@
 
 import { AlgodBoxReader, AlgodClientSubset } from './algod'
 import { Arc90Uri } from './codec'
+import { DEFAULT_DEPLOYMENTS } from './deployments'
 import { MissingAppClientError, RegistryResolutionError } from './errors'
 import { AsaMetadataRegistryAvmRead } from './read/avm'
 import { AsaMetadataRegistryRead } from './read/reader'
@@ -41,6 +42,7 @@ export class RegistryConfig {
  *
  * Construct using one of:
  * - `AsaMetadataRegistry.fromAlgod(...)` (read-only, fast box reads)
+ * - `AsaMetadataRegistry.forNetwork(...)` (pinned to a trusted deployment)
  * - `AsaMetadataRegistry.fromAppClient(...)` (simulate + writes, optionally with algod for box reads)
  */
 export class AsaMetadataRegistry {
@@ -106,6 +108,7 @@ export class AsaMetadataRegistry {
       appId: this.config.appId,
       algod: this.algodReader,
       avmFactory: this.avmReaderFactory,
+      netauth: this.config.netauth,
     })
   }
 
@@ -123,11 +126,40 @@ export class AsaMetadataRegistry {
   /**
    * Create a registry facade using only Algod (box reads).
    */
-  static fromAlgod(args: { algod: AlgodClientSubset; appId: bigint | number | null }): AsaMetadataRegistry {
+  static fromAlgod(args: {
+    algod: AlgodClientSubset
+    appId: bigint | number | null
+    netauth?: string | null
+  }): AsaMetadataRegistry {
     return new AsaMetadataRegistry({
-      config: new RegistryConfig({ appId: args.appId }),
+      config: new RegistryConfig({ appId: args.appId, netauth: args.netauth ?? null }),
       algod: args.algod,
       appClient: null,
+    })
+  }
+
+  /**
+   * Pin the registry to a trusted deployment (`DEFAULT_DEPLOYMENTS`) by network name.
+   *
+   * @throws {RegistryResolutionError} If there is no trusted deployment for the network.
+   */
+  static forNetwork(
+    network: string,
+    args?: {
+      algod?: AlgodClientSubset | null
+      appClient?: AsaMetadataRegistryClient | null
+    },
+  ): AsaMetadataRegistry {
+    const deployment = Object.prototype.hasOwnProperty.call(DEFAULT_DEPLOYMENTS, network)
+      ? DEFAULT_DEPLOYMENTS[network]
+      : undefined
+    if (deployment === undefined || deployment.appId === null) {
+      throw new RegistryResolutionError(`No trusted deployment for network ${JSON.stringify(network)}`)
+    }
+    return new AsaMetadataRegistry({
+      config: new RegistryConfig({ appId: deployment.appId, netauth: deployment.arc90UriNetauth }),
+      algod: args?.algod ?? null,
+      appClient: args?.appClient ?? null,
     })
   }
 

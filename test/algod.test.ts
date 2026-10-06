@@ -8,6 +8,7 @@
  * - AlgodBoxReader.tryGetMetadataBox
  * - AlgodBoxReader.getMetadataBox
  * - AlgodBoxReader.getAssetMetadataRecord
+ * - AlgodBoxReader.getGenesisHashB64
  * - AlgodBoxReader.getAssetInfo
  * - AlgodBoxReader.getAssetUrl
  * - AlgodBoxReader.resolveMetadataUriFromAsset
@@ -37,8 +38,11 @@ import {
   METADATA_IDENTIFIERS_SIZE,
   REVERSIBLE_FLAGS_SIZE,
   REVISION_SIZE,
+  TESTNET_GH_B64,
   assetIdToBoxName,
+  b64Decode,
   b64Encode,
+  deploymentForGenesis,
   getDefaultRegistryParams,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
 import type { AsaMetadataRegistryClient } from '@/generated'
@@ -78,6 +82,7 @@ const reject = (error: unknown): AlgodRequest => ({
 const createMockAlgod = () => ({
   getApplicationBoxByName: vi.fn<(appId: bigint, boxName: Uint8Array) => AlgodRequest>(),
   getAssetByID: vi.fn<(assetId: bigint) => AlgodRequest>(),
+  getTransactionParams: vi.fn<() => AlgodRequest>(),
 })
 
 type MockAlgod = ReturnType<typeof createMockAlgod>
@@ -321,6 +326,43 @@ describe('get asset metadata record', () => {
 
     expect(result.appId).toBe(BigInt(appId))
     expect(result.assetId).toBe(assetId)
+  })
+})
+
+describe('get genesis hash b64', () => {
+  // Tests for AlgodBoxReader.getGenesisHashB64 (network identity, from the suggested params)
+  test('get genesis hash b64 from suggested params', async () => {
+    // The genesis hash bytes are returned as standard base64.
+    algod.getTransactionParams.mockReturnValue(
+      respond({ genesisID: 'testnet-v1.0', genesisHash: b64Decode(TESTNET_GH_B64), minFee: 1000n }),
+    )
+
+    const result = await boxReader.getGenesisHashB64()
+
+    expect(result).toBe(TESTNET_GH_B64)
+    expect(algod.getTransactionParams).toHaveBeenCalledOnce()
+  })
+
+  test('get genesis hash b64 missing', async () => {
+    // Without a genesis hash the network identity is unavailable.
+    algod.getTransactionParams.mockReturnValue(respond({ genesisID: 'testnet-v1.0', minFee: 1000n }))
+
+    expect(await boxReader.getGenesisHashB64()).toBeNull()
+  })
+
+  test('get genesis hash b64 empty', async () => {
+    // An empty genesis hash is unavailable too.
+    algod.getTransactionParams.mockReturnValue(respond({ genesisHash: new Uint8Array(), minFee: 1000n }))
+
+    expect(await boxReader.getGenesisHashB64()).toBeNull()
+  })
+
+  test('get genesis hash b64 unexpected error reraises', async () => {
+    // Algod errors are not swallowed.
+    const unexpected = new Error('Network error')
+    algod.getTransactionParams.mockReturnValue(reject(unexpected))
+
+    await expect(boxReader.getGenesisHashB64()).rejects.toBe(unexpected)
   })
 })
 
@@ -575,6 +617,18 @@ describe('algod box reader integration', () => {
 
     await expect(promise).rejects.toThrow(AsaNotFoundError)
     await expect(promise).rejects.toThrow(/ASA 999999999999 not found/)
+  })
+
+  test('get genesis hash b64 from localnet', async () => {
+    // The genesis hash of the connected network matches the one Algod reports in its versions.
+    const gh = await algodReader.getGenesisHashB64()
+    const versions = await algodClient.versionsCheck().do()
+
+    expect(gh).not.toBeNull()
+    expect(gh).toBe(b64Encode(versions.genesisHashB64))
+    expect(b64Decode(gh!)).toHaveLength(32)
+    // LocalNet is not a known deployment: readers must pin the ARC-90 netauth (ARC90_NETAUTH)
+    expect(deploymentForGenesis(gh!)).toBeNull()
   })
 
   test('full flow with uploaded metadata', async () => {

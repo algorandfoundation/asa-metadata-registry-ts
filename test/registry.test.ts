@@ -7,6 +7,7 @@
  * - RegistryConfig class
  * - AsaMetadataRegistry initialization (App ID mismatch guard, write client bound to config.appId)
  * - fromAlgod constructor
+ * - forNetwork constructor
  * - fromAppClient constructor with various configurations
  * - arc90Uri helper method
  * - write property access (with/without appClient)
@@ -27,12 +28,18 @@ import {
   AsaMetadataRegistryAvmRead,
   AsaMetadataRegistryRead,
   AsaMetadataRegistryWrite,
+  DEFAULT_DEPLOYMENTS,
   MetadataSource,
   MissingAppClientError,
   RegistryConfig,
   RegistryResolutionError,
+  TESTNET_ASA_METADATA_REGISTRY_APP_ID,
+  TESTNET_GH_B64,
   assetIdToBoxName,
+  b64Decode,
+  b64UrlEncode,
   completePartialAssetUrl,
+  netauthForGenesis,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
 import { AsaMetadataRegistryClient } from '@/generated'
 import {
@@ -54,10 +61,14 @@ import {
 /** An algosdk request object: the Algod HTTP call happens on `.do()`. */
 type AlgodRequest = { do: () => Promise<unknown> }
 
+/** A request whose `.do()` resolves with `response`. */
+const respond = (response: unknown): AlgodRequest => ({ do: async () => response })
+
 /** Mock of the algosdk `Algodv2` subset wrapped by `AlgodBoxReader`. */
 const createMockAlgod = () => ({
   getApplicationBoxByName: vi.fn<(appId: bigint, boxName: Uint8Array) => AlgodRequest>(),
   getAssetByID: vi.fn<(assetId: bigint) => AlgodRequest>(),
+  getTransactionParams: vi.fn<() => AlgodRequest>(),
 })
 
 type MockAlgod = ReturnType<typeof createMockAlgod>
@@ -78,6 +89,8 @@ const makeGeneratedClientFactory = (
   baseClient: AsaMetadataRegistryClient,
 ): ((appId: bigint) => AsaMetadataRegistryClient) =>
   (AsaMetadataRegistry as any).makeGeneratedClientFactory({ baseClient })
+
+const TESTNET_APP_ID = BigInt(TESTNET_ASA_METADATA_REGISTRY_APP_ID)
 
 // ================================================================
 // Unit Tests
@@ -231,6 +244,17 @@ describe('asa metadata registry (unit)', () => {
       expect(baseClient.clone).toHaveBeenCalledExactlyOnceWith({ appId: 12345n })
       expect((registry as any).baseGeneratedClient).toBe(baseClient)
     })
+
+    test('reader receives config', () => {
+      // The unified reader is pinned to the configured appId and ARC-90 netauth.
+      const config = new RegistryConfig({ appId: 12345, netauth: 'net:testnet' })
+      const registry = new AsaMetadataRegistry({ config, algod, appClient })
+
+      expect(registry.read.appId).toBe(12345n)
+      expect(registry.read.netauth).toBe('net:testnet')
+      expect(registry.read.algod).toBe((registry as any).algodReader)
+      expect(registry.read.avmFactory).toBe((registry as any).avmReaderFactory)
+    })
   })
 
   describe('write property', () => {
@@ -284,6 +308,125 @@ describe('asa metadata registry (unit)', () => {
       expect((registry as any).algodReader).toBeInstanceOf(AlgodBoxReader)
       expect((registry as any).algodReader.algod).toBe(algod)
     })
+
+    test('from algod with netauth', () => {
+      // Test fromAlgod with netauth: the reader is pinned to it.
+      const registry = AsaMetadataRegistry.fromAlgod({ algod, appId: 12345, netauth: 'net:testnet' })
+
+      expect(registry.config.appId).toBe(12345n)
+      expect(registry.config.netauth).toBe('net:testnet')
+      expect(registry.read.netauth).toBe('net:testnet')
+    })
+
+    test('from algod reader uses configured netauth', async () => {
+      // The canonical look-up builds the URI with the configured netauth (no network identity read).
+      algodMock.getAssetByID.mockReturnValue(respond({ index: 999n, params: { name: 'Test' } }))
+      const registry = AsaMetadataRegistry.fromAlgod({ algod, appId: 12345, netauth: 'net:testnet' })
+
+      const uri = await registry.read.resolveArc90Uri({ assetId: 999 })
+
+      expect(uri.netauth).toBe('net:testnet')
+      expect(uri.toUri()).toBe(registry.arc90Uri({ assetId: 999 }).toUri())
+      expect(algodMock.getAssetByID).toHaveBeenCalledExactlyOnceWith(999n)
+      expect(algodMock.getTransactionParams).not.toHaveBeenCalled()
+    })
+
+    test('from algod reader derives netauth from network', async () => {
+      // Without a configured netauth, the reader derives it from the connected network genesis hash.
+      algodMock.getAssetByID.mockReturnValue(respond({ index: 999n, params: { name: 'Test' } }))
+      algodMock.getTransactionParams.mockReturnValue(respond({ genesisHash: b64Decode(TESTNET_GH_B64) }))
+      const registry = AsaMetadataRegistry.fromAlgod({ algod, appId: 12345 })
+
+      const uri = await registry.read.resolveArc90Uri({ assetId: 999 })
+
+      expect(registry.read.netauth).toBeNull()
+      expect(uri.netauth).toBe('net:testnet')
+      expect(uri.appId).toBe(12345n)
+    })
+  })
+
+  describe('for network', () => {
+    // Tests for AsaMetadataRegistry.forNetwork constructor (pinned to a trusted deployment).
+    test('for network testnet', () => {
+      // Test forNetwork pins appId and netauth to the TestNet deployment.
+      const registry = AsaMetadataRegistry.forNetwork('testnet')
+
+      expect(registry.config.appId).toBe(TESTNET_APP_ID)
+      expect(registry.config.netauth).toBe('net:testnet')
+      expect(registry.config.netauth).toBe(DEFAULT_DEPLOYMENTS['testnet']!.arc90UriNetauth)
+      expect(registry.read.appId).toBe(TESTNET_APP_ID)
+      expect(registry.read.netauth).toBe('net:testnet')
+      expect((registry as any).algodReader).toBeNull()
+      expect((registry as any).baseGeneratedClient).toBeNull()
+      expect(() => registry.write).toThrow(MissingAppClientError)
+    })
+
+    test('for network with algod', () => {
+      // Test forNetwork with algod (fast box reads).
+      const registry = AsaMetadataRegistry.forNetwork('testnet', { algod })
+
+      expect((registry as any).algodReader).toBeInstanceOf(AlgodBoxReader)
+      expect((registry as any).algodReader.algod).toBe(algod)
+      expect(registry.read.algod).toBe((registry as any).algodReader)
+    })
+
+    test('for network with bound app client', () => {
+      // Test forNetwork with an appClient bound to the deployment: writes use it as is.
+      const client = createMockAppClient(TESTNET_APP_ID)
+      const registry = AsaMetadataRegistry.forNetwork('testnet', { appClient: client })
+
+      expect((registry as any).baseGeneratedClient).toBe(client)
+      expect(registry.write.client).toBe(client)
+      expect(client.clone).not.toHaveBeenCalled()
+    })
+
+    test('for network with unbound app client', () => {
+      // Test forNetwork retargets an unbound appClient (appId 0) to the deployment for writes.
+      const client = createMockAppClient(0n)
+      const registry = AsaMetadataRegistry.forNetwork('testnet', { appClient: client })
+
+      expect(registry.write.client.appId).toBe(TESTNET_APP_ID)
+      expect(client.clone).toHaveBeenCalledExactlyOnceWith({ appId: TESTNET_APP_ID })
+    })
+
+    test('for network with mismatched app client raises', () => {
+      // Test forNetwork rejects an appClient bound to another registry.
+      expect(() => AsaMetadataRegistry.forNetwork('testnet', { appClient })).toThrow(
+        new RegExp(`App ID mismatch:.*appId 12345.*config specifies ${TESTNET_APP_ID}`),
+      )
+    })
+
+    test('for network reader resolves deployment uri', async () => {
+      // The canonical look-up resolves to the deployment registry and netauth.
+      algodMock.getAssetByID.mockReturnValue(respond({ index: 999n, params: { name: 'Test' } }))
+      const registry = AsaMetadataRegistry.forNetwork('testnet', { algod })
+
+      const uri = await registry.read.resolveArc90Uri({ assetId: 999 })
+
+      expect(uri.toUri()).toBe(
+        `algorand://net:testnet/app/${TESTNET_APP_ID}?box=${b64UrlEncode(assetIdToBoxName(999))}`,
+      )
+      expect(uri.toUri()).toBe(registry.arc90Uri({ assetId: 999 }).toUri())
+      expect(algodMock.getTransactionParams).not.toHaveBeenCalled()
+    })
+
+    test('for network without deployment app id raises', () => {
+      // Test forNetwork raises RegistryResolutionError if the deployment has no app id (yet).
+      expect(DEFAULT_DEPLOYMENTS['mainnet']!.appId).toBeNull() // MainNet app id is TBD
+
+      expect(() => AsaMetadataRegistry.forNetwork('mainnet')).toThrow(RegistryResolutionError)
+      expect(() => AsaMetadataRegistry.forNetwork('mainnet')).toThrow(/No trusted deployment for network "mainnet"/)
+    })
+
+    test('for network unknown raises', () => {
+      // Test forNetwork raises RegistryResolutionError for networks without a trusted deployment.
+      for (const network of ['localnet', 'betanet', 'TestNet', '', 'toString', '__proto__', 'constructor']) {
+        expect(() => AsaMetadataRegistry.forNetwork(network)).toThrow(RegistryResolutionError)
+        expect(() => AsaMetadataRegistry.forNetwork(network)).toThrow(
+          `No trusted deployment for network ${JSON.stringify(network)}`,
+        )
+      }
+    })
   })
 
   describe('from app client', () => {
@@ -320,6 +463,7 @@ describe('asa metadata registry (unit)', () => {
       const registry = AsaMetadataRegistry.fromAppClient(appClient, { netauth: 'net:testnet' })
 
       expect(registry.config.netauth).toBe('net:testnet')
+      expect(registry.read.netauth).toBe('net:testnet')
     })
 
     test('from app client with algod', () => {
@@ -598,7 +742,7 @@ describe('asa metadata registry (localnet)', () => {
     expect(avmRecord.body.rawBytes).toEqual(boxRecord.body.rawBytes)
     expect(avmRecord.header.revision).toBe(boxRecord.header.revision)
 
-    // The off-chain URI helper matches the resolved URI, the on-chain partial URI and the ASA URL
+    // The off-chain URI helper matches the canonical look-up, the on-chain partial URI and the ASA URL
     const uri = registry.arc90Uri({ assetId }).toUri()
     expect((await registry.read.resolveArc90Uri({ assetId })).toUri()).toBe(uri)
     expect(completePartialAssetUrl(await registry.read.arc89GetMetadataPartialUri(), assetId)).toBe(uri)
@@ -622,5 +766,33 @@ describe('asa metadata registry (localnet)', () => {
     const record = await registry.read.getAssetMetadata({ assetId })
     expect(record.appId).toBe(client.appId)
     expect(record.json).toStrictEqual(sampleJsonObj)
+  })
+
+  test('localnet read only workflow', async () => {
+    // fromAlgod with the pinned netauth: the ASA URL resolves to the trusted registry.
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    await new AsaMetadataRegistryWrite({ client }).createMetadata({
+      assetManager,
+      metadata: buildShortMetadata(assetId),
+    })
+
+    const registry = AsaMetadataRegistry.fromAlgod({ algod, appId: client.appId, netauth: ARC90_NETAUTH })
+    expect(() => registry.write).toThrow(MissingAppClientError)
+
+    const assetUrl = await new AlgodBoxReader(algod).getAssetUrl(assetId)
+    const uri = await registry.read.resolveArc90UriFromAssetUrl({ assetId, assetUrl: assetUrl! })
+    expect(uri).not.toBeNull()
+    expect(uri!.toUri()).toBe(registry.arc90Uri({ assetId }).toUri())
+
+    const record = await registry.read.getAssetMetadata({ metadataUri: uri!.toUri() })
+    expect(record.appId).toBe(client.appId)
+    expect(record.json).toStrictEqual(sampleJsonObj)
+
+    // Without a pinned netauth, the canonical look-up derives it from the LocalNet genesis hash
+    const unpinned = AsaMetadataRegistry.fromAlgod({ algod, appId: client.appId })
+    const gh = await new AlgodBoxReader(algod).getGenesisHashB64()
+    const derived = await unpinned.read.resolveArc90Uri({ assetId })
+    expect(derived.netauth).toBe(netauthForGenesis(gh!))
+    expect(derived.netauth).toMatch(/^gh:/)
   })
 })

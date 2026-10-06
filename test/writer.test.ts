@@ -66,6 +66,7 @@ import {
   tailBudgetTxns,
 } from '@/internal/writer'
 import {
+  ARC90_NETAUTH,
   type AddressWithSigners,
   deployRegistry,
   getDeployer,
@@ -176,7 +177,11 @@ afterEach(() => {
 
 /** Box reader bound to the test registry (Python `reader_with_algod`). */
 const createReader = (): AsaMetadataRegistryRead =>
-  new AsaMetadataRegistryRead({ appId: client.appId, algod: new AlgodBoxReader(algorand.client.algod) })
+  new AsaMetadataRegistryRead({
+    appId: client.appId,
+    algod: new AlgodBoxReader(algorand.client.algod),
+    netauth: ARC90_NETAUTH,
+  })
 
 /** Read and parse the metadata box via the generated client (throws if the box does not exist). */
 const getMetadataBox = async (assetId: bigint): Promise<AssetMetadataBox> => {

@@ -1,4 +1,6 @@
+import { b64Decode, b64UrlDecode, b64UrlEncode } from './codec'
 import { MAINNET_GH_B64, TESTNET_GH_B64 } from './constants'
+import { bytesEqual } from './internal/bytes'
 
 /**
  * Known deployments of the singleton ASA Metadata Registry.
@@ -16,6 +18,12 @@ export const TESTNET_ASA_METADATA_REGISTRY_APP_ID = 772_968_354 as const
 
 export type RegistryNetwork = 'mainnet' | 'testnet' | 'localnet'
 
+/**
+ * A known deployment of the singleton ASA Metadata Registry.
+ *
+ * Note: deployments can change. This SDK keeps the deployment list data-only so it can be
+ * updated without affecting the rest of the architecture.
+ */
 export class RegistryDeployment {
   readonly network: RegistryNetwork
   readonly genesisHashB64: string | null
@@ -60,3 +68,33 @@ export const DEFAULT_DEPLOYMENTS: Readonly<Record<string, RegistryDeployment>> =
     arc90UriNetauth: null,
   }),
 } as const
+
+/** The trusted deployment for a network genesis hash, if any. */
+export const deploymentForGenesis = (genesisHashB64: string): RegistryDeployment | null => {
+  for (const d of Object.values(DEFAULT_DEPLOYMENTS)) {
+    if (d.genesisHashB64 === genesisHashB64) return d
+  }
+  return null
+}
+
+/** Canonical ARC-90 netauth for a network: the deployment label, else `gh:<base64url>`. */
+export const netauthForGenesis = (genesisHashB64: string): string | null => {
+  const d = deploymentForGenesis(genesisHashB64)
+  if (d !== null) return d.arc90UriNetauth
+  return `gh:${b64UrlEncode(b64Decode(genesisHashB64))}`
+}
+
+/** True if an ARC-90 netauth denotes the network with the given genesis hash. */
+export const netauthMatchesGenesis = (netauth: string | null, genesisHashB64: string): boolean => {
+  if (netauth === null) return genesisHashB64 === MAINNET_GH_B64
+  if (netauth.startsWith('gh:')) {
+    try {
+      return bytesEqual(b64UrlDecode(netauth.slice(3)), b64Decode(genesisHashB64))
+    } catch {
+      return false
+    }
+  }
+  // A label denotes only a known deployment; unknown networks need `gh:` or a configured netauth
+  const d = deploymentForGenesis(genesisHashB64)
+  return d !== null && d.arc90UriNetauth === netauth
+}

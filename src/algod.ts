@@ -2,18 +2,18 @@
  * Algod helpers (ARC-89 box reads).
  *
  * Ported from `asa_metadata_registry/algod.py`.
- * Uses the minimal algosdk Algod client subset for box reads and ASA params.
+ * Uses the minimal algosdk Algod client subset for box reads, ASA params and network identity.
  */
 
 import type { Algodv2, modelsv2 } from 'algosdk'
-import { Arc90Uri, assetIdToBoxName, completePartialAssetUrl } from './codec'
+import { Arc90Uri, assetIdToBoxName, b64Encode, completePartialAssetUrl } from './codec'
 import { isNotFoundError } from './internal/http'
 import { toBigInt } from './internal/numbers'
 import { AsaNotFoundError, BoxNotFoundError, InvalidArc90UriError } from './errors'
 import { AssetMetadataBox, AssetMetadataRecord, RegistryParameters, getDefaultRegistryParams } from './models'
 
 /** The algosdk `Algodv2` methods required by {@link AlgodBoxReader}. */
-export type AlgodClientSubset = Pick<Algodv2, 'getApplicationBoxByName' | 'getAssetByID'>
+export type AlgodClientSubset = Pick<Algodv2, 'getApplicationBoxByName' | 'getAssetByID' | 'getTransactionParams'>
 
 /**
  * Read ARC-89 metadata by directly reading the registry application box via Algod.
@@ -23,6 +23,7 @@ export type AlgodClientSubset = Pick<Algodv2, 'getApplicationBoxByName' | 'getAs
  * Required Algod methods:
  * - `getApplicationBoxByName` (box reads)
  * - `getAssetByID` (ASA existence and params)
+ * - `getTransactionParams` (network genesis hash)
  */
 export class AlgodBoxReader {
   public readonly algod: AlgodClientSubset
@@ -109,6 +110,13 @@ export class AlgodBoxReader {
   // ---------------------------------------------------------------------
   // ASA lookups (optional)
   // ---------------------------------------------------------------------
+
+  /** Genesis hash (base64) of the connected network, or null if unavailable. */
+  async getGenesisHashB64(): Promise<string | null> {
+    const params = await this.algod.getTransactionParams().do()
+    const gh = params.genesisHash
+    return gh instanceof Uint8Array && gh.length > 0 ? b64Encode(gh) : null
+  }
 
   /**
    * Fetch ASA info from Algod.
