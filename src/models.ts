@@ -8,7 +8,7 @@ import * as bitmasks from './bitmasks'
 import * as enums from './enums'
 import * as consts from './constants'
 import { BoxParseError, InvalidPageIndexError, MetadataArc3Error, MetadataHashMismatchError } from './errors'
-import { computeHeaderHash, computeMetadataHash, computePageHash } from './hashing'
+import { computeArc3MetadataHash, computeHeaderHash, computeMetadataHash, computePageHash } from './hashing'
 import {
   decodeMetadataJson,
   encodeMetadataJson,
@@ -732,15 +732,28 @@ export class AssetMetadataBox {
     return computed
   }
 
-  /** Compare observed on-chain hash to the locally computed effective hash. */
+  /**
+   * Compare observed on-chain hash to the locally computed effective hash.
+   *
+   * With a nonzero `asaAm`, ARC-3 Metadata must also hash to it under ARC-3, since the
+   * registry copies `am` without checking it; `skipValidationOnOverride=true` skips
+   * the `am` checks.
+   */
   hashMatches(args?: {
     params?: RegistryParameters
     asaAm?: Uint8Array | null
     skipValidationOnOverride?: boolean
   }): boolean {
     const asaAm = args?.asaAm ?? null
-    if (asaAm && isNonzero32(asaAm) && (args?.skipValidationOnOverride ?? true)) {
-      return true
+    if (asaAm && isNonzero32(asaAm)) {
+      if (args?.skipValidationOnOverride ?? false) return true
+      if (this.header.isArc3Compliant) {
+        try {
+          if (!bytesEqual(computeArc3MetadataHash(this.body.rawBytes), asaAm)) return false
+        } catch {
+          return false
+        }
+      }
     }
     const expected = this.expectedMetadataHash({ params: args?.params, asaAm })
     return bytesEqual(expected, this.header.metadataHash)

@@ -11,6 +11,7 @@ import {
   models,
   bitmasks,
   constants,
+  computeArc3MetadataHash,
   computeMetadataHash,
   validation,
   BoxParseError,
@@ -449,6 +450,25 @@ describe('asset metadata box advanced', () => {
 
     // With skip_validation=True and non-zero asa_am, should return True
     expect(box.hashMatches({ asaAm, skipValidationOnOverride: true })).toBe(true)
+    // skipValidationOnOverride defaults to false: the override is validated (immutable metadata required)
+    expect(() => box.hashMatches({ asaAm })).toThrow(/ASA `am` override requires immutable/)
+  })
+
+  test('hash matches verifies arc3 body against asa am', () => {
+    // The registry copies `am` verbatim: an ARC-3 body must hash to it under ARC-3.
+    const genuine = new TextEncoder().encode('{"name":"Test"}')
+    const asaAm = computeArc3MetadataHash(genuine)
+    const irrFlags = bitmasks.MASK_IRR_ARC3 | bitmasks.MASK_IRR_IMMUTABLE
+
+    const boxWith = (body: Uint8Array) =>
+      AssetMetadataBox.parse({
+        assetId: 123n,
+        value: createMinimalBoxValue({ irrFlags, metadataHash: asaAm, metadata: body }),
+      })
+
+    expect(boxWith(genuine).hashMatches({ asaAm })).toBe(true)
+    expect(boxWith(new TextEncoder().encode('{"name":"Fake"}')).hashMatches({ asaAm })).toBe(false)
+    expect(boxWith(new TextEncoder().encode('not json')).hashMatches({ asaAm })).toBe(false)
   })
 
   test('json property', () => {
