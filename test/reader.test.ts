@@ -376,7 +376,7 @@ describe('resolve arc90 uri', () => {
     // Test resolution from explicit metadataUri parameter.
     const reader = new AsaMetadataRegistryRead({ appId: null })
     const uri = await reader.resolveArc90Uri({
-      metadataUri: 'algorand://app/123?box=AAAAAAAAAcg%3D', // b64url of asset ID 456
+      metadataUri: 'algorand://app/123?box=AAAAAAAAAcg', // b64url of asset ID 456
     })
     expect(uri.appId).toBe(123n)
     expect(uri.assetId).toBe(456n)
@@ -1178,7 +1178,7 @@ describe('edge cases', () => {
     // Even if assetId is provided, URI should be used
     const uri = await reader.resolveArc90Uri({
       assetId: 999, // This should be ignored
-      metadataUri: 'algorand://app/789?box=AAAAAAAAAcg%3D', // b64url of asset ID 456
+      metadataUri: 'algorand://app/789?box=AAAAAAAAAcg', // b64url of asset ID 456
     })
 
     expect(uri.appId).toBe(789n)

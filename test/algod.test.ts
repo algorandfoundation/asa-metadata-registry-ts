@@ -517,6 +517,17 @@ describe('resolve metadata uri from asset', () => {
     await expect(promise).rejects.toThrow(InvalidArc90UriError)
     await expect(promise).rejects.toThrow(/Failed to resolve ARC-89 URI from ASA url/)
   })
+
+  test('resolve metadata uri non partial url raises', async () => {
+    // An Asset URL MUST be an ARC-89 partial URI (empty box value): a complete URI is rejected.
+    const completeUri = new Arc90Uri({ netauth: 'net:testnet', appId: 456, boxName: null }).withAssetId(123).toUri()
+    algod.getAssetByID.mockReturnValue(respond({ index: 123n, params: { url: completeUri } }))
+
+    const promise = boxReader.resolveMetadataUriFromAsset({ assetId: 123 })
+
+    await expect(promise).rejects.toThrow(InvalidArc90UriError)
+    await expect(promise).rejects.toHaveProperty('cause.message', 'Asset URL MUST have an empty box value')
+  })
 })
 
 // ================================================================
