@@ -13,7 +13,8 @@ This SDK has no runtime dependencies; this keeps things lean for consumers and a
 ### Version specifiers
 
 - DevDependencies use caret ranges (`^`). The lockfile pins exact versions with SHA-512 hashes; the caret is the update policy, not what actually gets installed.
-- `@algorandfoundation/*` alpha packages are pinned to exact versions. Pre-releases can break without warning, so bumps should be deliberate.
+- Pre-release (alpha/beta) `@algorandfoundation/*` packages are pinned to exact versions. Pre-releases can break without warning, so bumps should be deliberate.
+- The peer dependencies (`@algorandfoundation/algokit-utils`, `algosdk`) must support the consensus version targeted by the registry (consensus v42 / AVM 13 requires `algosdk` >= 3.7 for 4 KB app args).
 
 ### Lockfile
 
