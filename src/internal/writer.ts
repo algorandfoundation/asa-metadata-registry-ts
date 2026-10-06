@@ -1,8 +1,8 @@
 import { microAlgo } from '@algorandfoundation/algokit-utils'
-import type { Address } from '@algorandfoundation/algokit-utils'
-import type { TransactionSigner } from '@algorandfoundation/algokit-utils/transact'
+import type { Address, TransactionSigner } from 'algosdk'
 
 import { uint64ToBytesBE } from './bytes'
+import { isNotFoundError } from './http'
 import { asUint64BigInt } from './numbers'
 import type { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '../generated'
 import { AssetMetadataBox } from '../models'
@@ -57,11 +57,17 @@ export const appendExtraResources = (
   }
 }
 
-/** Read and parse the metadata box for `asset_id`, or return `null` if not found. */
+/** Read and parse the metadata box for `assetId`, or return `null` if not found. */
 export const parseMetadataBox = async (
   client: AsaMetadataRegistryClient,
   assetId: bigint | number,
 ): Promise<AssetMetadataBox | null> => {
-  const boxValue = await client.state.box.assetMetadata.value(assetId)
+  let boxValue: Uint8Array | undefined
+  try {
+    boxValue = await client.state.box.assetMetadata.value(assetId)
+  } catch (e) {
+    if (isNotFoundError(e)) return null
+    throw e
+  }
   return boxValue !== undefined ? AssetMetadataBox.parse({ assetId, value: boxValue }) : null
 }

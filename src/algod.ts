@@ -2,30 +2,18 @@
  * Algod helpers (ARC-89 box reads).
  *
  * Ported from `asa_metadata_registry/algod.py`.
- * Uses the minimal Algod subset for box reads and ASA params.
+ * Uses the minimal algosdk Algod client subset for box reads and ASA params.
  */
 
-import type { AlgodClient, Box, Asset } from '@algorandfoundation/algokit-utils/algod-client'
+import type { Algodv2, modelsv2 } from 'algosdk'
 import { Arc90Uri, assetIdToBoxName, completePartialAssetUrl } from './codec'
+import { isNotFoundError } from './internal/http'
 import { toBigInt } from './internal/numbers'
 import { AsaNotFoundError, BoxNotFoundError, InvalidArc90UriError } from './errors'
 import { AssetMetadataBox, AssetMetadataRecord, RegistryParameters, getDefaultRegistryParams } from './models'
 
-const asErrorMessage = (e: unknown): string => {
-  if (e instanceof Error) return e.message
-  try {
-    return String(e)
-  } catch {
-    return ''
-  }
-}
-
-const looksNotFound = (e: unknown): boolean => {
-  const msg = asErrorMessage(e).toLowerCase()
-  return msg.includes('404') || msg.includes('not found') || msg.includes('does not exist')
-}
-
-export type AlgodClientSubset = Pick<AlgodClient, 'applicationBoxByName' | 'assetById'>
+/** The algosdk `Algodv2` methods required by {@link AlgodBoxReader}. */
+export type AlgodClientSubset = Pick<Algodv2, 'getApplicationBoxByName' | 'getAssetByID'>
 
 /**
  * Read ARC-89 metadata by directly reading the registry application box via Algod.
@@ -33,8 +21,8 @@ export type AlgodClientSubset = Pick<AlgodClient, 'applicationBoxByName' | 'asse
  * This avoids transactions entirely and is usually the fastest read path.
  *
  * Required Algod methods:
- * - getApplicationBoxByName
- * - getAssetByID (for URI resolution)
+ * - `getApplicationBoxByName` (box reads)
+ * - `getAssetByID` (ASA existence and params)
  */
 export class AlgodBoxReader {
   public readonly algod: AlgodClientSubset
@@ -44,23 +32,23 @@ export class AlgodBoxReader {
   }
 
   /**
-   * Fetch a box by name.
+   * Fetch a raw box value.
    * @throws {BoxNotFoundError} If the box does not exist.
    */
-  async getBoxValue(args: { appId: bigint | number; boxName: Uint8Array }): Promise<Box> {
+  async getBoxValue(args: { appId: bigint | number; boxName: Uint8Array }): Promise<Uint8Array> {
     const appId = toBigInt(args.appId)
 
     try {
-      return await this.algod.applicationBoxByName(appId, args.boxName)
+      const box = await this.algod.getApplicationBoxByName(appId, args.boxName).do()
+      return box.value
     } catch (e) {
-      if (looksNotFound(e)) throw new BoxNotFoundError('Box not found', { cause: e })
+      if (isNotFoundError(e)) throw new BoxNotFoundError('Box not found', { cause: e })
       throw e
     }
   }
 
   /**
    * Return the parsed metadata box, or null if the box doesn't exist.
-   * @throws {BoxNotFoundError} If the box does not exist.
    */
   async tryGetMetadataBox(args: {
     appId: bigint | number
@@ -69,8 +57,7 @@ export class AlgodBoxReader {
   }): Promise<AssetMetadataBox | null> {
     let value: Uint8Array
     try {
-      const box = await this.getBoxValue({ appId: args.appId, boxName: assetIdToBoxName(args.assetId) })
-      value = box.value
+      value = await this.getBoxValue({ appId: args.appId, boxName: assetIdToBoxName(args.assetId) })
     } catch (e) {
       if (e instanceof BoxNotFoundError) return null
       throw e
@@ -127,13 +114,13 @@ export class AlgodBoxReader {
    * Fetch ASA info from Algod.
    * @throws {AsaNotFoundError} If the ASA does not exist.
    */
-  async getAssetInfo(assetId: bigint | number): Promise<Asset> {
+  async getAssetInfo(assetId: bigint | number): Promise<modelsv2.Asset> {
     const id = toBigInt(assetId)
 
     try {
-      return await this.algod.assetById(id)
+      return await this.algod.getAssetByID(id).do()
     } catch (e) {
-      if (looksNotFound(e)) throw new AsaNotFoundError(`ASA ${id} not found`, { cause: e })
+      if (isNotFoundError(e)) throw new AsaNotFoundError(`ASA ${id} not found`, { cause: e })
       throw e
     }
   }

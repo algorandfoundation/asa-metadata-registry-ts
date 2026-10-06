@@ -5,8 +5,8 @@
  * into the ARC-89 metadata registry, emitting an ARC-2 migration message.
  */
 
-import { AddressWithSigners } from '@algorandfoundation/algokit-utils/transact'
-import { Transaction } from '@algorandfoundation/algokit-utils/transact'
+import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
+import type { Transaction } from 'algosdk'
 import { ARC2_ARC_NUMBER, ARC2_DATA_FORMAT_JSON, MAX_GROUP_SIZE, MAX_METADATA_SIZE } from './constants'
 import { Arc90Compliance, Arc90Uri } from './codec'
 import { MissingAppClientError } from './errors'
@@ -47,7 +47,7 @@ export function encodeArc2MigrationMessage(uri: string): Uint8Array {
 export async function buildArc2MigrationMessageTxn(args: {
   registry: AsaMetadataRegistry
   assetId: bigint | number
-  assetManager: AddressWithSigners
+  assetManager: TransactionSignerAccount
   metadataUri: string
 }): Promise<Transaction> {
   let write: AsaMetadataRegistryWrite
@@ -106,7 +106,7 @@ export function deriveMigrationUri(args: {
  */
 export async function migrateLegacyMetadataToRegistry(args: {
   registry: AsaMetadataRegistry
-  assetManager: AddressWithSigners
+  assetManager: TransactionSignerAccount
   assetId: bigint | number
   metadata: Record<string, unknown>
   arc3Compliant: boolean
@@ -190,7 +190,7 @@ export async function migrateLegacyMetadataToRegistry(args: {
 
   // Decide send strategy based on group size
   const underlyingComposer = await migrateGroup.composer()
-  if (underlyingComposer.count() < MAX_GROUP_SIZE) {
+  if ((await underlyingComposer.count()) < MAX_GROUP_SIZE) {
     // Atomic: add ARC-2 txn to the create group
     migrateGroup.addTransaction(arc2Txn)
     await migrateGroup.send()

@@ -8,7 +8,9 @@
  * - The generated AppClient is *not* re-implemented here; it is used as-is.
  */
 
-import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/account'
+import { microAlgo } from '@algorandfoundation/algokit-utils'
+import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
+import type { SendParams } from '@algorandfoundation/algokit-utils/types/transaction'
 import * as flagConsts from '../flags'
 import { AsaNotFoundError, InvalidFlagIndexError, MissingAppClientError } from '../errors'
 import { AssetMetadata, getDefaultRegistryParams, MbrDelta, RegistryParameters } from '../models'
@@ -19,13 +21,10 @@ import {
   AsaMetadataRegistryComposer,
   AsaMetadataRegistryComposerResults,
 } from '../generated'
-import { AsaMetadataRegistryAvmRead } from '../read/avm'
+import { AsaMetadataRegistryAvmRead, SimulateOptions } from '../read/avm'
 import { parseMbrDelta, returnValues } from '../internal/avm'
 import { ARC3_PROPERTIES_FLAG_TO_KEY, validateArc3Properties, validateArc3Values } from '../validation'
-import { microAlgo } from '@algorandfoundation/algokit-utils'
-import type { SendParams } from '@algorandfoundation/algokit-utils/transaction'
 import { appendExtraPayload, appendExtraResources, chunksForSlice, parseMetadataBox } from '../internal/writer'
-import type { SimulateOptions } from '@algorandfoundation/algokit-utils/composer'
 
 // ---------------------------------------------------------------------------
 // Types

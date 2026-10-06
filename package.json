@@ -31,7 +31,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "generate:app-client": "algokitgen generate -a arc89/smart_contracts/artifacts/asa_metadata_registry/AsaMetadataRegistry.arc56.json -o src/generated/AsaMetadataRegistry.ts"
   },
   "repository": {
     "type": "git",
@@ -44,8 +45,8 @@
   },
   "homepage": "https://github.com/algorandfoundation/asa-metadata-registry-ts#readme",
   "devDependencies": {
-    "@algorandfoundation/algokit-client-generator": "7.0.0-beta.3",
-    "@algorandfoundation/algokit-utils": "10.0.0-beta.1",
+    "@algorandfoundation/algokit-client-generator": "^6.0.1",
+    "@algorandfoundation/algokit-utils": "^9.2.2",
     "@commitlint/cli": "^20.5.3",
     "@commitlint/config-conventional": "^20.5.3",
     "@eslint/js": "^10.0.1",
@@ -53,6 +54,7 @@
     "@typescript-eslint/eslint-plugin": "^8.56.1",
     "@typescript-eslint/parser": "^8.56.1",
     "@vitest/coverage-v8": "^4.0.18",
+    "algosdk": "^3.8.0",
     "concurrently": "^9.2.4",
     "conventional-changelog-conventionalcommits": "^9.3.1",
     "eslint": "^10.0.2",
@@ -68,7 +70,8 @@
     "vitest": "^4.0.18"
   },
   "peerDependencies": {
-    "@algorandfoundation/algokit-utils": "10.0.0-beta.1"
+    "@algorandfoundation/algokit-utils": "^9.2.2",
+    "algosdk": "^3.8.0"
   },
   "lint-staged": {
     "*.{ts,js,mjs,cjs}": [

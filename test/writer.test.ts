@@ -14,18 +14,10 @@
  */
 
 import { describe, expect, test, vi, beforeAll, beforeEach } from 'vitest'
-import { Address } from '@algorandfoundation/algokit-utils'
-import type {
-  AddressWithSigners,
-  TransactionSigner,
-  MxBytesSigner,
-  DelegatedLsigSigner,
-  ProgramDataSigner,
-} from '@algorandfoundation/algokit-utils/transact'
-import type { SimulateTraceConfig } from '@algorandfoundation/algokit-utils/algod-client'
+import { Address, modelsv2, type TransactionSigner } from 'algosdk'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { microAlgo, type AlgorandClient } from '@algorandfoundation/algokit-utils'
-import type { SimulateOptions } from '@algorandfoundation/algokit-utils/composer'
+import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
 import {
   InvalidArc3PropertiesError,
   InvalidFlagIndexError,
@@ -42,6 +34,7 @@ import {
   IrreversibleFlags,
   // writer
   AsaMetadataRegistryWrite,
+  type SimulateOptions,
   WriteOptions,
   writeOptionsDefault,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
@@ -55,6 +48,7 @@ import { parseMbrDelta } from '@/internal/avm'
 import * as validation from '@/validation'
 import { appendExtraResources, chunksForSlice } from '@/internal/writer'
 import {
+  type AddressWithSigners,
   deployRegistry,
   getDeployer,
   createFactory,
@@ -86,12 +80,9 @@ const createMockAppClient = (): AsaMetadataRegistryClient => {
   } as unknown as AsaMetadataRegistryClient
 }
 
-const createMockSigningAccount = (): AddressWithSigners => ({
+const createMockSigningAccount = (): TransactionSignerAccount => ({
   addr: Address.fromString('IIOWCOZ6GR5KX23BOV5EAPJ7SI3LVN6BBNEIUGFUYX4X2W65H5UXCMIZKU'),
   signer: vi.fn() as unknown as TransactionSigner,
-  lsigSigner: vi.fn() as unknown as DelegatedLsigSigner,
-  programDataSigner: vi.fn() as unknown as ProgramDataSigner,
-  mxBytesSigner: vi.fn() as unknown as MxBytesSigner,
 })
 
 const createMockComposer = (): AsaMetadataRegistryComposer<unknown[]> => {
@@ -319,7 +310,7 @@ describe('send group helper', () => {
       allowEmptySignatures: true,
       allowUnnamedResources: true,
       extraOpcodeBudget: 4567,
-      execTraceConfig: { enable: true } as SimulateTraceConfig,
+      execTraceConfig: new modelsv2.SimulateTraceConfig({ enable: true }),
       round: 999n,
       skipSignatures: false,
     }

@@ -4,8 +4,8 @@
  * Ported from Python `asa_metadata_registry/read/avm.py`.
  */
 
+import type { SimulateOptions as AlgoKitSimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
 import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '../generated'
-import type { SimulateOptions } from '@algorandfoundation/algokit-utils/composer'
 import { MissingAppClientError } from '../errors'
 import { asNumber, asUint8, asUint64BigInt } from '../internal/numbers'
 import { toBytes } from '../internal/bytes'
@@ -21,6 +21,16 @@ import {
 } from '../models'
 import * as enums from '../enums'
 import { parseMbrDelta, parsePaginatedMetadata, returnValues, withArgs } from '../internal/avm'
+
+/**
+ * Options passed through to AlgoKit's composer `simulate()`.
+ *
+ * When omitted, AVM reads simulate with `{ allowUnnamedResources: true, skipSignatures: true }`.
+ */
+export type SimulateOptions = AlgoKitSimulateOptions
+
+/** Default simulate options for AVM reads (no signatures, unnamed resources allowed). */
+export const DEFAULT_SIMULATE_OPTIONS: SimulateOptions = { allowUnnamedResources: true, skipSignatures: true }
 
 // ------------------------------------------------------------------
 // Decode helpers (simulate return values)
@@ -100,10 +110,9 @@ export class AsaMetadataRegistryAvmRead {
     buildGroup: (composer: AsaMetadataRegistryComposer<unknown[]>) => void,
     args?: { simulate?: SimulateOptions },
   ): Promise<unknown[]> {
-    const composer = this.client.newGroup()
+    const composer = this.client.newGroup() as unknown as AsaMetadataRegistryComposer<unknown[]>
     buildGroup(composer)
-    const defaultSimulate: SimulateOptions = { allowUnnamedResources: true, skipSignatures: true }
-    const results = await composer.simulate(args?.simulate ?? defaultSimulate)
+    const results = await composer.simulate(args?.simulate ?? DEFAULT_SIMULATE_OPTIONS)
     return returnValues(results)
   }
 

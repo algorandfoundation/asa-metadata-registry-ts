@@ -30,6 +30,7 @@ import {
 } from '@algorandfoundation/asa-metadata-registry-sdk'
 import { AsaMetadataRegistryClient, AsaMetadataRegistryFactory } from '@/generated'
 import {
+  type AddressWithSigners,
   sampleJsonObj,
   deployRegistry,
   getDeployer,
@@ -41,7 +42,6 @@ import {
   buildMaxedMetadata,
   uploadMetadata,
 } from './helpers'
-import { AddressWithSigners } from '@algorandfoundation/algokit-utils/transact'
 
 // ================================================================
 // AsaMetadataRegistryRead (a.k.a. reader) Integration Tests

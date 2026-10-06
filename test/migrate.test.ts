@@ -1,9 +1,8 @@
 import { describe, expect, test, beforeAll } from 'vitest'
 import { algo, Config } from '@algorandfoundation/algokit-utils'
-import { nullLogger } from '@algorandfoundation/algokit-utils/logging'
+import { nullLogger } from '@algorandfoundation/algokit-utils/types/logging'
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
-import { AddressWithSigners } from '@algorandfoundation/algokit-utils/transact'
 import {
   Arc90Uri,
   AsaMetadataRegistry,
@@ -20,6 +19,7 @@ import {
 } from '@algorandfoundation/asa-metadata-registry-sdk'
 import { AsaMetadataRegistryClient, AsaMetadataRegistryFactory } from '@/generated'
 import {
+  type AddressWithSigners,
   deployRegistry,
   getDeployer,
   createFactory,

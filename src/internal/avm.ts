@@ -10,16 +10,18 @@ export const withArgs = (params: unknown | undefined, args: unknown[]): any => {
 }
 
 /**
- * Extract `.returns[*].value` from AlgoKit composer results, tolerating minor shape differences.
+ * Extract `.returns[*]` values from AlgoKit composer results, tolerating minor shape differences.
+ *
+ * The generated client's composer already maps ABI returns to their decoded value (structs as
+ * objects); raw AlgoKit `ABIReturn` entries are unwrapped to their `returnValue`.
  */
 export const returnValues = (results: unknown): unknown[] => {
   if (!results || typeof results !== 'object') return []
   const returns = (results as { returns?: unknown[] }).returns
   if (!Array.isArray(returns)) return []
   return returns.map((r: unknown) => {
-    if (r && typeof r === 'object') {
-      if ('value' in r) return (r as { value: unknown }).value
-      if ('returnValue' in r) return (r as { returnValue: unknown }).returnValue
+    if (r && typeof r === 'object' && 'returnValue' in r && 'rawReturnValue' in r) {
+      return (r as { returnValue: unknown }).returnValue
     }
     return r
   })

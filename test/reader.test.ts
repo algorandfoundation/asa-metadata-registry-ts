@@ -49,10 +49,13 @@ import { concatBytes } from '@/internal/bytes'
 
 const createMockAlgod = () => {
   return {
-    applicationBoxByName: vi.fn(),
-    assetById: vi.fn(),
-  } as AlgodClientSubset
+    getApplicationBoxByName: vi.fn(),
+    getAssetByID: vi.fn(),
+  } as unknown as AlgodClientSubset
 }
+
+/** A mocked algosdk request (e.g. `algod.getAssetByID(id)`), sent with `.do()`. */
+const algodRequest = (value: unknown) => ({ do: async () => value })
 
 const createMockBoxReader = (mockAlgod: AlgodClientSubset) => {
   return new AlgodBoxReader(mockAlgod)
@@ -123,11 +126,13 @@ const sampleMetadataRecord = (sampleMetadataHeader?: MetadataHeader, sampleMetad
  * Helper to mock algod box response with raw box value bytes.
  */
 const mockBoxResponse = (mockAlgod: AlgodClientSubset, boxValue: Uint8Array) => {
-  mockAlgod.applicationBoxByName = vi.fn().mockResolvedValue({
-    round: 0n,
-    name: new Uint8Array(),
-    value: boxValue,
-  })
+  mockAlgod.getApplicationBoxByName = vi.fn().mockReturnValue(
+    algodRequest({
+      round: 0n,
+      name: new Uint8Array(),
+      value: boxValue,
+    }),
+  )
 }
 
 /**
@@ -137,10 +142,12 @@ const mockAssetMetadataRecord = (mockAlgod: AlgodClientSubset, record: AssetMeta
   const boxValue = concatBytes([record.header.serialized, record.body.rawBytes])
   mockBoxResponse(mockAlgod, boxValue)
 
-  mockAlgod.assetById = vi.fn().mockResolvedValue({
-    id: 0n,
-    params: { url: '', total: 0n, decimals: 0, creator: '' },
-  })
+  mockAlgod.getAssetByID = vi.fn().mockReturnValue(
+    algodRequest({
+      index: 0n,
+      params: { url: '', total: 0n, decimals: 0, creator: '' },
+    }),
+  )
 }
 
 // ================================================================
@@ -392,10 +399,12 @@ describe('resolve arc90 uri', () => {
 
     const expectedUri = new Arc90Uri({ netauth: null, appId: 123n, boxName: null }).withAssetId(456n)
 
-    boxReader.algod.assetById = vi.fn().mockResolvedValue({
-      id: 456n,
-      params: { url: expectedUri.toUri(), total: 0n, decimals: 0, creator: '' },
-    })
+    boxReader.algod.getAssetByID = vi.fn().mockReturnValue(
+      algodRequest({
+        index: 456n,
+        params: { url: expectedUri.toUri(), total: 0n, decimals: 0, creator: '' },
+      }),
+    )
 
     const uri = await reader.resolveArc90Uri({ assetId: 456 })
     expect(uri.assetId).toBe(456n)
@@ -405,10 +414,12 @@ describe('resolve arc90 uri', () => {
     // Test resolution falls back to configured appId when ASA lookup fails.
     const reader = new AsaMetadataRegistryRead({ appId: 123, algod: boxReader })
 
-    boxReader.algod.assetById = vi.fn().mockResolvedValue({
-      id: 456n,
-      params: { url: '', total: 0n, decimals: 0, creator: '' },
-    })
+    boxReader.algod.getAssetByID = vi.fn().mockReturnValue(
+      algodRequest({
+        index: 456n,
+        params: { url: '', total: 0n, decimals: 0, creator: '' },
+      }),
+    )
 
     const uri = await reader.resolveArc90Uri({ assetId: 456 })
     expect(uri.appId).toBe(123n)
@@ -561,22 +572,28 @@ describe('get asset metadata', () => {
     // Mock to return different records on subsequent calls
     const deprecatedBoxValue = concatBytes([deprecatedRecord.header.serialized, deprecatedRecord.body.rawBytes])
     const currentBoxValue = concatBytes([currentRecord.header.serialized, currentRecord.body.rawBytes])
-    boxReader.algod.applicationBoxByName = vi
+    boxReader.algod.getApplicationBoxByName = vi
       .fn()
-      .mockResolvedValueOnce({
-        round: 0n,
-        name: new Uint8Array(),
-        value: deprecatedBoxValue,
-      })
-      .mockResolvedValueOnce({
-        round: 0n,
-        name: new Uint8Array(),
-        value: currentBoxValue,
-      })
-    boxReader.algod.assetById = vi.fn().mockResolvedValue({
-      id: 0n,
-      params: { url: '', total: 0n, decimals: 0, creator: '' },
-    })
+      .mockReturnValueOnce(
+        algodRequest({
+          round: 0n,
+          name: new Uint8Array(),
+          value: deprecatedBoxValue,
+        }),
+      )
+      .mockReturnValueOnce(
+        algodRequest({
+          round: 0n,
+          name: new Uint8Array(),
+          value: currentBoxValue,
+        }),
+      )
+    boxReader.algod.getAssetByID = vi.fn().mockReturnValue(
+      algodRequest({
+        index: 0n,
+        params: { url: '', total: 0n, decimals: 0, creator: '' },
+      }),
+    )
 
     const result = await reader.getAssetMetadata({ assetId: 456, followDeprecation: true })
 
@@ -723,10 +740,12 @@ describe('dispatcher methods', () => {
       // Test AUTO source prefers BOX.
       const boxValue = concatBytes([sampleMetadataHeaderDefault.serialized, sampleMetadataBodyDefault.rawBytes])
       mockBoxResponse(algod, boxValue)
-      boxReader.algod.assetById = vi.fn().mockResolvedValue({
-        id: 456n,
-        params: { total: 0n, decimals: 0, creator: '' },
-      })
+      boxReader.algod.getAssetByID = vi.fn().mockReturnValue(
+        algodRequest({
+          index: 456n,
+          params: { total: 0n, decimals: 0, creator: '' },
+        }),
+      )
 
       const result = await readerBoxConfig.arc89CheckMetadataExists({ assetId: 456 })
       expect(result.asaExists).toBe(true)
