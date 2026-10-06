@@ -54,7 +54,7 @@ export class MetadataArc3Error extends AsaMetadataRegistryError {}
 
 /**
  * Raised when paginated metadata reads detect that metadata changed between pages
- * (last_modified_round mismatch).
+ * (revision mismatch).
  */
 export class MetadataDriftError extends AsaMetadataRegistryError {}
 

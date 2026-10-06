@@ -12,6 +12,7 @@ import {
   AssetMetadataBox,
   AssetMetadataRecord,
   MetadataHeader,
+  MetadataSlice,
   PaginatedMetadata,
   Pagination,
   RegistryParameters,
@@ -79,7 +80,7 @@ export class AsaMetadataRegistryBoxRead {
 
   async arc89IsMetadataShort(args: { assetId: bigint | number }): Promise<readonly [boolean, bigint]> {
     const h = (await this.box(args.assetId)).header
-    return [h.isShort, h.lastModifiedRound]
+    return [h.isShort, h.revision]
   }
 
   async arc89GetMetadataHeader(args: { assetId: bigint | number }): Promise<MetadataHeader> {
@@ -91,7 +92,13 @@ export class AsaMetadataRegistryBoxRead {
     const size = b.body.size
     const pageSize = this.params.pageSize
     const totalPages = size === 0 ? 0 : Math.floor((size + pageSize - 1) / pageSize)
-    return new Pagination({ metadataSize: size, pageSize, totalPages })
+    return new Pagination({
+      metadataSize: size,
+      pageSize,
+      totalPages,
+      revision: b.header.revision,
+      deprecatedBy: b.header.deprecatedBy,
+    })
   }
 
   async arc89GetMetadata(args: { assetId: bigint | number; page: number }): Promise<PaginatedMetadata> {
@@ -105,7 +112,7 @@ export class AsaMetadataRegistryBoxRead {
     if (args.page < 0 || args.page >= Math.max(1, pages.length)) {
       return new PaginatedMetadata({
         hasNextPage: false,
-        lastModifiedRound: b.header.lastModifiedRound,
+        revision: b.header.revision,
         pageContent: new Uint8Array(),
       })
     }
@@ -114,41 +121,54 @@ export class AsaMetadataRegistryBoxRead {
     const hasNext = args.page + 1 < pages.length
     return new PaginatedMetadata({
       hasNextPage: hasNext,
-      lastModifiedRound: b.header.lastModifiedRound,
+      revision: b.header.revision,
       pageContent: content,
     })
   }
 
-  async arc89GetMetadataSlice(args: { assetId: bigint | number; offset: number; size: number }): Promise<Uint8Array> {
+  async arc89GetMetadataSlice(args: {
+    assetId: bigint | number
+    offset: number
+    size: number
+  }): Promise<MetadataSlice> {
     const b = await this.box(args.assetId)
     if (!Number.isInteger(args.offset) || !Number.isInteger(args.size)) {
       throw new TypeError('offset and size must be integers')
     }
-    if (args.offset < 0 || args.size < 0) return new Uint8Array()
-    return b.body.rawBytes.slice(args.offset, args.offset + args.size)
+    const content =
+      args.offset < 0 || args.size < 0 ? new Uint8Array() : b.body.rawBytes.slice(args.offset, args.offset + args.size)
+    return new MetadataSlice({ revision: b.header.revision, content })
   }
 
-  async arc89GetMetadataHeaderHash(args: { assetId: bigint | number }): Promise<Uint8Array> {
+  /** @returns The Metadata Header Hash and the Revision it was computed at. */
+  async arc89GetMetadataHeaderHash(args: { assetId: bigint | number }): Promise<readonly [Uint8Array, bigint]> {
     const b = await this.box(args.assetId)
-    return computeHeaderHash({
-      assetId: b.assetId,
+    const hh = computeHeaderHash({
       metadataIdentifiers: b.header.identifiers,
       reversibleFlags: b.header.flags.reversibleByte,
       irreversibleFlags: b.header.flags.irreversibleByte,
       metadataSize: b.body.size,
     })
+    return [hh, b.header.revision]
   }
 
-  async arc89GetMetadataPageHash(args: { assetId: bigint | number; page: number }): Promise<Uint8Array> {
+  /** @returns The page hash and the Revision it was computed at (an empty hash if out of range). */
+  async arc89GetMetadataPageHash(args: {
+    assetId: bigint | number
+    page: number
+  }): Promise<readonly [Uint8Array, bigint]> {
     const b = await this.box(args.assetId)
     const pages = paginate(b.body.rawBytes, this.params.pageSize)
-    if (!Number.isInteger(args.page) || args.page < 0 || args.page >= pages.length) return new Uint8Array()
-    return computePageHash({ assetId: b.assetId, pageIndex: args.page, pageContent: pages[args.page]! })
+    if (!Number.isInteger(args.page) || args.page < 0 || args.page >= pages.length) {
+      return [new Uint8Array(), b.header.revision]
+    }
+    return [computePageHash({ pageIndex: args.page, pageContent: pages[args.page]! }), b.header.revision]
   }
 
-  /** On-chain method returns the header's stored metadata_hash. */
-  async arc89GetMetadataHash(args: { assetId: bigint | number }): Promise<Uint8Array> {
-    return (await this.box(args.assetId)).header.metadataHash
+  /** On-chain method returns the header's stored Metadata Hash (and the Revision). */
+  async arc89GetMetadataHash(args: { assetId: bigint | number }): Promise<readonly [Uint8Array, bigint]> {
+    const b = await this.box(args.assetId)
+    return [b.header.metadataHash, b.header.revision]
   }
 
   // ------------------------------------------------------------------

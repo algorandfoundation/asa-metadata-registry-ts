@@ -3,7 +3,9 @@ import { algo, Config } from '@algorandfoundation/algokit-utils'
 import { nullLogger } from '@algorandfoundation/algokit-utils/types/logging'
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
+import { getApplicationAddress } from 'algosdk'
 import {
+  ARC3_NAME_SUFFIX,
   Arc90Uri,
   AsaMetadataRegistry,
   AssetMetadata,
@@ -334,7 +336,18 @@ describe('migrate legacy metadata', () => {
   })
 
   test('migrate arc3 asa with metadataHash and arc20 properties preserves arc20 flag', async () => {
-    const assetId = await createArc3Asa({ assetManager, appClient: client, preRegistry: true, withMetadataHash: true })
+    // ARC-20 requires DefaultFrozen and the controlling App account as Clawback
+    const result = await algorand.send.assetCreate({
+      sender: assetManager.addr,
+      total: 1000n,
+      assetName: `Legacy NFT${new TextDecoder().decode(ARC3_NAME_SUFFIX)}`,
+      url: 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi',
+      defaultFrozen: true,
+      manager: assetManager.addr,
+      clawback: getApplicationAddress(999),
+      metadataHash: new Uint8Array(32).fill(0xab),
+    })
+    const assetId = result.assetId
 
     const arc3WithArc20: Record<string, unknown> = {
       name: 'ARC-20 Token',
@@ -692,8 +705,8 @@ describe('migration integration', () => {
     expect(assetInfo.manager).toBeDefined()
 
     // 7. Verify we can read the metadata hash
-    const hashResult = await registry.read.arc89GetMetadataHash({ assetId })
-    expect(hashResult.length).toBe(32)
+    const [metadataHash] = await registry.read.arc89GetMetadataHash({ assetId })
+    expect(metadataHash.length).toBe(32)
   })
 
   test('migration with subsequent updates', async () => {

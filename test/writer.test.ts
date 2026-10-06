@@ -14,11 +14,12 @@
  */
 
 import { describe, expect, test, vi, beforeAll, beforeEach } from 'vitest'
-import { Address, modelsv2, type TransactionSigner } from 'algosdk'
+import { Address, getApplicationAddress, modelsv2, type TransactionSigner } from 'algosdk'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { microAlgo, type AlgorandClient } from '@algorandfoundation/algokit-utils'
 import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
 import {
+  ARC3_NAME_SUFFIX,
   InvalidArc3PropertiesError,
   InvalidFlagIndexError,
   MissingAppClientError,
@@ -118,6 +119,23 @@ beforeEach(() => {
   vi.resetAllMocks()
   mockClient = createMockAppClient()
 })
+
+/** Create an ARC-3 ASA (`@arc3` name suffix). ARC-20 also requires DefaultFrozen and a Clawback address. */
+const createArc3TestAsa = async (args: {
+  assetManager: AddressWithSigners
+  defaultFrozen?: boolean
+  clawback?: Address
+}): Promise<bigint> => {
+  const result = await algorand.send.assetCreate({
+    sender: args.assetManager.addr,
+    manager: args.assetManager.addr,
+    total: 42n,
+    assetName: `ARC3 Test${new TextDecoder().decode(ARC3_NAME_SUFFIX)}`,
+    defaultFrozen: args.defaultFrozen ?? false,
+    clawback: args.clawback,
+  })
+  return result.assetId
+}
 
 // ================================================================
 // WriteOptions Tests
@@ -364,7 +382,8 @@ describe('send group helper simulate', () => {
     })
 
     expect(simulateResult).not.toBeNull()
-    expect(simulateResult.returns).toHaveLength(1)
+    // Head call + extraResources call (Box I/O budget)
+    expect(simulateResult.returns).toHaveLength(2)
     const mbrDelta = parseMbrDelta(simulateResult.returns[0])
     expect(mbrDelta).toBeInstanceOf(MbrDelta)
     expect(mbrDelta.isPositive).toBe(true)
@@ -587,6 +606,12 @@ describe('high-level send methods', () => {
       'no arc3 flag skips validation',
       async (revFlag) => {
         // Test that arc20/arc62 reversible flags without arc3 flag skip properties validation.
+        // ARC-20 still requires the ASA-level conditions (DefaultFrozen, Clawback)
+        const assetId = await createArc3TestAsa({
+          assetManager,
+          defaultFrozen: revFlag.arc20,
+          clawback: revFlag.arc20 ? assetManager.addr : undefined,
+        })
         const metadata = AssetMetadata.fromJson({
           assetId,
           jsonObj: createArc3Payload({ name: 'No ARC3', properties: {} }),
@@ -604,6 +629,11 @@ describe('high-level send methods', () => {
 
     test('valid properties both flags creates metadata', async () => {
       // Test that both arc20+arc62 flags with valid properties creates metadata successfully.
+      const assetId = await createArc3TestAsa({
+        assetManager,
+        defaultFrozen: true,
+        clawback: getApplicationAddress(123456),
+      })
       const metadata = AssetMetadata.fromJson({
         assetId,
         jsonObj: createArc3Payload({
@@ -629,6 +659,12 @@ describe('high-level send methods', () => {
       [flags.REV_FLG_ARC62, 'arc-62'],
     ] as const)('valid properties creates metadata (flag %i)', async (flagIndex, arcKey) => {
       // Test that valid properties with arc3 + arc20/arc62 flags creates metadata successfully.
+      const isArc20 = flagIndex === flags.REV_FLG_ARC20
+      const assetId = await createArc3TestAsa({
+        assetManager,
+        defaultFrozen: isArc20,
+        clawback: isArc20 ? getApplicationAddress(123456) : undefined,
+      })
       const metadata = AssetMetadata.fromJson({
         assetId,
         jsonObj: createArc3Payload({ name: 'ARC3 One Flag', properties: { [arcKey]: { 'application-id': 123456 } } }),
@@ -701,12 +737,12 @@ describe('high-level send methods', () => {
       await writer.setReversibleFlag({
         assetManager,
         assetId: metadata.assetId,
-        flagIndex: flags.REV_FLG_ARC20,
+        flagIndex: flags.REV_FLG_NTT,
         value: true,
       })
       const record = await reader.box.getAssetMetadataRecord({ assetId })
       expect(record).not.toBeNull()
-      expect(record.header.isArc20SmartAsa).toBe(true)
+      expect(record.header.isNttCrossChain).toBe(true)
     })
 
     test('set reversible flag false', async () => {
@@ -766,6 +802,13 @@ describe('high-level send methods', () => {
       [flags.REV_FLG_ARC62, 'arc-62', 'isArc62CirculatingSupply'],
     ] as const)('valid arc3 properties sets flag', async (flagIndex, arcKey, expectedHeaderProp) => {
       // Test that enabling an ARC-3 mapped flag succeeds when the metadata body has a valid properties entry.
+      // ARC-20 also requires DefaultFrozen and the controlling App account as Clawback
+      const isArc20 = flagIndex === flags.REV_FLG_ARC20
+      const arc3AssetId = await createArc3TestAsa({
+        assetManager,
+        defaultFrozen: isArc20,
+        clawback: isArc20 ? getApplicationAddress(123456) : undefined,
+      })
       const metadata = AssetMetadata.fromJson({
         assetId: arc3AssetId,
         jsonObj: {
@@ -909,7 +952,7 @@ describe('high-level send methods', () => {
       await writer.setReversibleFlag({
         assetManager,
         assetId,
-        flagIndex: flags.REV_FLG_ARC20,
+        flagIndex: flags.REV_FLG_ARC62,
         value: true,
       })
       await writer.setReversibleFlag({
@@ -926,8 +969,8 @@ describe('high-level send methods', () => {
 
       // Verify both flags are set
       const record = await reader.box.getAssetMetadataRecord({ assetId })
-      expect(record.header.isArc20SmartAsa).toBe(true)
-      expect(record.header.flags.reversible.arc20).toBe(true)
+      expect(record.header.isArc62CirculatingSupply).toBe(true)
+      expect(record.header.flags.reversible.arc62).toBe(true)
       expect(record.header.flags.irreversible.reserved3).toBe(true)
       expect(record.header.flags.reversible.reserved3).toBe(true)
     })
@@ -963,7 +1006,7 @@ describe('write single transaction simulation', () => {
     const suggestedParams = await client.algorand.getSuggestedParams()
     const composer = writer.client.newGroup()
     composer.arc89SetReversibleFlag({
-      args: { assetId: metadata.assetId, flag: flags.REV_FLG_ARC20, value: true },
+      args: { assetId: metadata.assetId, flag: flags.REV_FLG_NTT, value: true },
       sender: assetManager.addr,
       signer: assetManager.signer,
       staticFee: microAlgo(Number(suggestedParams.minFee)),

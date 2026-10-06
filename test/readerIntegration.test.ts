@@ -1,7 +1,10 @@
 /**
  * Integration tests for src/read/reader module with real smart contracts.
  *
- * Ported from Python `arc89/tests/sdk/test_reader_integration.py`.
+ * Ported from Python `arc89/tests/sdk/test_reader_integration.py` (v1.0.0).
+ *
+ * These tests use actual deployed contracts and verify the reader works
+ * end-to-end with both BOX and AVM sources.
  *
  * Tests cover:
  * - Reader with algod (BOX source) using uploaded metadata
@@ -233,7 +236,7 @@ describe('reader with algod', () => {
       source: MetadataSource.BOX,
     })
 
-    expect(header.lastModifiedRound).toBeGreaterThan(0n)
+    expect(header.revision).toBeGreaterThan(0n)
     expect(header.metadataHash.length).toBe(32)
   })
 
@@ -257,51 +260,55 @@ describe('reader with algod', () => {
     })
 
     expect(page.pageContent.length).toBeGreaterThan(0)
-    expect(page.lastModifiedRound).toBeGreaterThan(0n)
+    expect(page.revision).toBeGreaterThan(0n)
   })
 
   test('get metadata slice', async () => {
     // Test getting a slice of metadata.
-    const sliceData = await readerWithAlgod.arc89GetMetadataSlice({
+    const metadataSlice = await readerWithAlgod.arc89GetMetadataSlice({
       assetId: mutableShortMetadata.assetId,
       offset: 0,
       size: 10,
       source: MetadataSource.BOX,
     })
 
-    expect(sliceData.length).toBeLessThanOrEqual(10)
-    expect(sliceData).toStrictEqual(mutableShortMetadata.body.rawBytes.slice(0, 10))
+    expect(metadataSlice.revision).toBeGreaterThan(0n)
+    expect(metadataSlice.content.length).toBeLessThanOrEqual(10)
+    expect(metadataSlice.content).toStrictEqual(mutableShortMetadata.body.rawBytes.slice(0, 10))
   })
 
   test('get metadata header hash', async () => {
     // Test getting metadata header hash.
-    const headerHash = await readerWithAlgod.arc89GetMetadataHeaderHash({
+    const [headerHash, revision] = await readerWithAlgod.arc89GetMetadataHeaderHash({
       assetId: mutableShortMetadata.assetId,
       source: MetadataSource.BOX,
     })
 
     expect(headerHash.length).toBe(32)
+    expect(revision).toBeGreaterThan(0n)
   })
 
   test('get metadata page hash', async () => {
     // Test getting metadata page hash.
-    const pageHash = await readerWithAlgod.arc89GetMetadataPageHash({
+    const [pageHash, revision] = await readerWithAlgod.arc89GetMetadataPageHash({
       assetId: mutableShortMetadata.assetId,
       page: 0,
       source: MetadataSource.BOX,
     })
 
     expect(pageHash.length).toBe(32)
+    expect(revision).toBeGreaterThan(0n)
   })
 
   test('get metadata hash', async () => {
     // Test getting full metadata hash.
-    const metadataHash = await readerWithAlgod.arc89GetMetadataHash({
+    const [metadataHash, revision] = await readerWithAlgod.arc89GetMetadataHash({
       assetId: mutableShortMetadata.assetId,
       source: MetadataSource.BOX,
     })
 
     expect(metadataHash.length).toBe(32)
+    expect(revision).toBeGreaterThan(0n)
   })
 })
 
@@ -362,7 +369,7 @@ describe('reader with avm', () => {
       source: MetadataSource.AVM,
     })
 
-    expect(header.lastModifiedRound).toBeGreaterThan(0n)
+    expect(header.revision).toBeGreaterThan(0n)
     expect(header.metadataHash.length).toBe(32)
   })
 
@@ -479,6 +486,8 @@ describe('reader full', () => {
     expect(boxPagination.metadataSize).toBe(avmPagination.metadataSize)
     expect(boxPagination.pageSize).toBe(avmPagination.pageSize)
     expect(boxPagination.totalPages).toBe(avmPagination.totalPages)
+    expect(boxPagination.revision).toBe(avmPagination.revision)
+    expect(boxPagination.deprecatedBy).toBe(avmPagination.deprecatedBy)
   })
 })
 

@@ -27,7 +27,7 @@ const createMinimalBoxValue = (args?: {
   revFlags?: number
   irrFlags?: number
   metadataHash?: Uint8Array
-  lastModifiedRound?: number | bigint
+  revision?: number | bigint
   deprecatedBy?: number | bigint
   metadata?: Uint8Array
 }): Uint8Array => {
@@ -35,7 +35,7 @@ const createMinimalBoxValue = (args?: {
   const revFlags = args?.revFlags ?? 0
   const irrFlags = args?.irrFlags ?? 0
   const metadataHash = args?.metadataHash ?? new Uint8Array(32)
-  const lastModifiedRound = BigInt(args?.lastModifiedRound ?? 0)
+  const revision = BigInt(args?.revision ?? 0)
   const deprecatedBy = BigInt(args?.deprecatedBy ?? 0)
   const metadata = args?.metadata ?? new Uint8Array()
 
@@ -47,7 +47,7 @@ const createMinimalBoxValue = (args?: {
 
   // Write uint64 big-endian
   const lmrView = new DataView(result.buffer, result.byteOffset + 35, 8)
-  lmrView.setBigUint64(0, lastModifiedRound, false)
+  lmrView.setBigUint64(0, revision, false)
 
   const dbView = new DataView(result.buffer, result.byteOffset + 43, 8)
   dbView.setBigUint64(0, deprecatedBy, false)
@@ -68,7 +68,7 @@ describe('asset metadata box parse', () => {
     expect(box.header.flags.reversibleByte).toBe(0)
     expect(box.header.flags.irreversibleByte).toBe(0)
     expect(box.header.metadataHash).toEqual(new Uint8Array(32))
-    expect(box.header.lastModifiedRound).toBe(0n)
+    expect(box.header.revision).toBe(0n)
     expect(box.header.deprecatedBy).toBe(0n)
     expect(box.body.rawBytes).toEqual(new Uint8Array())
     expect(box.body.isEmpty).toBe(true)
@@ -114,12 +114,12 @@ describe('asset metadata box parse', () => {
   test('parse box with rounds', () => {
     // Test parsing box with round values.
     const boxValue = createMinimalBoxValue({
-      lastModifiedRound: 12345,
+      revision: 12345,
       deprecatedBy: 67890,
     })
     const box = AssetMetadataBox.parse({ assetId: 222n, value: boxValue })
 
-    expect(box.header.lastModifiedRound).toBe(12345n)
+    expect(box.header.revision).toBe(12345n)
     expect(box.header.deprecatedBy).toBe(67890n)
   })
 
@@ -129,14 +129,14 @@ describe('asset metadata box parse', () => {
     // instead of value[43:51], which would include metadata bytes when present.
     const metadata = new TextEncoder().encode('{"name":"Test Asset"}')
     const boxValue = createMinimalBoxValue({
-      lastModifiedRound: 12345,
+      revision: 12345,
       deprecatedBy: 67890,
       metadata,
     })
     const box = AssetMetadataBox.parse({ assetId: 222n, value: boxValue })
 
     // These would fail with the buggy implementation that used value[43:]
-    expect(box.header.lastModifiedRound).toBe(12345n)
+    expect(box.header.revision).toBe(12345n)
     expect(box.header.deprecatedBy).toBe(67890n)
     expect(box.body.rawBytes).toEqual(metadata)
   })
@@ -236,12 +236,12 @@ describe('asset metadata box parse', () => {
     // Test parsing box with maximum uint64 round values.
     const maxUint64 = 2n ** 64n - 1n
     const boxValue = createMinimalBoxValue({
-      lastModifiedRound: maxUint64,
+      revision: maxUint64,
       deprecatedBy: maxUint64,
     })
     const box = AssetMetadataBox.parse({ assetId: 2222n, value: boxValue })
 
-    expect(box.header.lastModifiedRound).toBe(maxUint64)
+    expect(box.header.revision).toBe(maxUint64)
     expect(box.header.deprecatedBy).toBe(maxUint64)
   })
 
@@ -401,7 +401,6 @@ describe('asset metadata box advanced', () => {
 
     // Compute correct hash
     const correctHash = computeMetadataHash({
-      assetId: 123n,
       metadataIdentifiers: bitmasks.MASK_ID_SHORT,
       reversibleFlags: 0,
       irreversibleFlags: 0,

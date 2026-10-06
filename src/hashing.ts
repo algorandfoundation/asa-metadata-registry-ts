@@ -6,7 +6,6 @@
 
 import { createHash, getHashes } from 'crypto'
 import * as constants from './constants'
-import { assetIdToBoxName } from './codec'
 import { InvalidPageIndexError } from './errors'
 import { b64DecodeStrict } from './internal/base64'
 import { concatBytes } from './internal/bytes'
@@ -57,20 +56,18 @@ export const sha512_256 = (data: Uint8Array): Uint8Array => sha('sha512-256', da
 export const sha256 = (data: Uint8Array): Uint8Array => sha('sha256', data)
 
 /**
- * Compute hh = SHA-512/256("arc0089/header" || assetId || identifiers || revFlags || irrFlags || metadataSize)
+ * Compute hh = SHA-512/256("arc0089/header" || identifiers || revFlags || irrFlags || metadataSize)
  */
 export const computeHeaderHash = (args: {
-  assetId: bigint | number
   metadataIdentifiers: number
   reversibleFlags: number
   irreversibleFlags: number
   metadataSize: number
 }): Uint8Array => {
-  const { assetId, metadataIdentifiers, reversibleFlags, irreversibleFlags, metadataSize } = args
+  const { metadataIdentifiers, reversibleFlags, irreversibleFlags, metadataSize } = args
 
   const data = concatBytes([
     constants.HASH_DOMAIN_HEADER,
-    assetIdToBoxName(assetId),
     uint8ToByte(metadataIdentifiers, 'metadataIdentifiers'),
     uint8ToByte(reversibleFlags, 'reversibleFlags'),
     uint8ToByte(irreversibleFlags, 'irreversibleFlags'),
@@ -92,14 +89,10 @@ export const paginate = (metadata: Uint8Array, pageSize: number): Uint8Array[] =
 }
 
 /**
- * Compute ph[i] = SHA-512/256("arc0089/page" || assetId || pageIndex || pageSize || pageContent)
+ * Compute ph[i] = SHA-512/256("arc0089/page" || pageIndex || pageSize || pageContent)
  */
-export const computePageHash = (args: {
-  assetId: bigint | number
-  pageIndex: number
-  pageContent: Uint8Array
-}): Uint8Array => {
-  const { assetId, pageIndex, pageContent } = args
+export const computePageHash = (args: { pageIndex: number; pageContent: Uint8Array }): Uint8Array => {
+  const { pageIndex, pageContent } = args
 
   if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex > MAX_UINT8) {
     throw new InvalidPageIndexError('pageIndex must fit in uint8')
@@ -107,7 +100,6 @@ export const computePageHash = (args: {
 
   const data = concatBytes([
     constants.HASH_DOMAIN_PAGE,
-    assetIdToBoxName(assetId),
     new Uint8Array([pageIndex]),
     uint16ToBytesBE(pageContent.length, 'pageContent length'),
     pageContent,
@@ -119,19 +111,20 @@ export const computePageHash = (args: {
 /**
  * Compute the ARC-89 Metadata Hash:
  *   am = SHA-512/256("arc0089/am" || hh || ph[0] || ...)
+ *
+ * If metadata is empty, there are no pages and:
+ *   am = SHA-512/256("arc0089/am" || hh)
  */
 export const computeMetadataHash = (args: {
-  assetId: bigint | number
   metadataIdentifiers: number
   reversibleFlags: number
   irreversibleFlags: number
   metadata: Uint8Array
   pageSize: number
 }): Uint8Array => {
-  const { assetId, metadataIdentifiers, reversibleFlags, irreversibleFlags, metadata, pageSize } = args
+  const { metadataIdentifiers, reversibleFlags, irreversibleFlags, metadata, pageSize } = args
 
   const hh = computeHeaderHash({
-    assetId,
     metadataIdentifiers,
     reversibleFlags,
     irreversibleFlags,
@@ -141,7 +134,7 @@ export const computeMetadataHash = (args: {
   const pages = paginate(metadata, pageSize)
   const pageHashes: Uint8Array[] = new Array(pages.length)
   for (let i = 0; i < pages.length; i++) {
-    pageHashes[i] = computePageHash({ assetId, pageIndex: i, pageContent: pages[i] })
+    pageHashes[i] = computePageHash({ pageIndex: i, pageContent: pages[i] })
   }
   const data = concatBytes([constants.HASH_DOMAIN_METADATA, hh, ...pageHashes])
 

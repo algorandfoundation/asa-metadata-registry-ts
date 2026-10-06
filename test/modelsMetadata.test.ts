@@ -186,13 +186,13 @@ describe('metadata header', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.identifiers).toBe(0)
     expect(header.flags).toBe(flags)
     expect(header.metadataHash).toEqual(new Uint8Array(32))
-    expect(header.lastModifiedRound).toBe(1000n)
+    expect(header.revision).toBe(1000n)
     expect(header.deprecatedBy).toBe(0n)
   })
 
@@ -203,7 +203,7 @@ describe('metadata header', () => {
       identifiers: 0, // Short bit not set
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isShort).toBe(false)
@@ -216,7 +216,7 @@ describe('metadata header', () => {
       identifiers: bitmasks.MASK_ID_SHORT,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isShort).toBe(true)
@@ -229,7 +229,7 @@ describe('metadata header', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isImmutable).toBe(false)
@@ -245,7 +245,7 @@ describe('metadata header', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isImmutable).toBe(true)
@@ -261,7 +261,7 @@ describe('metadata header', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isArc3Compliant).toBe(true)
@@ -277,7 +277,7 @@ describe('metadata header', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isArc89Native).toBe(true)
@@ -293,7 +293,7 @@ describe('metadata header', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isArc20SmartAsa).toBe(true)
@@ -309,7 +309,7 @@ describe('metadata header', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isArc62CirculatingSupply).toBe(true)
@@ -322,7 +322,7 @@ describe('metadata header', () => {
       5, // reversible flags
       3, // irreversible flags
       new Uint8Array(32).fill(0xaa), // hash
-      2000, // lastModifiedRound
+      2000, // revision
       100, // deprecatedBy
     ]
     const header = MetadataHeader.fromTuple(tupleData)
@@ -331,7 +331,7 @@ describe('metadata header', () => {
     expect(header.flags.reversibleByte).toBe(5)
     expect(header.flags.irreversibleByte).toBe(3)
     expect(header.metadataHash).toEqual(new Uint8Array(32).fill(0xaa))
-    expect(header.lastModifiedRound).toBe(2000n)
+    expect(header.revision).toBe(2000n)
     expect(header.deprecatedBy).toBe(100n)
   })
 
@@ -377,7 +377,6 @@ describe('asset metadata', () => {
 
     // Verify hash is correct by comparing to the standalone hash function
     const expectedHash = computeMetadataHash({
-      assetId: metadata.assetId,
       metadataIdentifiers: metadata.identifiersByte,
       reversibleFlags: metadata.flags.reversibleByte,
       irreversibleFlags: metadata.flags.irreversibleByte,
@@ -410,7 +409,6 @@ describe('asset metadata', () => {
 
     // Verify hash matches expected value
     const expectedHash = computeMetadataHash({
-      assetId: 456n,
       metadataIdentifiers: bitmasks.MASK_ID_SHORT,
       reversibleFlags: flags.reversibleByte,
       irreversibleFlags: flags.irreversibleByte,
@@ -444,7 +442,6 @@ describe('asset metadata', () => {
 
     // Verify hash matches expected value
     const expectedHash = computeMetadataHash({
-      assetId: 789n,
       metadataIdentifiers: 0,
       reversibleFlags: flags.reversibleByte,
       irreversibleFlags: flags.irreversibleByte,
@@ -749,7 +746,7 @@ describe('asset metadata record', () => {
       identifiers: 0,
       flags: MetadataFlags.empty(),
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
@@ -771,7 +768,7 @@ describe('asset metadata record', () => {
       identifiers: 0,
       flags: MetadataFlags.empty(),
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     const body = new MetadataBody(new TextEncoder().encode('{"name":"Test","value":123}'))
@@ -800,7 +797,7 @@ describe('asset metadata record', () => {
       identifiers: 0,
       flags: MetadataFlags.empty(),
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 500,
     })
     const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
@@ -912,7 +909,7 @@ describe('model arc20AppId / arc62AppId getters', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 0n,
+      revision: 0n,
       deprecatedBy: 0n,
     })
     return new AssetMetadataRecord({ appId: 1n, assetId: 1n, header, body })

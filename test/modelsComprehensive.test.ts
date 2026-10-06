@@ -47,7 +47,7 @@ describe('metadata header advanced', () => {
       identifiers: bitmasks.MASK_ID_SHORT,
       flags,
       metadataHash: new Uint8Array(32).fill(0xaa),
-      lastModifiedRound: 12345n,
+      revision: 12345n,
       deprecatedBy: 67890n,
     })
     const serialized = header.serialized
@@ -70,7 +70,7 @@ describe('metadata header advanced', () => {
       identifiers: 0, // Not set initially
       flags: MetadataFlags.empty(),
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 0n,
+      revision: 0n,
       deprecatedBy: 0n,
     })
     const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
@@ -84,7 +84,7 @@ describe('metadata header advanced', () => {
       identifiers: bitmasks.MASK_ID_SHORT, // Set initially
       flags: MetadataFlags.empty(),
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 0n,
+      revision: 0n,
       deprecatedBy: 0n,
     })
     // Create body larger than SHORT_METADATA_SIZE
@@ -100,7 +100,7 @@ describe('metadata header advanced', () => {
       identifiers: 0b11110000, // Reserved bits set
       flags: MetadataFlags.empty(),
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 0n,
+      revision: 0n,
       deprecatedBy: 0n,
     })
     const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
@@ -150,17 +150,19 @@ describe('metadata header advanced', () => {
     expect(header.metadataHash).toEqual(new Uint8Array(32))
   })
 
-  test('from tuple invalid last modified round type', () => {
-    // Test fromTuple with non-int lastModifiedRound.
+  test('from tuple invalid revision type', () => {
+    // Test fromTuple with non-int revision.
+    expect(() => MetadataHeader.fromTuple([0, 0, 0, new Uint8Array(32), 'not int' as any, 0])).toThrow(TypeError)
     expect(() => MetadataHeader.fromTuple([0, 0, 0, new Uint8Array(32), 'not int' as any, 0])).toThrow(
-      /lastModifiedRound.*must be.*integer/,
+      /revision must be int/,
     )
   })
 
   test('from tuple invalid deprecated by type', () => {
     // Test fromTuple with non-int deprecatedBy.
+    expect(() => MetadataHeader.fromTuple([0, 0, 0, new Uint8Array(32), 0, 'not int' as any])).toThrow(TypeError)
     expect(() => MetadataHeader.fromTuple([0, 0, 0, new Uint8Array(32), 0, 'not int' as any])).toThrow(
-      /deprecatedBy.*must be.*integer/,
+      /deprecatedBy must be int/,
     )
   })
 
@@ -170,7 +172,7 @@ describe('metadata header advanced', () => {
       identifiers: 0,
       flags: MetadataFlags.empty(),
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 0n,
+      revision: 0n,
       deprecatedBy: 0n,
     })
     expect(headerNotDeprecated.isDeprecated).toBe(false)
@@ -179,7 +181,7 @@ describe('metadata header advanced', () => {
       identifiers: 0,
       flags: MetadataFlags.empty(),
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 0n,
+      revision: 0n,
       deprecatedBy: 5000n,
     })
     expect(headerDeprecated.isDeprecated).toBe(true)
@@ -259,7 +261,7 @@ describe('asset metadata record advanced', () => {
       identifiers: bitmasks.MASK_ID_SHORT,
       flags: MetadataFlags.empty(),
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 0n,
+      revision: 0n,
       deprecatedBy: 0n,
     })
     const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
@@ -280,7 +282,6 @@ describe('asset metadata record advanced', () => {
     const params = getDefaultRegistryParams()
 
     const correctHash = computeMetadataHash({
-      assetId: 200n,
       metadataIdentifiers: bitmasks.MASK_ID_SHORT,
       reversibleFlags: 0,
       irreversibleFlags: 0,
@@ -292,7 +293,7 @@ describe('asset metadata record advanced', () => {
       identifiers: bitmasks.MASK_ID_SHORT,
       flags: MetadataFlags.empty(),
       metadataHash: correctHash,
-      lastModifiedRound: 0n,
+      revision: 0n,
       deprecatedBy: 0n,
     })
     const body = new MetadataBody(metadata)
@@ -312,7 +313,7 @@ describe('asset metadata record advanced', () => {
       identifiers: 0,
       flags: MetadataFlags.empty(),
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 0n,
+      revision: 0n,
       deprecatedBy: 0n,
     })
     const body = new MetadataBody(new TextEncoder().encode('{"name":"Test","count":42}'))

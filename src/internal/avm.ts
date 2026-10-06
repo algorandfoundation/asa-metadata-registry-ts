@@ -1,6 +1,6 @@
 import { toBytes } from './bytes'
 import { asNumber, asUint64BigInt, asUint8 } from './numbers'
-import { AbiValue, MbrDelta, PaginatedMetadata } from '../models'
+import { AbiValue, MbrDelta, MetadataSlice, PaginatedMetadata } from '../models'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const withArgs = (params: unknown | undefined, args: unknown[]): any => {
@@ -33,9 +33,30 @@ export const parsePaginatedMetadata = (v: unknown): PaginatedMetadata => {
   const o = v as Record<string, unknown>
   return new PaginatedMetadata({
     hasNextPage: Boolean(o.hasNextPage),
-    lastModifiedRound: asUint64BigInt(o.lastModifiedRound, 'lastModifiedRound'),
+    revision: asUint64BigInt(o.revision, 'revision'),
     pageContent: toBytes(o.pageContent, 'pageContent'),
   })
+}
+
+export const parseMetadataSlice = (v: unknown): MetadataSlice => {
+  if (Array.isArray(v)) return MetadataSlice.fromTuple(v as readonly AbiValue[])
+  if (!v || typeof v !== 'object') throw new TypeError('MetadataSlice must be a tuple or struct')
+  const o = v as Record<string, unknown>
+  return new MetadataSlice({
+    revision: asUint64BigInt(o.revision, 'revision'),
+    content: toBytes(o.content, 'content'),
+  })
+}
+
+/** Parse a `HashRevision` struct (or `(byte[32],uint64)` tuple) into `[hash, revision]`. */
+export const parseHashRevision = (v: unknown): readonly [Uint8Array, bigint] => {
+  if (Array.isArray(v)) {
+    if (v.length !== 2) throw new Error('Expected (hash, revision)')
+    return [toBytes(v[0], 'hash'), asUint64BigInt(v[1], 'revision')]
+  }
+  if (!v || typeof v !== 'object') throw new TypeError('HashRevision must be a tuple or struct')
+  const o = v as Record<string, unknown>
+  return [toBytes(o.hash, 'hash'), asUint64BigInt(o.revision, 'revision')]
 }
 
 export const parseMbrDelta = (v: unknown): MbrDelta => {

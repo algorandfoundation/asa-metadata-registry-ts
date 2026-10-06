@@ -13,6 +13,7 @@ import {
   MetadataBody,
   MetadataExistence,
   MetadataHeader,
+  MetadataSlice,
   PaginatedMetadata,
   Pagination,
   RegistryParameters,
@@ -247,7 +248,7 @@ export class AsaMetadataRegistryRead {
       const totalPages = pagination.totalPages
       const batchSize = 10
 
-      let lastRound: bigint | null = null
+      let lastRevision: bigint | null = null
       const chunks: Uint8Array[] = []
 
       for (let start = 0; start < totalPages; start += batchSize) {
@@ -264,8 +265,8 @@ export class AsaMetadataRegistryRead {
 
         for (const v of values) {
           const paged = parsePaginatedMetadata(v)
-          if (lastRound === null) lastRound = paged.lastModifiedRound
-          else if (paged.lastModifiedRound !== lastRound) {
+          if (lastRevision === null) lastRevision = paged.revision
+          else if (paged.revision !== lastRevision) {
             throw new MetadataDriftError('Metadata changed between simulated page reads')
           }
           chunks.push(paged.pageContent)
@@ -436,7 +437,7 @@ export class AsaMetadataRegistryRead {
     size: number
     source?: MetadataSource
     simulate?: SimulateOptions
-  }): Promise<Uint8Array> {
+  }): Promise<MetadataSlice> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
@@ -451,11 +452,12 @@ export class AsaMetadataRegistryRead {
     })
   }
 
+  /** @returns The Metadata Header Hash and the Revision it was computed at. */
   async arc89GetMetadataHeaderHash(args: {
     assetId: bigint | number
     source?: MetadataSource
     simulate?: SimulateOptions
-  }): Promise<Uint8Array> {
+  }): Promise<readonly [Uint8Array, bigint]> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
@@ -468,12 +470,13 @@ export class AsaMetadataRegistryRead {
     })
   }
 
+  /** @returns The page hash and the Revision it was computed at. */
   async arc89GetMetadataPageHash(args: {
     assetId: bigint | number
     page: number
     source?: MetadataSource
     simulate?: SimulateOptions
-  }): Promise<Uint8Array> {
+  }): Promise<readonly [Uint8Array, bigint]> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
@@ -487,11 +490,12 @@ export class AsaMetadataRegistryRead {
     })
   }
 
+  /** @returns The Metadata Hash and the Revision it was computed at. */
   async arc89GetMetadataHash(args: {
     assetId: bigint | number
     source?: MetadataSource
     simulate?: SimulateOptions
-  }): Promise<Uint8Array> {
+  }): Promise<readonly [Uint8Array, bigint]> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {

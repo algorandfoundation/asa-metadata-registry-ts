@@ -32,11 +32,11 @@ import {
   DEPRECATED_BY_SIZE,
   HEADER_SIZE,
   IRREVERSIBLE_FLAGS_SIZE,
-  LAST_MODIFIED_ROUND_SIZE,
   MAX_METADATA_SIZE,
   METADATA_HASH_SIZE,
   METADATA_IDENTIFIERS_SIZE,
   REVERSIBLE_FLAGS_SIZE,
+  REVISION_SIZE,
   assetIdToBoxName,
   b64Encode,
   getDefaultRegistryParams,
@@ -221,7 +221,7 @@ describe('try get metadata box', () => {
         REVERSIBLE_FLAGS_SIZE + // reversible_flags
         IRREVERSIBLE_FLAGS_SIZE + // irreversible_flags
         METADATA_HASH_SIZE + // metadata_hash
-        LAST_MODIFIED_ROUND_SIZE + // last_modified_round
+        REVISION_SIZE + // revision
         DEPRECATED_BY_SIZE, // deprecated_by
     )
     const body = utf8('{"test": "metadata"}')

@@ -24,7 +24,19 @@ import {
 import { AsaMetadataRegistryAvmRead, SimulateOptions } from '../read/avm'
 import { parseMbrDelta, returnValues } from '../internal/avm'
 import { ARC3_PROPERTIES_FLAG_TO_KEY, validateArc3Properties, validateArc3Values } from '../validation'
-import { appendExtraPayload, appendExtraResources, chunksForSlice, parseMetadataBox } from '../internal/writer'
+import {
+  ARC89_CREATE_METADATA_FIXED_SIZE,
+  ARC89_EXTRA_PAYLOAD_FIXED_SIZE,
+  ARC89_REPLACE_METADATA_SLICE_FIXED_SIZE,
+  appArgsSurchargeFee,
+  appendExtraPayload,
+  appendExtraResources,
+  boxIoExtraResources,
+  chunksForSlice,
+  hashBudgetTxns,
+  parseMetadataBox,
+  tailBudgetTxns,
+} from '../internal/writer'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,8 +48,9 @@ import { appendExtraPayload, appendExtraResources, chunksForSlice, parseMetadata
  * Notes:
  * - Algorand supports *fee pooling* in groups; this SDK sets fee=0 on most txns
  *   and pools fees on the first app call via `staticFee`.
- * - `feePaddingTxns` adds extra min-fee units to the fee pool as a safety margin
- *   to cover opcode budget inner transaction (related to metadata total pages).
+ * - The fee pool covers the group transactions, the opcode budget and MBR inner transactions,
+ *   the `extraResources` calls needed for the Box I/O budget and the app args surcharge.
+ * - `feePaddingTxns` adds extra min-fee units to the fee pool as a safety margin.
  */
 export interface WriteOptions {
   extraResources: number
@@ -67,10 +80,18 @@ const getAsaParams = async (client: AsaMetadataRegistryClient, assetId: bigint |
     return await client.algorand.asset.getById(BigInt(assetId))
   } catch (ex: unknown) {
     const msg = String(ex).toLowerCase()
-    if (msg.includes('not exist')) {
+    if (msg.includes('not exist') || msg.includes('not found')) {
       throw new AsaNotFoundError(`Asset ${assetId} does not exist.`, { cause: ex })
     }
     throw ex
+  }
+}
+
+const validateArc3Decimals = async (client: AsaMetadataRegistryClient, metadata: AssetMetadata): Promise<void> => {
+  const bodyJson = metadata.body.json
+  if ('decimals' in bodyJson) {
+    const asaParams = await getAsaParams(client, metadata.assetId)
+    validateArc3Values(bodyJson, asaParams.decimals)
   }
 }
 
@@ -78,13 +99,13 @@ const getAsaParams = async (client: AsaMetadataRegistryClient, assetId: bigint |
 // Writer
 // ---------------------------------------------------------------------------
 
-/*
+/**
  * Write API for ARC-89.
  *
- * This wraps the generated AlgoKit-generated ARC-56 AppClient to:
+ * This wraps the AlgoKit-generated ARC-56 AppClient to:
  *   - split metadata into payload chunks
  *   - build atomic groups (create/replace/delete + extra payload)
- *   - optionally simulate before sending
+ *   - size the Box I/O and opcode budget resources and pool the fees
  */
 export class AsaMetadataRegistryWrite {
   public readonly client: AsaMetadataRegistryClient
@@ -106,6 +127,48 @@ export class AsaMetadataRegistryWrite {
     }
   }
 
+  private async minFee(): Promise<number> {
+    const sp = await this.client.algorand.getSuggestedParams()
+    return toNumber(sp.minFee)
+  }
+
+  private newGroup(): AsaMetadataRegistryComposer<unknown[]> {
+    return this.client.newGroup() as unknown as AsaMetadataRegistryComposer<unknown[]>
+  }
+
+  /** `[extraResources calls, budget inner txns]` to touch the current box of `assetId`. */
+  private async boxResources(
+    assetId: bigint | number,
+    args: { hashing: boolean; otherCalls?: number },
+  ): Promise<readonly [number, number]> {
+    const box = await parseMetadataBox(this.client, assetId)
+    if (box === null) return [0, 0]
+    const params = await this._params()
+    const extra = boxIoExtraResources(params.headerSize + box.body.size)
+    let budget = 0
+    if (args.hashing) {
+      budget = hashBudgetTxns(box.body.totalPages(params))
+      budget += tailBudgetTxns(extra + (args.otherCalls ?? 0))
+    }
+    return [extra, budget]
+  }
+
+  private async mbrDeltaPayment(args: { assetManager: TransactionSignerAccount; metadata: AssetMetadata }) {
+    // Determine MBR delta via on-chain getter (simulate).
+    const mbrDelta = await new AsaMetadataRegistryAvmRead({ client: this.client }).arc89GetMetadataMbrDelta({
+      assetId: args.metadata.assetId,
+      newSize: args.metadata.body.size,
+    })
+    const payAmount = mbrDelta.isPositive ? BigInt(mbrDelta.amount) : 0n
+    // Build payment txn for MBR delta (fee pooled).
+    return await this.client.algorand.createTransaction.payment({
+      sender: args.assetManager.addr,
+      receiver: this.client.appAddress,
+      amount: microAlgo(asBigInt(payAmount, 'amountMicroAlgos')),
+      staticFee: microAlgo(0),
+    })
+  }
+
   // ------------------------------------------------------------------
   // Group builders
   // ------------------------------------------------------------------
@@ -121,37 +184,43 @@ export class AsaMetadataRegistryWrite {
     options?: WriteOptions
   }): Promise<AsaMetadataRegistryComposer> {
     const opt = args.options ?? writeOptionsDefault
-    const chunks = args.metadata.body.chunkedPayload()
+    const { metadata } = args
+    const params = await this._params()
 
-    const avm = new AsaMetadataRegistryAvmRead({ client: this.client })
-    const mbrDelta = await avm.arc89GetMetadataMbrDelta({
-      assetId: args.metadata.assetId,
-      newSize: args.metadata.body.size,
-    })
-    const payAmount = mbrDelta.isPositive ? BigInt(mbrDelta.amount) : 0n
-    const mbrPayment = await this.client.algorand.createTransaction.payment({
-      sender: args.assetManager.addr,
-      receiver: this.client.appAddress,
-      amount: microAlgo(asBigInt(payAmount, 'amountMicroAlgos')),
-      staticFee: microAlgo(0),
-    })
+    const chunks = metadata.body.chunkedPayload(params)
+    const ioExtra = boxIoExtraResources(params.headerSize + metadata.body.size, chunks.length - 1)
 
-    const sp = await this.client.algorand.getSuggestedParams()
-    const minFee = toNumber(sp.minFee)
+    const mbrPayment = await this.mbrDeltaPayment({ assetManager: args.assetManager, metadata })
 
-    // Fee pooling
-    let baseTxnCount = 1 + (chunks.length - 1) + 1 + opt.extraResources
-    if (!args.metadata.isEmpty) baseTxnCount += 1
-    const feePool = (baseTxnCount + opt.feePaddingTxns) * minFee
+    const minFee = await this.minFee()
+    const nonEmpty = metadata.isEmpty ? 0 : 1
+    // Calculate transaction count for fee pooling
+    let baseTxnCount =
+      1 + // main app call (arc89CreateMetadata)
+      (chunks.length - 1) + // extra payload calls
+      1 + // MBR payment transaction
+      ioExtra +
+      opt.extraResources // optional extra resources
 
-    const composer = this.client.newGroup()
+    // Opcode budget inner transactions: metadata hashing, native Asset URL check, tail
+    baseTxnCount += nonEmpty + (metadata.isArc89Native ? 1 : 0)
+    baseTxnCount += tailBudgetTxns(chunks.length - 1 + ioExtra + opt.extraResources + nonEmpty)
+
+    // Calculate total fee pool including padding
+    const appArgsSizes = [
+      ARC89_CREATE_METADATA_FIXED_SIZE + chunks[0]!.length,
+      ...chunks.slice(1).map((chunk) => ARC89_EXTRA_PAYLOAD_FIXED_SIZE + chunk.length),
+    ]
+    const feePool = (baseTxnCount + opt.feePaddingTxns) * minFee + appArgsSurchargeFee(minFee, appArgsSizes)
+
+    const composer = this.newGroup()
     composer.arc89CreateMetadata({
       args: {
-        assetId: args.metadata.assetId,
-        reversibleFlags: args.metadata.flags.reversibleByte,
-        irreversibleFlags: args.metadata.flags.irreversibleByte,
-        metadataSize: args.metadata.body.size,
-        payload: chunks[0] ?? new Uint8Array(),
+        assetId: metadata.assetId,
+        reversibleFlags: metadata.flags.reversibleByte,
+        irreversibleFlags: metadata.flags.irreversibleByte,
+        metadataSize: metadata.body.size,
+        payload: chunks[0]!,
         mbrDeltaPayment: mbrPayment,
       },
       sender: args.assetManager.addr,
@@ -160,18 +229,18 @@ export class AsaMetadataRegistryWrite {
     })
 
     appendExtraPayload(composer, {
-      assetId: args.metadata.assetId,
+      assetId: metadata.assetId,
       chunks,
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
 
     appendExtraResources(composer, {
-      count: opt.extraResources,
+      count: ioExtra + opt.extraResources + nonEmpty,
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    return composer
+    return composer as unknown as AsaMetadataRegistryComposer
   }
 
   /**
@@ -202,7 +271,7 @@ export class AsaMetadataRegistryWrite {
         assetManager: args.assetManager,
         metadata: args.metadata,
         options: opt,
-        equalSize: args.metadata.body.size === currentSize,
+        currentSize,
       })
     }
 
@@ -213,22 +282,42 @@ export class AsaMetadataRegistryWrite {
     assetManager: TransactionSignerAccount
     metadata: AssetMetadata
     options: WriteOptions
-    equalSize: boolean
+    currentSize: number
   }): Promise<AsaMetadataRegistryComposer> {
-    const chunks = args.metadata.body.chunkedPayload()
-    const sp = await this.client.algorand.getSuggestedParams()
-    const minFee = toNumber(sp.minFee)
+    const { metadata, options } = args
+    const params = await this._params()
+    const chunks = metadata.body.chunkedPayload(params)
+    const equalSize = metadata.body.size === args.currentSize
+    // The whole existing box is touched (resize), size the I/O budget on it.
+    const ioExtra = boxIoExtraResources(params.headerSize + args.currentSize, chunks.length - 1)
 
-    let baseTxnCount = 1 + (chunks.length - 1) + args.options.extraResources
-    if (!args.equalSize) baseTxnCount += 1 // MBR refund inner payment
-    const feePool = (baseTxnCount + args.options.feePaddingTxns) * minFee
+    const minFee = await this.minFee()
+    const nonEmpty = metadata.isEmpty ? 0 : 1
+    let baseTxnCount =
+      1 + // main app call (arc89ReplaceMetadata)
+      (chunks.length - 1) + // extra payload calls
+      ioExtra +
+      options.extraResources + // optional extra resources
+      nonEmpty + // extraResources call
+      nonEmpty + // hash-budget inner transaction
+      tailBudgetTxns(chunks.length - 1 + ioExtra + options.extraResources + nonEmpty)
 
-    const composer = this.client.newGroup()
+    // MBR refund inner payment transaction (only when size is smaller, not equal)
+    if (!equalSize) baseTxnCount += 1
+
+    // Calculate total fee pool including padding
+    const appArgsSizes = [
+      ARC89_REPLACE_METADATA_SLICE_FIXED_SIZE + chunks[0]!.length,
+      ...chunks.slice(1).map((chunk) => ARC89_EXTRA_PAYLOAD_FIXED_SIZE + chunk.length),
+    ]
+    const feePool = (baseTxnCount + options.feePaddingTxns) * minFee + appArgsSurchargeFee(minFee, appArgsSizes)
+
+    const composer = this.newGroup()
     composer.arc89ReplaceMetadata({
       args: {
-        assetId: args.metadata.assetId,
-        metadataSize: args.metadata.body.size,
-        payload: chunks[0] ?? new Uint8Array(),
+        assetId: metadata.assetId,
+        metadataSize: metadata.body.size,
+        payload: chunks[0]!,
       },
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
@@ -236,18 +325,18 @@ export class AsaMetadataRegistryWrite {
     })
 
     appendExtraPayload(composer, {
-      assetId: args.metadata.assetId,
+      assetId: metadata.assetId,
       chunks,
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
 
     appendExtraResources(composer, {
-      count: args.options.extraResources,
+      count: ioExtra + options.extraResources + nonEmpty,
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    return composer
+    return composer as unknown as AsaMetadataRegistryComposer
   }
 
   private async buildReplaceLarger(args: {
@@ -255,32 +344,38 @@ export class AsaMetadataRegistryWrite {
     metadata: AssetMetadata
     options: WriteOptions
   }): Promise<AsaMetadataRegistryComposer> {
-    const chunks = args.metadata.body.chunkedPayload()
+    const { metadata, options } = args
+    const params = await this._params()
+    const chunks = metadata.body.chunkedPayload(params)
+    const ioExtra = boxIoExtraResources(params.headerSize + metadata.body.size, chunks.length - 1)
 
-    const avm = new AsaMetadataRegistryAvmRead({ client: this.client })
-    const mbrDelta = await avm.arc89GetMetadataMbrDelta({
-      assetId: args.metadata.assetId,
-      newSize: args.metadata.body.size,
-    })
-    const payAmount = mbrDelta.isPositive ? BigInt(mbrDelta.amount) : 0n
-    const mbrPayment = await this.client.algorand.createTransaction.payment({
-      sender: args.assetManager.addr,
-      receiver: this.client.appAddress,
-      amount: microAlgo(asBigInt(payAmount, 'amountMicroAlgos')),
-      staticFee: microAlgo(0),
-    })
+    const mbrPayment = await this.mbrDeltaPayment({ assetManager: args.assetManager, metadata })
 
-    const sp = await this.client.algorand.getSuggestedParams()
-    const minFee = toNumber(sp.minFee)
-    const txnCount = 1 + (chunks.length - 1) + 1 + args.options.extraResources
-    const feePool = (txnCount + args.options.feePaddingTxns) * minFee
+    const minFee = await this.minFee()
+    const nonEmpty = metadata.isEmpty ? 0 : 1
+    const txnCount =
+      1 + // main app call (arc89ReplaceMetadataLarger)
+      (chunks.length - 1) + // extra payload calls
+      1 + // MBR payment transaction
+      ioExtra +
+      options.extraResources + // optional extra resources
+      nonEmpty + // extraResources call
+      nonEmpty + // hash-budget inner transaction
+      tailBudgetTxns(chunks.length - 1 + ioExtra + options.extraResources + nonEmpty)
 
-    const composer = this.client.newGroup()
+    // Calculate total fee pool including padding
+    const appArgsSizes = [
+      ARC89_REPLACE_METADATA_SLICE_FIXED_SIZE + chunks[0]!.length,
+      ...chunks.slice(1).map((chunk) => ARC89_EXTRA_PAYLOAD_FIXED_SIZE + chunk.length),
+    ]
+    const feePool = (txnCount + options.feePaddingTxns) * minFee + appArgsSurchargeFee(minFee, appArgsSizes)
+
+    const composer = this.newGroup()
     composer.arc89ReplaceMetadataLarger({
       args: {
-        assetId: args.metadata.assetId,
-        metadataSize: args.metadata.body.size,
-        payload: chunks[0] ?? new Uint8Array(),
+        assetId: metadata.assetId,
+        metadataSize: metadata.body.size,
+        payload: chunks[0]!,
         mbrDeltaPayment: mbrPayment,
       },
       sender: args.assetManager.addr,
@@ -289,18 +384,18 @@ export class AsaMetadataRegistryWrite {
     })
 
     appendExtraPayload(composer, {
-      assetId: args.metadata.assetId,
+      assetId: metadata.assetId,
       chunks,
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
 
     appendExtraResources(composer, {
-      count: args.options.extraResources,
+      count: ioExtra + options.extraResources + nonEmpty,
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    return composer
+    return composer as unknown as AsaMetadataRegistryComposer
   }
 
   /**
@@ -323,27 +418,40 @@ export class AsaMetadataRegistryWrite {
     const payloadBytes = toBytes(args.payload, 'payload')
 
     const chunks = chunksForSlice(payloadBytes, params.replacePayloadMaxSize)
+    const [boxIoExtra, budget] = await this.boxResources(args.assetId, {
+      hashing: true,
+      otherCalls: chunks.length - 1 + opt.extraResources,
+    })
+    const ioExtra = Math.max(0, boxIoExtra - (chunks.length - 1))
 
-    const sp = await this.client.algorand.getSuggestedParams()
-    const minFee = toNumber(sp.minFee)
-    const txnCount = chunks.length + opt.extraResources
-    const feePool = (txnCount + opt.feePaddingTxns) * minFee
+    const minFee = await this.minFee()
+    const txnCount =
+      chunks.length + // main app calls (arc89ReplaceMetadataSlice)
+      budget * chunks.length + // hash recomputed by every slice call
+      ioExtra +
+      opt.extraResources // optional extra resources
 
-    const composer = this.client.newGroup()
+    // Calculate total fee pool including padding
+    const appArgsSizes = chunks.map((chunk) => ARC89_REPLACE_METADATA_SLICE_FIXED_SIZE + chunk.length)
+    const feePool = (txnCount + opt.feePaddingTxns) * minFee + appArgsSurchargeFee(minFee, appArgsSizes)
 
+    const composer = this.newGroup()
+
+    // First call pays pooled fees.
     composer.arc89ReplaceMetadataSlice({
-      args: { assetId: args.assetId, offset: args.offset, payload: chunks[0] ?? new Uint8Array() },
+      args: { assetId: args.assetId, offset: args.offset, payload: chunks[0]! },
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
       staticFee: microAlgo(feePool),
     })
 
+    // Subsequent calls have 0 fee.
     for (let i = 1; i < chunks.length; i++) {
       composer.arc89ReplaceMetadataSlice({
         args: {
           assetId: args.assetId,
           offset: args.offset + i * params.replacePayloadMaxSize,
-          payload: chunks[i],
+          payload: chunks[i]!,
         },
         sender: args.assetManager.addr,
         signer: args.assetManager.signer,
@@ -352,11 +460,11 @@ export class AsaMetadataRegistryWrite {
     }
 
     appendExtraResources(composer, {
-      count: opt.extraResources,
+      count: ioExtra + opt.extraResources,
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    return composer
+    return composer as unknown as AsaMetadataRegistryComposer
   }
 
   /** Build (but do not send) an ARC-89 delete metadata group. */
@@ -366,12 +474,19 @@ export class AsaMetadataRegistryWrite {
     options?: WriteOptions
   }): Promise<AsaMetadataRegistryComposer> {
     const opt = args.options ?? writeOptionsDefault
-    const sp = await this.client.algorand.getSuggestedParams()
-    const minFee = toNumber(sp.minFee)
-    const txnCount = 1 + 1 + opt.extraResources
+    const [ioExtra] = await this.boxResources(args.assetId, { hashing: false })
+
+    const minFee = await this.minFee()
+    const txnCount =
+      1 + // main app call (arc89DeleteMetadata)
+      1 + // MBR refund inner payment transaction
+      ioExtra +
+      opt.extraResources // optional extra resources
+
+    // Calculate total fee pool including padding
     const feePool = (txnCount + opt.feePaddingTxns) * minFee
 
-    const composer = this.client.newGroup()
+    const composer = this.newGroup()
     composer.arc89DeleteMetadata({
       args: { assetId: args.assetId },
       sender: args.assetManager.addr,
@@ -379,11 +494,11 @@ export class AsaMetadataRegistryWrite {
       staticFee: microAlgo(feePool),
     })
     appendExtraResources(composer, {
-      count: opt.extraResources,
+      count: ioExtra + opt.extraResources,
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    return composer
+    return composer as unknown as AsaMetadataRegistryComposer
   }
 
   // ------------------------------------------------------------------
@@ -404,12 +519,8 @@ export class AsaMetadataRegistryWrite {
       return await args.composer.simulate(args.simulate)
     }
 
-    if (!args.sendParams) {
-      const opt = args.options ?? writeOptionsDefault
-      args.sendParams = createSendParams(opt)
-    }
-
-    return await args.composer.send(args.sendParams)
+    const sendParams = args.sendParams ?? createSendParams(args.options ?? writeOptionsDefault)
+    return await args.composer.send(sendParams)
   }
 
   async createMetadata(args: {
@@ -420,11 +531,7 @@ export class AsaMetadataRegistryWrite {
     validateArc3?: boolean
   }): Promise<MbrDelta> {
     if (args.validateArc3 ?? true) {
-      const bodyJson = args.metadata.body.json
-      if ('decimals' in bodyJson) {
-        const asaParams = await getAsaParams(this.client, args.metadata.assetId)
-        validateArc3Values(bodyJson, asaParams.decimals)
-      }
+      await validateArc3Decimals(this.client, args.metadata)
     }
 
     const composer = await this.buildCreateMetadataGroup({
@@ -433,7 +540,7 @@ export class AsaMetadataRegistryWrite {
       options: args.options,
     })
     const result = await AsaMetadataRegistryWrite.sendGroup({
-      composer,
+      composer: composer as unknown as AsaMetadataRegistryComposer<unknown[]>,
       sendParams: args.sendParams,
       options: args.options,
     })
@@ -451,11 +558,7 @@ export class AsaMetadataRegistryWrite {
     validateArc3?: boolean
   }): Promise<MbrDelta> {
     if (args.validateArc3 ?? true) {
-      const bodyJson = args.metadata.body.json
-      if ('decimals' in bodyJson) {
-        const asaParams = await getAsaParams(this.client, args.metadata.assetId)
-        validateArc3Values(bodyJson, asaParams.decimals)
-      }
+      await validateArc3Decimals(this.client, args.metadata)
     }
 
     const composer = await this.buildReplaceMetadataGroup({
@@ -465,7 +568,7 @@ export class AsaMetadataRegistryWrite {
       assumeCurrentSize: args.assumeCurrentSize,
     })
     const result = await AsaMetadataRegistryWrite.sendGroup({
-      composer,
+      composer: composer as unknown as AsaMetadataRegistryComposer<unknown[]>,
       sendParams: args.sendParams,
       options: args.options,
     })
@@ -489,7 +592,7 @@ export class AsaMetadataRegistryWrite {
       options: args.options,
     })
     await AsaMetadataRegistryWrite.sendGroup({
-      composer,
+      composer: composer as unknown as AsaMetadataRegistryComposer<unknown[]>,
       sendParams: args.sendParams,
       options: args.options,
     })
@@ -507,7 +610,7 @@ export class AsaMetadataRegistryWrite {
       options: args.options,
     })
     const result = await AsaMetadataRegistryWrite.sendGroup({
-      composer,
+      composer: composer as unknown as AsaMetadataRegistryComposer<unknown[]>,
       sendParams: args.sendParams,
       options: args.options,
     })
@@ -539,11 +642,15 @@ export class AsaMetadataRegistryWrite {
     }
 
     const opt = args.options ?? writeOptionsDefault
-    const sp = await this.client.algorand.getSuggestedParams()
-    const minFee = toNumber(sp.minFee)
-    const feePool = (1 + opt.extraResources + opt.feePaddingTxns) * minFee
+    const [ioExtra, budget] = await this.boxResources(args.assetId, {
+      hashing: true,
+      otherCalls: opt.extraResources,
+    })
 
-    const composer = this.client.newGroup()
+    const minFee = await this.minFee()
+    const feePool = (1 + budget + ioExtra + opt.extraResources + opt.feePaddingTxns) * minFee
+
+    const composer = this.newGroup()
     composer.arc89SetReversibleFlag({
       args: { assetId: args.assetId, flag: args.flagIndex, value: args.value },
       sender: args.assetManager.addr,
@@ -551,7 +658,7 @@ export class AsaMetadataRegistryWrite {
       staticFee: microAlgo(feePool),
     })
     appendExtraResources(composer, {
-      count: opt.extraResources,
+      count: ioExtra + opt.extraResources,
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
@@ -573,11 +680,15 @@ export class AsaMetadataRegistryWrite {
       )
     }
     const opt = args.options ?? writeOptionsDefault
-    const sp = await this.client.algorand.getSuggestedParams()
-    const minFee = toNumber(sp.minFee)
-    const feePool = (1 + opt.extraResources + opt.feePaddingTxns) * minFee
+    const [ioExtra, budget] = await this.boxResources(args.assetId, {
+      hashing: true,
+      otherCalls: opt.extraResources,
+    })
 
-    const composer = this.client.newGroup()
+    const minFee = await this.minFee()
+    const feePool = (1 + budget + ioExtra + opt.extraResources + opt.feePaddingTxns) * minFee
+
+    const composer = this.newGroup()
     composer.arc89SetIrreversibleFlag({
       args: { assetId: args.assetId, flag: args.flagIndex },
       sender: args.assetManager.addr,
@@ -585,7 +696,7 @@ export class AsaMetadataRegistryWrite {
       staticFee: microAlgo(feePool),
     })
     appendExtraResources(composer, {
-      count: opt.extraResources,
+      count: ioExtra + opt.extraResources,
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
@@ -601,11 +712,15 @@ export class AsaMetadataRegistryWrite {
     sendParams?: SendParams | null
   }): Promise<void> {
     const opt = args.options ?? writeOptionsDefault
-    const sp = await this.client.algorand.getSuggestedParams()
-    const minFee = toNumber(sp.minFee)
-    const feePool = (1 + opt.extraResources + opt.feePaddingTxns) * minFee
+    const [ioExtra, budget] = await this.boxResources(args.assetId, {
+      hashing: true,
+      otherCalls: opt.extraResources,
+    })
 
-    const composer = this.client.newGroup()
+    const minFee = await this.minFee()
+    const feePool = (1 + budget + ioExtra + opt.extraResources + opt.feePaddingTxns) * minFee
+
+    const composer = this.newGroup()
     composer.arc89SetImmutable({
       args: { assetId: args.assetId },
       sender: args.assetManager.addr,
@@ -613,7 +728,7 @@ export class AsaMetadataRegistryWrite {
       staticFee: microAlgo(feePool),
     })
     appendExtraResources(composer, {
-      count: opt.extraResources,
+      count: ioExtra + opt.extraResources,
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
@@ -629,11 +744,12 @@ export class AsaMetadataRegistryWrite {
     sendParams?: SendParams | null
   }): Promise<void> {
     const opt = args.options ?? writeOptionsDefault
-    const sp = await this.client.algorand.getSuggestedParams()
-    const minFee = toNumber(sp.minFee)
-    const feePool = (1 + opt.extraResources + opt.feePaddingTxns) * minFee
+    const [ioExtra, budget] = await this.boxResources(args.assetId, { hashing: false })
 
-    const composer = this.client.newGroup()
+    const minFee = await this.minFee()
+    const feePool = (1 + budget + ioExtra + opt.extraResources + opt.feePaddingTxns) * minFee
+
+    const composer = this.newGroup()
     composer.arc89MigrateMetadata({
       args: { assetId: args.assetId, newRegistryId: args.newRegistryId },
       sender: args.assetManager.addr,
@@ -641,7 +757,7 @@ export class AsaMetadataRegistryWrite {
       staticFee: microAlgo(feePool),
     })
     appendExtraResources(composer, {
-      count: opt.extraResources,
+      count: ioExtra + opt.extraResources,
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })

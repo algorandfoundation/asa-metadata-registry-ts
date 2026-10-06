@@ -486,7 +486,7 @@ describe('metadata header integration', () => {
       identifiers: 0,
       flags: MetadataFlags.fromBytes(3, 129),
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
 
@@ -504,7 +504,7 @@ describe('metadata header integration', () => {
       identifiers: 0,
       flags: MetadataFlags.fromBytes(3, 129),
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
 
@@ -523,7 +523,7 @@ describe('metadata header integration', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isArc54Burnable).toBe(true)
@@ -534,7 +534,7 @@ describe('metadata header integration', () => {
       identifiers: 0,
       flags: MetadataFlags.empty(),
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isArc54Burnable).toBe(false)
@@ -549,7 +549,7 @@ describe('metadata header integration', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isNttCrossChain).toBe(true)
@@ -560,7 +560,7 @@ describe('metadata header integration', () => {
       identifiers: 0,
       flags: MetadataFlags.empty(),
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isNttCrossChain).toBe(false)

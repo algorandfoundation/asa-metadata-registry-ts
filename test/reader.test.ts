@@ -25,6 +25,7 @@ import {
   MetadataExistence,
   MetadataFlags,
   MetadataHeader,
+  MetadataSlice,
   MissingAppClientError,
   PaginatedMetadata,
   Pagination,
@@ -104,7 +105,7 @@ const sampleMetadataHeaderDefault = new MetadataHeader({
   identifiers: 0x00,
   flags: MetadataFlags.empty(),
   deprecatedBy: 0n,
-  lastModifiedRound: 1000n,
+  revision: 1000n,
   metadataHash: new Uint8Array(32),
 })
 
@@ -490,10 +491,10 @@ describe('get asset metadata', () => {
     const mockAvm = vi.mocked(avmFactory(123n))
     mockAvm.arc89GetMetadataHeader.mockResolvedValue(sampleMetadataHeaderDefault)
     mockAvm.arc89GetMetadataPagination.mockResolvedValue(
-      new Pagination({ metadataSize: 50, pageSize: 100, totalPages: 1 }),
+      new Pagination({ metadataSize: 50, pageSize: 100, totalPages: 1, revision: 1000, deprecatedBy: 0 }),
     )
     mockAvm.simulateMany.mockResolvedValue([
-      { hasNextPage: false, lastModifiedRound: 1000n, pageContent: sampleMetadataBodyDefault.rawBytes },
+      { hasNextPage: false, revision: 1000n, pageContent: sampleMetadataBodyDefault.rawBytes },
     ])
 
     const result = await reader.getAssetMetadata({ assetId: 456, source: MetadataSource.AVM })
@@ -507,10 +508,10 @@ describe('get asset metadata', () => {
     const mockAvm = vi.mocked(avmFactory(123n))
     mockAvm.arc89GetMetadataHeader.mockResolvedValue(sampleMetadataHeaderDefault)
     mockAvm.arc89GetMetadataPagination.mockResolvedValue(
-      new Pagination({ metadataSize: 20, pageSize: 100, totalPages: 1 }),
+      new Pagination({ metadataSize: 20, pageSize: 100, totalPages: 1, revision: 1000, deprecatedBy: 0 }),
     )
     mockAvm.simulateMany.mockResolvedValue([
-      { hasNextPage: false, lastModifiedRound: 1000n, pageContent: sampleMetadataBodyDefault.rawBytes },
+      { hasNextPage: false, revision: 1000n, pageContent: sampleMetadataBodyDefault.rawBytes },
     ])
 
     const result = await reader.getAssetMetadata({ assetId: 456, source: MetadataSource.AVM })
@@ -525,11 +526,11 @@ describe('get asset metadata', () => {
     const mockAvm = vi.mocked(avmFactory(123n))
     mockAvm.arc89GetMetadataHeader.mockResolvedValue(sampleMetadataHeaderDefault)
     mockAvm.arc89GetMetadataPagination.mockResolvedValue(
-      new Pagination({ metadataSize: 150, pageSize: 100, totalPages: 2 }),
+      new Pagination({ metadataSize: 150, pageSize: 100, totalPages: 2, revision: 1000, deprecatedBy: 0 }),
     )
     mockAvm.simulateMany.mockResolvedValue([
-      { hasNextPage: true, lastModifiedRound: 1000n, pageContent: new Uint8Array(100).fill(0x41) },
-      { hasNextPage: false, lastModifiedRound: 1000n, pageContent: new Uint8Array(50).fill(0x42) },
+      { hasNextPage: true, revision: 1000n, pageContent: new Uint8Array(100).fill(0x41) },
+      { hasNextPage: false, revision: 1000n, pageContent: new Uint8Array(50).fill(0x42) },
     ])
 
     const result = await reader.getAssetMetadata({ assetId: 456, source: MetadataSource.AVM })
@@ -544,12 +545,12 @@ describe('get asset metadata', () => {
     const mockAvm = vi.mocked(avmFactory(123n))
     mockAvm.arc89GetMetadataHeader.mockResolvedValue(sampleMetadataHeaderDefault)
     mockAvm.arc89GetMetadataPagination.mockResolvedValue(
-      new Pagination({ metadataSize: 150, pageSize: 100, totalPages: 2 }),
+      new Pagination({ metadataSize: 150, pageSize: 100, totalPages: 2, revision: 1000, deprecatedBy: 0 }),
     )
-    // Different lastModifiedRound indicates drift
+    // Different revision indicates drift
     mockAvm.simulateMany.mockResolvedValue([
-      { hasNextPage: true, lastModifiedRound: 1000n, pageContent: new Uint8Array(5) },
-      { hasNextPage: false, lastModifiedRound: 1001n, pageContent: new Uint8Array(5) },
+      { hasNextPage: true, revision: 1000n, pageContent: new Uint8Array(5) },
+      { hasNextPage: false, revision: 1001n, pageContent: new Uint8Array(5) },
     ])
 
     await expect(reader.getAssetMetadata({ assetId: 456, source: MetadataSource.AVM })).rejects.toThrow(
@@ -566,7 +567,7 @@ describe('get asset metadata', () => {
 
     const deprecatedHeader = new MetadataHeader({ ...sampleMetadataHeaderDefault, deprecatedBy: 789n })
     const deprecatedRecord = sampleMetadataRecord(deprecatedHeader)
-    const currentHeader = new MetadataHeader({ ...sampleMetadataHeaderDefault, lastModifiedRound: 2000n })
+    const currentHeader = new MetadataHeader({ ...sampleMetadataHeaderDefault, revision: 2000n })
     const currentRecord = sampleMetadataRecord(currentHeader)
 
     // Mock to return different records on subsequent calls
@@ -598,7 +599,7 @@ describe('get asset metadata', () => {
     const result = await reader.getAssetMetadata({ assetId: 456, followDeprecation: true })
 
     expect(result.appId).toBe(789n)
-    expect(result.header.lastModifiedRound).toBe(2000n)
+    expect(result.header.revision).toBe(2000n)
   })
 
   test('stops deprecation loop', async () => {
@@ -830,7 +831,7 @@ describe('dispatcher methods', () => {
       mockBoxResponse(algod, boxValue)
 
       const result = await readerBoxConfig.arc89GetMetadataHeader({ assetId: 456, source: MetadataSource.BOX })
-      expect(result.lastModifiedRound).toBe(sampleMetadataHeaderDefault.lastModifiedRound)
+      expect(result.revision).toBe(sampleMetadataHeaderDefault.revision)
     })
 
     test('avm source', async () => {
@@ -839,7 +840,7 @@ describe('dispatcher methods', () => {
       mockAvm.arc89GetMetadataHeader.mockResolvedValue(sampleMetadataHeaderDefault)
 
       const result = await readerAvmConfig.arc89GetMetadataHeader({ assetId: 456, source: MetadataSource.AVM })
-      expect(result.lastModifiedRound).toBe(sampleMetadataHeaderDefault.lastModifiedRound)
+      expect(result.revision).toBe(sampleMetadataHeaderDefault.revision)
     })
   })
 
@@ -856,7 +857,13 @@ describe('dispatcher methods', () => {
 
     test('avm source', async () => {
       // Test AVM source.
-      const pagination = new Pagination({ metadataSize: 150, pageSize: 100, totalPages: 2 })
+      const pagination = new Pagination({
+        metadataSize: 150,
+        pageSize: 100,
+        totalPages: 2,
+        revision: 1000,
+        deprecatedBy: 0,
+      })
       const mockAvm = vi.mocked(avmFactory(123n))
       mockAvm.arc89GetMetadataPagination.mockResolvedValue(pagination)
 
@@ -881,7 +888,7 @@ describe('dispatcher methods', () => {
       // Test AVM source.
       const pageData = new PaginatedMetadata({
         hasNextPage: false,
-        lastModifiedRound: 2000n,
+        revision: 2000n,
         pageContent: new TextEncoder().encode('page1'),
       })
       const mockAvm = vi.mocked(avmFactory(123n))
@@ -906,13 +913,15 @@ describe('dispatcher methods', () => {
         size: 20,
         source: MetadataSource.BOX,
       })
-      expect(result).toEqual(metadataContent.slice(10, 30))
+      expect(result.content).toEqual(metadataContent.slice(10, 30))
     })
 
     test('avm source', async () => {
       // Test AVM source.
       const mockAvm = vi.mocked(avmFactory(123n))
-      mockAvm.arc89GetMetadataSlice.mockResolvedValue(new TextEncoder().encode('avm_slice'))
+      mockAvm.arc89GetMetadataSlice.mockResolvedValue(
+        new MetadataSlice({ revision: 1000, content: new TextEncoder().encode('avm_slice') }),
+      )
 
       await readerAvmConfig.arc89GetMetadataSlice({ assetId: 456, offset: 5, size: 15, source: MetadataSource.AVM })
       expect(mockAvm.arc89GetMetadataSlice).toHaveBeenCalledOnce()
@@ -926,15 +935,18 @@ describe('dispatcher methods', () => {
       const boxValue = concatBytes([sampleMetadataHeaderDefault.serialized, sampleMetadataBodyDefault.rawBytes])
       mockBoxResponse(algod, boxValue)
 
-      const result = await readerBoxConfig.arc89GetMetadataHeaderHash({ assetId: 456, source: MetadataSource.BOX })
-      expect(result.length).toBe(32)
+      const [headerHash] = await readerBoxConfig.arc89GetMetadataHeaderHash({
+        assetId: 456,
+        source: MetadataSource.BOX,
+      })
+      expect(headerHash.length).toBe(32)
     })
 
     test('avm source', async () => {
       // Test AVM source.
       const headerHash = new Uint8Array(32).fill(0x02)
       const mockAvm = vi.mocked(avmFactory(123n))
-      mockAvm.arc89GetMetadataHeaderHash.mockResolvedValue(headerHash)
+      mockAvm.arc89GetMetadataHeaderHash.mockResolvedValue([headerHash, 1000n])
 
       await readerAvmConfig.arc89GetMetadataHeaderHash({ assetId: 456, source: MetadataSource.AVM })
       expect(mockAvm.arc89GetMetadataHeaderHash).toHaveBeenCalledOnce()
@@ -948,19 +960,19 @@ describe('dispatcher methods', () => {
       const boxValue = concatBytes([sampleMetadataHeaderDefault.serialized, sampleMetadataBodyDefault.rawBytes])
       mockBoxResponse(algod, boxValue)
 
-      const result = await readerBoxConfig.arc89GetMetadataPageHash({
+      const [pageHash] = await readerBoxConfig.arc89GetMetadataPageHash({
         assetId: 456,
         page: 0,
         source: MetadataSource.BOX,
       })
-      expect(result.length).toBe(32)
+      expect(pageHash.length).toBe(32)
     })
 
     test('avm source', async () => {
       // Test AVM source.
       const pageHash = new Uint8Array(32).fill(0x04)
       const mockAvm = vi.mocked(avmFactory(123n))
-      mockAvm.arc89GetMetadataPageHash.mockResolvedValue(pageHash)
+      mockAvm.arc89GetMetadataPageHash.mockResolvedValue([pageHash, 1000n])
 
       await readerAvmConfig.arc89GetMetadataPageHash({ assetId: 456, page: 1, source: MetadataSource.AVM })
       expect(mockAvm.arc89GetMetadataPageHash).toHaveBeenCalledOnce()
@@ -974,15 +986,15 @@ describe('dispatcher methods', () => {
       const boxValue = concatBytes([sampleMetadataHeaderDefault.serialized, sampleMetadataBodyDefault.rawBytes])
       mockBoxResponse(algod, boxValue)
 
-      const result = await readerBoxConfig.arc89GetMetadataHash({ assetId: 456, source: MetadataSource.BOX })
-      expect(result.length).toBe(32)
+      const [metadataHash] = await readerBoxConfig.arc89GetMetadataHash({ assetId: 456, source: MetadataSource.BOX })
+      expect(metadataHash.length).toBe(32)
     })
 
     test('avm source', async () => {
       // Test AVM source.
       const metadataHash = new Uint8Array(32).fill(0x06)
       const mockAvm = vi.mocked(avmFactory(123n))
-      mockAvm.arc89GetMetadataHash.mockResolvedValue(metadataHash)
+      mockAvm.arc89GetMetadataHash.mockResolvedValue([metadataHash, 1000n])
 
       await readerAvmConfig.arc89GetMetadataHash({ assetId: 456, source: MetadataSource.AVM })
       expect(mockAvm.arc89GetMetadataHash).toHaveBeenCalledOnce()
@@ -1123,7 +1135,7 @@ describe('edge cases', () => {
     const mockAvm = vi.mocked(avmFactory(123n))
     mockAvm.arc89GetMetadataHeader.mockResolvedValue(sampleMetadataHeaderDefault)
     mockAvm.arc89GetMetadataPagination.mockResolvedValue(
-      new Pagination({ metadataSize: 0, pageSize: 100, totalPages: 0 }),
+      new Pagination({ metadataSize: 0, pageSize: 100, totalPages: 0, revision: 1000, deprecatedBy: 0 }),
     )
     mockAvm.simulateMany.mockResolvedValue([])
 

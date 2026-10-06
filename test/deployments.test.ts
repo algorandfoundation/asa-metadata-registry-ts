@@ -140,4 +140,10 @@ describe('default deployments', () => {
     expect(DEFAULT_DEPLOYMENTS.testnet).toEqual(expectedTestnet)
     expect(DEFAULT_DEPLOYMENTS.mainnet).toEqual(expectedMainnet)
   })
+
+  test('testnet registry app id (TS-only)', () => {
+    // Pin the ARC-89 v1.0.0 TestNet deployment.
+    expect(TESTNET_ASA_METADATA_REGISTRY_APP_ID).toBe(772_968_354)
+    expect(DEFAULT_DEPLOYMENTS.testnet.appId).toBe(772_968_354)
+  })
 })

@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, test } from 'vitest'
-import { hashing, assetIdToBoxName, constants } from '@algorandfoundation/asa-metadata-registry-sdk'
+import { hashing, constants } from '@algorandfoundation/asa-metadata-registry-sdk'
 import { concatBytes } from '@/internal/bytes'
 
 const {
@@ -113,7 +113,6 @@ describe('compute header hash', () => {
   test('basic header hash', () => {
     // Test computing header hash with basic parameters.
     const result = computeHeaderHash({
-      assetId: 12345,
       metadataIdentifiers: 0b10101010,
       reversibleFlags: 0b11001100,
       irreversibleFlags: 0b00110011,
@@ -125,7 +124,6 @@ describe('compute header hash', () => {
   test('zero values', () => {
     // Test header hash with all zero values.
     const result = computeHeaderHash({
-      assetId: 0,
       metadataIdentifiers: 0,
       reversibleFlags: 0,
       irreversibleFlags: 0,
@@ -137,7 +135,6 @@ describe('compute header hash', () => {
   test('max values', () => {
     // Test header hash with maximum values.
     const result = computeHeaderHash({
-      assetId: 2n ** 64n - 1n,
       metadataIdentifiers: 255,
       reversibleFlags: 255,
       irreversibleFlags: 255,
@@ -148,7 +145,6 @@ describe('compute header hash', () => {
 
   test('deterministic', () => {
     const params = {
-      assetId: 99999,
       metadataIdentifiers: 42,
       reversibleFlags: 128,
       irreversibleFlags: 64,
@@ -159,36 +155,15 @@ describe('compute header hash', () => {
     expect(result1).toEqual(result2)
   })
 
-  test('different asset id produces different hash', () => {
-    // Test that different asset IDs produce different hashes.
-    const result1 = computeHeaderHash({
-      assetId: 1,
-      metadataIdentifiers: 0,
-      reversibleFlags: 0,
-      irreversibleFlags: 0,
-      metadataSize: 100,
-    })
-    const result2 = computeHeaderHash({
-      assetId: 2,
-      metadataIdentifiers: 0,
-      reversibleFlags: 0,
-      irreversibleFlags: 0,
-      metadataSize: 100,
-    })
-    expect(result1).not.toEqual(result2)
-  })
-
   test('different identifiers produce different hash', () => {
     // Test that different metadata identifiers produce different hashes.
     const result1 = computeHeaderHash({
-      assetId: 100,
       metadataIdentifiers: 1,
       reversibleFlags: 0,
       irreversibleFlags: 0,
       metadataSize: 100,
     })
     const result2 = computeHeaderHash({
-      assetId: 100,
       metadataIdentifiers: 2,
       reversibleFlags: 0,
       irreversibleFlags: 0,
@@ -200,14 +175,12 @@ describe('compute header hash', () => {
   test('different reversible flags produce different hash', () => {
     // Test that different reversible flags produce different hashes.
     const result1 = computeHeaderHash({
-      assetId: 100,
       metadataIdentifiers: 0,
       reversibleFlags: 1,
       irreversibleFlags: 0,
       metadataSize: 100,
     })
     const result2 = computeHeaderHash({
-      assetId: 100,
       metadataIdentifiers: 0,
       reversibleFlags: 2,
       irreversibleFlags: 0,
@@ -219,14 +192,12 @@ describe('compute header hash', () => {
   test('different irreversible flags produce different hash', () => {
     // Test that different irreversible flags produce different hashes.
     const result1 = computeHeaderHash({
-      assetId: 100,
       metadataIdentifiers: 0,
       reversibleFlags: 0,
       irreversibleFlags: 1,
       metadataSize: 100,
     })
     const result2 = computeHeaderHash({
-      assetId: 100,
       metadataIdentifiers: 0,
       reversibleFlags: 0,
       irreversibleFlags: 2,
@@ -238,14 +209,12 @@ describe('compute header hash', () => {
   test('different metadata size produces different hash', () => {
     // Test that different metadata sizes produce different hashes.
     const result1 = computeHeaderHash({
-      assetId: 100,
       metadataIdentifiers: 0,
       reversibleFlags: 0,
       irreversibleFlags: 0,
       metadataSize: 100,
     })
     const result2 = computeHeaderHash({
-      assetId: 100,
       metadataIdentifiers: 0,
       reversibleFlags: 0,
       irreversibleFlags: 0,
@@ -258,7 +227,6 @@ describe('compute header hash', () => {
     // Test that negative metadataIdentifiers raises ValueError.
     expect(() =>
       computeHeaderHash({
-        assetId: 100,
         metadataIdentifiers: -1,
         reversibleFlags: 0,
         irreversibleFlags: 0,
@@ -271,7 +239,6 @@ describe('compute header hash', () => {
     // Test that metadataIdentifiers > 255 raises ValueError.
     expect(() =>
       computeHeaderHash({
-        assetId: 100,
         metadataIdentifiers: 256,
         reversibleFlags: 0,
         irreversibleFlags: 0,
@@ -284,7 +251,6 @@ describe('compute header hash', () => {
     // Test that negative reversibleFlags raises ValueError.
     expect(() =>
       computeHeaderHash({
-        assetId: 100,
         metadataIdentifiers: 0,
         reversibleFlags: -1,
         irreversibleFlags: 0,
@@ -297,7 +263,6 @@ describe('compute header hash', () => {
     // Test that reversibleFlags > 255 raises ValueError.
     expect(() =>
       computeHeaderHash({
-        assetId: 100,
         metadataIdentifiers: 0,
         reversibleFlags: 256,
         irreversibleFlags: 0,
@@ -310,7 +275,6 @@ describe('compute header hash', () => {
     // Test that negative irreversibleFlags raises ValueError.
     expect(() =>
       computeHeaderHash({
-        assetId: 100,
         metadataIdentifiers: 0,
         reversibleFlags: 0,
         irreversibleFlags: -1,
@@ -323,7 +287,6 @@ describe('compute header hash', () => {
     // Test that irreversibleFlags > 255 raises ValueError.
     expect(() =>
       computeHeaderHash({
-        assetId: 100,
         metadataIdentifiers: 0,
         reversibleFlags: 0,
         irreversibleFlags: 256,
@@ -336,7 +299,6 @@ describe('compute header hash', () => {
     // Test that negative metadataSize raises ValueError.
     expect(() =>
       computeHeaderHash({
-        assetId: 100,
         metadataIdentifiers: 0,
         reversibleFlags: 0,
         irreversibleFlags: 0,
@@ -349,7 +311,6 @@ describe('compute header hash', () => {
     // Test that metadataSize > 65535 raises ValueError.
     expect(() =>
       computeHeaderHash({
-        assetId: 100,
         metadataIdentifiers: 0,
         reversibleFlags: 0,
         irreversibleFlags: 0,
@@ -362,7 +323,6 @@ describe('compute header hash', () => {
     // Test that header hash uses correct domain separator.
     // The hash should include the domain separator const.HASH_DOMAIN_HEADER
     // We can verify by manually constructing the expected input
-    const assetId = 12345
     const metadataIdentifiers = 10
     const reversibleFlags = 20
     const irreversibleFlags = 30
@@ -370,7 +330,6 @@ describe('compute header hash', () => {
 
     const expectedData = concatBytes([
       HASH_DOMAIN_HEADER,
-      assetIdToBoxName(assetId),
       new Uint8Array([metadataIdentifiers]),
       new Uint8Array([reversibleFlags]),
       new Uint8Array([irreversibleFlags]),
@@ -379,7 +338,6 @@ describe('compute header hash', () => {
     const expectedHash = sha512_256(expectedData)
 
     const result = computeHeaderHash({
-      assetId,
       metadataIdentifiers,
       reversibleFlags,
       irreversibleFlags,
@@ -481,7 +439,6 @@ describe('compute page hash', () => {
   test('basic page hash', () => {
     // Test computing page hash with basic parameters.
     const result = computePageHash({
-      assetId: 12345,
       pageIndex: 0,
       pageContent: new TextEncoder().encode('hello world'),
     })
@@ -491,7 +448,6 @@ describe('compute page hash', () => {
   test('empty page', () => {
     // Test page hash with empty content.
     const result = computePageHash({
-      assetId: 100,
       pageIndex: 0,
       pageContent: new Uint8Array(),
     })
@@ -501,7 +457,6 @@ describe('compute page hash', () => {
   test('max page size', () => {
     // Test page hash with maximum page size (uint16 max).
     const result = computePageHash({
-      assetId: 100,
       pageIndex: 0,
       pageContent: new Uint8Array(2 ** 16 - 1).fill(120),
     })
@@ -511,7 +466,6 @@ describe('compute page hash', () => {
   test('deterministic', () => {
     // Test that page hash is deterministic.
     const params = {
-      assetId: 99999,
       pageIndex: 5,
       pageContent: new TextEncoder().encode('test page content'),
     }
@@ -520,30 +474,13 @@ describe('compute page hash', () => {
     expect(result1).toEqual(result2)
   })
 
-  test('different asset id produces different hash', () => {
-    // Test that different asset IDs produce different hashes.
-    const result1 = computePageHash({
-      assetId: 1,
-      pageIndex: 0,
-      pageContent: new TextEncoder().encode('content'),
-    })
-    const result2 = computePageHash({
-      assetId: 2,
-      pageIndex: 0,
-      pageContent: new TextEncoder().encode('content'),
-    })
-    expect(result1).not.toEqual(result2)
-  })
-
   test('different page index produces different hash', () => {
     // Test that different page indices produce different hashes.
     const result1 = computePageHash({
-      assetId: 100,
       pageIndex: 0,
       pageContent: new TextEncoder().encode('content'),
     })
     const result2 = computePageHash({
-      assetId: 100,
       pageIndex: 1,
       pageContent: new TextEncoder().encode('content'),
     })
@@ -553,12 +490,10 @@ describe('compute page hash', () => {
   test('different page content produces different hash', () => {
     // Test that different page content produces different hashes.
     const result1 = computePageHash({
-      assetId: 100,
       pageIndex: 0,
       pageContent: new TextEncoder().encode('content1'),
     })
     const result2 = computePageHash({
-      assetId: 100,
       pageIndex: 0,
       pageContent: new TextEncoder().encode('content2'),
     })
@@ -568,7 +503,6 @@ describe('compute page hash', () => {
   test('page index max', () => {
     // Test page hash with maximum page index (255).
     const result = computePageHash({
-      assetId: 100,
       pageIndex: 255,
       pageContent: new TextEncoder().encode('test'),
     })
@@ -579,7 +513,6 @@ describe('compute page hash', () => {
     // Test that negative pageIndex raises ValueError.
     expect(() =>
       computePageHash({
-        assetId: 100,
         pageIndex: -1,
         pageContent: new TextEncoder().encode('test'),
       }),
@@ -590,7 +523,6 @@ describe('compute page hash', () => {
     // Test that pageIndex > 255 raises ValueError.
     expect(() =>
       computePageHash({
-        assetId: 100,
         pageIndex: 256,
         pageContent: new TextEncoder().encode('test'),
       }),
@@ -601,7 +533,6 @@ describe('compute page hash', () => {
     // Test that pageContent larger than uint16 max raises ValueError.
     expect(() =>
       computePageHash({
-        assetId: 100,
         pageIndex: 0,
         pageContent: new Uint8Array(2 ** 16).fill(120),
       }),
@@ -610,13 +541,11 @@ describe('compute page hash', () => {
 
   test('page hash uses correct domain separator', () => {
     // Test that page hash uses correct domain separator.
-    const assetId = 12345
     const pageIndex = 3
     const pageContent = new TextEncoder().encode('test page')
 
     const expectedData = concatBytes([
       HASH_DOMAIN_PAGE,
-      assetIdToBoxName(assetId),
       new Uint8Array([pageIndex]),
       new Uint8Array([(pageContent.length >> 8) & 0xff, pageContent.length & 0xff]),
       pageContent,
@@ -624,7 +553,6 @@ describe('compute page hash', () => {
     const expectedHash = sha512_256(expectedData)
 
     const result = computePageHash({
-      assetId,
       pageIndex,
       pageContent,
     })
@@ -637,7 +565,6 @@ describe('compute metadata hash', () => {
   test('empty metadata', () => {
     // Test metadata hash with empty metadata.
     const result = computeMetadataHash({
-      assetId: 12345,
       metadataIdentifiers: 0,
       reversibleFlags: 0,
       irreversibleFlags: 0,
@@ -650,7 +577,6 @@ describe('compute metadata hash', () => {
   test('single page metadata', () => {
     // Test metadata hash with single page of metadata.
     const result = computeMetadataHash({
-      assetId: 12345,
       metadataIdentifiers: 1,
       reversibleFlags: 2,
       irreversibleFlags: 3,
@@ -664,7 +590,6 @@ describe('compute metadata hash', () => {
     // Test metadata hash with multiple pages.
     const metadata = new Uint8Array(3000).fill(120)
     const result = computeMetadataHash({
-      assetId: 12345,
       metadataIdentifiers: 1,
       reversibleFlags: 2,
       irreversibleFlags: 3,
@@ -677,7 +602,6 @@ describe('compute metadata hash', () => {
   test('deterministic', () => {
     // Test that metadata hash is deterministic.
     const params = {
-      assetId: 99999,
       metadataIdentifiers: 5,
       reversibleFlags: 10,
       irreversibleFlags: 15,
@@ -692,7 +616,6 @@ describe('compute metadata hash', () => {
   test('different metadata produces different hash', () => {
     // Test that different metadata produces different hashes.
     const result1 = computeMetadataHash({
-      assetId: 100,
       metadataIdentifiers: 0,
       reversibleFlags: 0,
       irreversibleFlags: 0,
@@ -700,7 +623,6 @@ describe('compute metadata hash', () => {
       pageSize: 1024,
     })
     const result2 = computeMetadataHash({
-      assetId: 100,
       metadataIdentifiers: 0,
       reversibleFlags: 0,
       irreversibleFlags: 0,
@@ -714,7 +636,6 @@ describe('compute metadata hash', () => {
     // Test that different page sizes produce different hashes.
     const metadata = new Uint8Array(2000).fill(120)
     const result1 = computeMetadataHash({
-      assetId: 100,
       metadataIdentifiers: 0,
       reversibleFlags: 0,
       irreversibleFlags: 0,
@@ -722,7 +643,6 @@ describe('compute metadata hash', () => {
       pageSize: 512,
     })
     const result2 = computeMetadataHash({
-      assetId: 100,
       metadataIdentifiers: 0,
       reversibleFlags: 0,
       irreversibleFlags: 0,
@@ -734,7 +654,6 @@ describe('compute metadata hash', () => {
 
   test('metadata hash includes header hash', () => {
     // Test that metadata hash incorporates header hash.
-    const assetId = 12345
     const metadataIdentifiers = 5
     const reversibleFlags = 10
     const irreversibleFlags = 15
@@ -743,7 +662,6 @@ describe('compute metadata hash', () => {
 
     // Compute expected hash manually
     const hh = computeHeaderHash({
-      assetId,
       metadataIdentifiers,
       reversibleFlags,
       irreversibleFlags,
@@ -753,7 +671,6 @@ describe('compute metadata hash', () => {
 
     const pageHashes = pages.map((pageContent, i) =>
       computePageHash({
-        assetId,
         pageIndex: i,
         pageContent,
       }),
@@ -762,7 +679,6 @@ describe('compute metadata hash', () => {
     const expected = sha512_256(data)
 
     const result = computeMetadataHash({
-      assetId,
       metadataIdentifiers,
       reversibleFlags,
       irreversibleFlags,
@@ -774,13 +690,11 @@ describe('compute metadata hash', () => {
 
   test('empty metadata only includes header hash', () => {
     // Test that empty metadata hash only includes header hash.
-    const assetId = 12345
     const metadataIdentifiers = 5
     const reversibleFlags = 10
     const irreversibleFlags = 15
 
     const hh = computeHeaderHash({
-      assetId,
       metadataIdentifiers,
       reversibleFlags,
       irreversibleFlags,
@@ -789,7 +703,6 @@ describe('compute metadata hash', () => {
     const expected = sha512_256(concatBytes([HASH_DOMAIN_METADATA, hh]))
 
     const result = computeMetadataHash({
-      assetId,
       metadataIdentifiers,
       reversibleFlags,
       irreversibleFlags,
@@ -804,7 +717,6 @@ describe('compute metadata hash', () => {
     const metadata = new TextEncoder().encode('same content')
 
     const result1 = computeMetadataHash({
-      assetId: 100,
       metadataIdentifiers: 1,
       reversibleFlags: 0,
       irreversibleFlags: 0,
@@ -812,7 +724,6 @@ describe('compute metadata hash', () => {
       pageSize: 1024,
     })
     const result2 = computeMetadataHash({
-      assetId: 100,
       metadataIdentifiers: 2,
       reversibleFlags: 0,
       irreversibleFlags: 0,
