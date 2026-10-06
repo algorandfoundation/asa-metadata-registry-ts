@@ -2,17 +2,21 @@
  * Legacy ASA migration helpers.
  *
  * Provides helpers to migrate legacy ASA metadata (ARC-3 / ARC-19 / ARC-69)
- * into the ARC-89 metadata registry, emitting an ARC-2 migration message.
+ * into the ARC-89 metadata registry, optionally emitting an ARC-2 migration message.
+ *
+ * Ported from Python `asa_metadata_registry/migrate.py`.
  */
 
 import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
 import type { Transaction } from 'algosdk'
 import { ARC2_ARC_NUMBER, ARC2_DATA_FORMAT_JSON, MAX_GROUP_SIZE, MAX_METADATA_SIZE } from './constants'
-import { Arc90Compliance, Arc90Uri } from './codec'
-import { MissingAppClientError } from './errors'
+import { Arc90Compliance, Arc90Uri, b64Decode } from './codec'
+import { MetadataHashMismatchError, MissingAppClientError } from './errors'
 import { MASK_IRR_IMMUTABLE } from './bitmasks'
-import { AssetMetadata, MetadataFlags } from './models'
-import { concatBytes } from './internal/bytes'
+import { computeArc3MetadataHash } from './hashing'
+import { AssetMetadata, MetadataBody, MetadataFlags } from './models'
+import { decodeMetadataJson } from './validation'
+import { bytesEqual, concatBytes } from './internal/bytes'
 import type { AsaMetadataRegistry } from './registry'
 import { AsaMetadataRegistryWrite } from './write/writer'
 
@@ -78,6 +82,21 @@ export async function buildArc2MigrationMessageTxn(args: {
 // High-level migration helpers
 // ---------------------------------------------------------------------------
 
+/** Normalize the ASA `am` (Algod's base64 string or bytes) to bytes. */
+const asaMetadataHash = (value: unknown): Uint8Array => {
+  if (typeof value === 'string') return b64Decode(value)
+  return value instanceof Uint8Array ? value : new Uint8Array()
+}
+
+const isZeroOrEmptyAm = (am: Uint8Array): boolean => am.length === 0 || (am.length === 32 && am.every((b) => b === 0))
+
+/**
+ * Derive the ARC-90 registry URI to be published inside the ARC-2 migration message.
+ *
+ * Uses the SDK's ARC-90 URI helper with the registry's configured `netauth` and `appId`.
+ *
+ * Enforces ARC-90 rule that ARC-3 must be the sole compliance fragment.
+ */
 export function deriveMigrationUri(args: {
   registry: AsaMetadataRegistry
   assetId: bigint | number
@@ -94,7 +113,12 @@ export function deriveMigrationUri(args: {
 
 /**
  * Migrate a legacy ASA (e.g., ARC-3 / ARC-19 / ARC-69) metadata by replicating it
- * in the ASA Metadata Registry, then emitting an ARC-2 migration message.
+ * in the ASA Metadata Registry, where it takes precedence over the Asset URL. The
+ * informational ARC-2 announcement is sent only if `publishArc2Message` is true.
+ *
+ * Pass the original file bytes (`Uint8Array`) to store them verbatim (an object is re-encoded
+ * compactly). When the ASA has a nonzero `am` and is ARC-3 compliant, the ARC-3 hash
+ * of the stored bytes MUST equal `am` (checked unless `verifyAm: false`).
  *
  * Flow:
  * 1) Error if metadata already exists in the Registry for the given ASA; error if the ASA does not exist.
@@ -102,15 +126,19 @@ export function deriveMigrationUri(args: {
  * 3) If the ASA has a non-zero asset metadata hash (am): auto-set immutable when no flags provided,
  *    or error early if flags are provided without immutable: true.
  * 4) Validate metadata size <= MAX_METADATA_SIZE (raw bytes after JSON encoding).
- * 5) Create metadata on the registry and emit the ARC-2 migration message.
+ * 5) Create metadata on the registry (and, on request, emit the ARC-2 message).
+ *
+ * @throws {MetadataHashMismatchError} If `am` does not match the ARC-3 hash of the metadata bytes.
  */
 export async function migrateLegacyMetadataToRegistry(args: {
   registry: AsaMetadataRegistry
   assetManager: TransactionSignerAccount
   assetId: bigint | number
-  metadata: Record<string, unknown>
+  metadata: Record<string, unknown> | Uint8Array
   arc3Compliant: boolean
   flags?: MetadataFlags | null
+  verifyAm?: boolean
+  publishArc2Message?: boolean
 }): Promise<void> {
   // Pre-flight: ensure ASA exists and is not already migrated
   const existence = await args.registry.read.arc89CheckMetadataExists({ assetId: args.assetId })
@@ -125,8 +153,9 @@ export async function migrateLegacyMetadataToRegistry(args: {
 
   // Pre-flight: fetch ASA info to check metadata hash and decide on flags
   const assetInfo = await args.registry.write.client.algorand.asset.getById(BigInt(args.assetId))
-  const hasMetadataHash = assetInfo.metadataHash != null && assetInfo.metadataHash.some((b) => b !== 0)
-  if (hasMetadataHash && args.flags != null && !args.flags.irreversible.immutable) {
+  const onChainAm = asaMetadataHash(assetInfo.metadataHash)
+  const hasOnChainAm = !isZeroOrEmptyAm(onChainAm)
+  if (hasOnChainAm && args.flags != null && !args.flags.irreversible.immutable) {
     throw new Error(
       `ASA ${args.assetId} has a metadata hash (am) set on-chain, hence the registry ` +
         `requires the IMMUTABLE flag for this migration. Either omit flags to set it ` +
@@ -135,25 +164,31 @@ export async function migrateLegacyMetadataToRegistry(args: {
   }
 
   // Build AssetMetadata, resolve flags if not provided and enforce size bounds
+  let raw: Uint8Array | null = null
+  let jsonObj: Record<string, unknown>
+  if (args.metadata instanceof Uint8Array) {
+    raw = args.metadata
+    jsonObj = decodeMetadataJson(raw)
+  } else {
+    jsonObj = args.metadata
+  }
+
   let assetMd: AssetMetadata
   try {
     assetMd = AssetMetadata.fromJson({
       assetId: args.assetId,
-      jsonObj: args.metadata,
+      jsonObj,
       flags: args.flags ?? undefined,
       arc3Compliant: args.arc3Compliant,
     })
-    // Set immutable flag after derivation to preserve auto-detected reversible flags (e.g. ARC-20/ARC-62)
-    if (hasMetadataHash && args.flags == null) {
+    if (raw !== null) {
       assetMd = new AssetMetadata({
         assetId: assetMd.assetId,
-        body: assetMd.body,
-        flags: MetadataFlags.fromBytes(
-          assetMd.flags.reversibleByte,
-          assetMd.flags.irreversibleByte | MASK_IRR_IMMUTABLE,
-        ),
+        body: new MetadataBody(raw),
+        flags: assetMd.flags,
         deprecatedBy: assetMd.deprecatedBy,
       })
+      assetMd.body.validateSize()
     }
   } catch (e) {
     if (e instanceof RangeError) {
@@ -166,26 +201,42 @@ export async function migrateLegacyMetadataToRegistry(args: {
     }
     throw e
   }
+  // Set immutable flag after derivation to preserve auto-detected reversible flags (e.g. ARC-20/ARC-62)
+  if (hasOnChainAm && args.flags == null) {
+    assetMd = new AssetMetadata({
+      assetId: assetMd.assetId,
+      body: assetMd.body,
+      flags: MetadataFlags.fromBytes(assetMd.flags.reversibleByte, assetMd.flags.irreversibleByte | MASK_IRR_IMMUTABLE),
+      deprecatedBy: assetMd.deprecatedBy,
+    })
+  }
 
-  // Derive migration URI
-  const metadataUri = deriveMigrationUri({
-    registry: args.registry,
-    assetId: args.assetId,
-    arc3: args.arc3Compliant,
+  if (hasOnChainAm && (args.verifyAm ?? true) && args.arc3Compliant) {
+    const expectedAm = computeArc3MetadataHash(assetMd.body.rawBytes)
+    if (!bytesEqual(expectedAm, onChainAm)) {
+      throw new MetadataHashMismatchError(
+        `ASA ${args.assetId} am does not match the ARC-3 hash of the metadata bytes to ` +
+          'migrate; pass the original file bytes, or verifyAm: false.',
+      )
+    }
+  }
+
+  // Build create group
+  const migrateGroup = await args.registry.write.buildCreateMetadataGroup({
+    assetManager: args.assetManager,
+    metadata: assetMd,
   })
+  if (!(args.publishArc2Message ?? false)) {
+    await migrateGroup.send()
+    return
+  }
 
   // Build ARC-2 txn
   const arc2Txn = await buildArc2MigrationMessageTxn({
     registry: args.registry,
     assetId: args.assetId,
     assetManager: args.assetManager,
-    metadataUri,
-  })
-
-  // Build create group
-  const migrateGroup = await args.registry.write.buildCreateMetadataGroup({
-    assetManager: args.assetManager,
-    metadata: assetMd,
+    metadataUri: deriveMigrationUri({ registry: args.registry, assetId: args.assetId, arc3: args.arc3Compliant }),
   })
 
   // Decide send strategy based on group size

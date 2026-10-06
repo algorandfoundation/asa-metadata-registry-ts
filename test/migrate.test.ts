@@ -5,7 +5,7 @@ import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { nullLogger } from '@algorandfoundation/algokit-utils/types/logging'
 import { LogicError } from '@algorandfoundation/algokit-utils/types/logic-error'
 import { getApplicationAddress, TransactionType } from 'algosdk'
-import type { Address } from 'algosdk'
+import type { Address, modelsv2 } from 'algosdk'
 import {
   ARC3_NAME_SUFFIX,
   Arc90Compliance,
@@ -15,6 +15,7 @@ import {
   IrreversibleFlags,
   MAX_METADATA_SIZE,
   MetadataFlags,
+  MetadataHashMismatchError,
   ReversibleFlags,
   SHORT_METADATA_SIZE,
   buildArc2MigrationMessageTxn,
@@ -36,6 +37,7 @@ import {
 } from './helpers'
 import type { AddressWithSigners } from './helpers'
 
+const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
 const ARC2_PREFIX = 'arc89:j'
@@ -130,6 +132,15 @@ const createLegacyArc3Asa = async (args?: {
     metadataHash: args?.metadataHash ?? (args?.withMetadataHash ? new Uint8Array(32).fill(0xab) : undefined),
   })
   return result.assetId
+}
+
+/** Run `fn` and return the confirmed transactions it sent through the fixture's algod. */
+const sentTransactions = async (fn: () => Promise<unknown>): Promise<modelsv2.PendingTransactionResponse[]> => {
+  const { transactionLogger } = fixture.context
+  const start = transactionLogger.sentTransactionIds.length
+  await fn()
+  const txIds = transactionLogger.sentTransactionIds.slice(start)
+  return await Promise.all(txIds.map((txId) => algorand.client.algod.pendingTransactionInformation(txId).do()))
 }
 
 // ================================================================
@@ -613,6 +624,7 @@ describe('rbac preservation', () => {
       assetId,
       metadata: minimalMetadata,
       arc3Compliant: false,
+      publishArc2Message: true,
     })
 
     // Get updated asset info
@@ -651,6 +663,7 @@ describe('rbac preservation', () => {
       assetId,
       metadata: minimalMetadata,
       arc3Compliant: false,
+      publishArc2Message: true,
     })
 
     // Get updated info
@@ -686,6 +699,7 @@ describe('rbac preservation', () => {
       assetId,
       metadata: minimalMetadata,
       arc3Compliant: false,
+      publishArc2Message: true,
     })
 
     // Get updated info
@@ -834,5 +848,136 @@ describe('migration integration', () => {
     const pagination = await registry.read.arc89GetMetadataPagination({ assetId })
     expect(pagination.metadataSize).toBeGreaterThan(0)
     expect(pagination.metadataSize).toBeLessThanOrEqual(SHORT_METADATA_SIZE)
+  })
+})
+
+// ================================================================
+// ASA Metadata Hash (am) Verification Tests
+// ================================================================
+
+describe('migrate am verification', () => {
+  test('mismatching am throws', async () => {
+    const assetId = await createLegacyArc3Asa({ withMetadataHash: true }) // 0xAB.. is not the ARC-3 hash
+
+    await expect(
+      migrateLegacyMetadataToRegistry({
+        registry,
+        assetManager,
+        assetId,
+        metadata: arc3Metadata,
+        arc3Compliant: true,
+      }),
+    ).rejects.toThrow(MetadataHashMismatchError)
+  })
+
+  test('raw bytes are stored verbatim', async () => {
+    const raw = textEncoder.encode(JSON.stringify(arc3Metadata, null, 2)) // pretty-printed legacy file
+    const assetId = await createLegacyArc3Asa({ metadataHash: computeArc3MetadataHash(raw) })
+
+    await migrateLegacyMetadataToRegistry({
+      registry,
+      assetManager,
+      assetId,
+      metadata: raw,
+      arc3Compliant: true,
+    })
+
+    const record = await registry.read.getAssetMetadata({ assetId })
+    expect(record.body.rawBytes).toEqual(raw)
+    expect(record.header.metadataHash).toEqual(computeArc3MetadataHash(raw))
+  })
+
+  test('verifyAm false skips the am check', async () => {
+    const am = new Uint8Array(32).fill(0xab) // not the ARC-3 hash
+    const assetId = await createLegacyArc3Asa({ metadataHash: am })
+
+    await migrateLegacyMetadataToRegistry({
+      registry,
+      assetManager,
+      assetId,
+      metadata: arc3Metadata,
+      arc3Compliant: true,
+      verifyAm: false,
+    })
+
+    const header = await registry.read.arc89GetMetadataHeader({ assetId })
+    expect(header.flags.irreversible.immutable).toBe(true)
+    expect(header.flags.irreversible.arc3).toBe(true)
+    // The registry adopts the ASA `am` as Metadata Hash
+    expect(header.metadataHash).toEqual(am)
+  })
+
+  test('migrate oversized raw bytes throws', async () => {
+    const assetId = await createLegacyArc69Asa()
+
+    // The compact re-encoding fits, but the raw bytes (stored verbatim) exceed MAX_METADATA_SIZE
+    const data = 'x'.repeat(MAX_METADATA_SIZE - 50)
+    const raw = textEncoder.encode(`{${' '.repeat(100)}"data":"${data}"}`)
+    expect(encodeMetadataJson({ data }).length).toBeLessThanOrEqual(MAX_METADATA_SIZE)
+    expect(raw.length).toBeGreaterThan(MAX_METADATA_SIZE)
+
+    await expect(
+      migrateLegacyMetadataToRegistry({
+        registry,
+        assetManager,
+        assetId,
+        metadata: raw,
+        arc3Compliant: false,
+      }),
+    ).rejects.toThrow('too large to migrate')
+  })
+})
+
+// ================================================================
+// ARC-2 Message Publishing Tests
+// ================================================================
+
+describe('arc-2 message publishing', () => {
+  test('publishArc2Message defaults to false', async () => {
+    const assetId = await createLegacyArc69Asa()
+
+    const sent = await sentTransactions(() =>
+      migrateLegacyMetadataToRegistry({
+        registry,
+        assetManager,
+        assetId,
+        metadata: minimalMetadata,
+        arc3Compliant: false,
+      }),
+    )
+
+    // Only the migration group is sent: no ARC-2 AssetConfig
+    expect(sent.some((p) => p.txn.txn.type === TransactionType.appl)).toBe(true)
+    expect(sent.filter((p) => p.txn.txn.type === TransactionType.acfg)).toHaveLength(0)
+    expect((await registry.read.arc89CheckMetadataExists({ assetId })).metadataExists).toBe(true)
+  })
+
+  test('publishArc2Message true publishes the message atomically with the migration', async () => {
+    const assetId = await createLegacyArc3Asa()
+
+    const sent = await sentTransactions(() =>
+      migrateLegacyMetadataToRegistry({
+        registry,
+        assetManager,
+        assetId,
+        metadata: arc3Metadata,
+        arc3Compliant: true,
+        publishArc2Message: true,
+      }),
+    )
+
+    const arc2Txns = sent.filter((p) => p.txn.txn.type === TransactionType.acfg)
+    expect(arc2Txns).toHaveLength(1)
+    const arc2Txn = arc2Txns[0]!.txn.txn
+    expect(arc2Txn.sender.toString()).toBe(assetManager.addr.toString())
+    expect(arc2Txn.assetConfig?.assetIndex).toBe(assetId)
+    expect(arc2Txn.note).toEqual(encodeArc2MigrationMessage(deriveMigrationUri({ registry, assetId, arc3: true })))
+
+    // Confirmed in the same group as the metadata creation
+    expect(sent.some((p) => p.txn.txn.type === TransactionType.appl)).toBe(true)
+    expect(sent.every((p) => p.txn.txn.group !== undefined && (p.confirmedRound ?? 0n) > 0n)).toBe(true)
+    const groups = new Set(sent.map((p) => Buffer.from(p.txn.txn.group!).toString('base64')))
+    expect(groups.size).toBe(1)
+    expect((await registry.read.arc89CheckMetadataExists({ assetId })).metadataExists).toBe(true)
   })
 })
