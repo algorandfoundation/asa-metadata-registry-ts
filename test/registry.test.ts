@@ -5,7 +5,7 @@
  *
  * Tests cover:
  * - RegistryConfig class
- * - AsaMetadataRegistry initialization
+ * - AsaMetadataRegistry initialization (App ID mismatch guard, write client bound to config.appId)
  * - fromAlgod constructor
  * - fromAppClient constructor with various configurations
  * - arc90Uri helper method
@@ -63,14 +63,13 @@ const createMockAlgod = () => ({
 type MockAlgod = ReturnType<typeof createMockAlgod>
 
 /**
- * Mock of the generated AsaMetadataRegistryClient: `appId` (0n = unbound, also on the underlying
- * `appClient`) and `clone({ appId })`, returning a mock bound to the new app id (the generated client
- * clone keeps the Algorand client and the default sender/signer).
+ * Mock of the generated AsaMetadataRegistryClient: `appId` (0n = unbound) and `clone({ appId })`,
+ * returning a mock bound to the new app id (the generated client clone keeps the Algorand client
+ * and the default sender/signer).
  */
 const createMockAppClient = (appId: bigint = 12345n): AsaMetadataRegistryClient =>
   ({
     appId,
-    appClient: { appId },
     clone: vi.fn((params: { appId?: bigint }) => createMockAppClient(params.appId ?? appId)),
   }) as unknown as AsaMetadataRegistryClient
 
@@ -205,6 +204,33 @@ describe('asa metadata registry (unit)', () => {
       expect(avmReader.client.appId).toBe(67890n)
       expect(appClient.clone).toHaveBeenCalledExactlyOnceWith({ appId: 67890n })
     })
+
+    test('app id mismatch', () => {
+      // Test initialization throws if config.appId doesn't match appClient.appId.
+      // appClient.appId is set by the mock to 12345n
+      const config = new RegistryConfig({ appId: 99999 })
+
+      expect(() => new AsaMetadataRegistry({ config, appClient })).toThrow(
+        /App ID mismatch:.*appId 12345.*config specifies 99999/,
+      )
+    })
+
+    test('write client bound to config app id', () => {
+      // If the provided appClient is unbound (appId 0) but config.appId is pinned,
+      // registry.write should use a generated client bound to config.appId.
+      const baseClient = createMockAppClient(0n)
+      const boundClient = createMockAppClient(12345n)
+      vi.mocked(baseClient.clone).mockReturnValue(boundClient)
+
+      const config = new RegistryConfig({ appId: 12345 })
+      const registry = new AsaMetadataRegistry({ config, appClient: baseClient })
+
+      expect(registry.write.client).toBe(boundClient)
+      // Only assert the important invariant: the bound client targets config.appId
+      // (clone keeps the base client's Algorand client and default sender/signer).
+      expect(baseClient.clone).toHaveBeenCalledExactlyOnceWith({ appId: 12345n })
+      expect((registry as any).baseGeneratedClient).toBe(baseClient)
+    })
   })
 
   describe('write property', () => {
@@ -273,10 +299,20 @@ describe('asa metadata registry (unit)', () => {
     })
 
     test('from app client with explicit app id', () => {
-      // Test fromAppClient with explicit appId overrides client's appId.
-      const registry = AsaMetadataRegistry.fromAppClient(appClient, { appId: 67890 })
+      // Test fromAppClient with explicit appId when client is already bound.
+      expect(() => AsaMetadataRegistry.fromAppClient(appClient, { appId: 67890 })).toThrow(
+        /App ID mismatch:.*appId 12345.*config specifies 67890/,
+      )
+    })
+
+    test('from app client with explicit app id and unbound client', () => {
+      // Test fromAppClient retargets an unbound appClient (appId 0) to the explicit appId.
+      const unboundClient = createMockAppClient(0n)
+      const registry = AsaMetadataRegistry.fromAppClient(unboundClient, { appId: 67890 })
 
       expect(registry.config.appId).toBe(67890n)
+      expect(registry.write.client.appId).toBe(67890n)
+      expect(unboundClient.clone).toHaveBeenCalledExactlyOnceWith({ appId: 67890n })
     })
 
     test('from app client with netauth', () => {
@@ -568,5 +604,23 @@ describe('asa metadata registry (localnet)', () => {
     expect(completePartialAssetUrl(await registry.read.arc89GetMetadataPartialUri(), assetId)).toBe(uri)
     const assetUrl = await new AlgodBoxReader(algod).getAssetUrl(assetId)
     expect(completePartialAssetUrl(assetUrl!, assetId)).toBe(uri)
+  })
+
+  test('localnet write client bound to config app id', async () => {
+    // An unbound appClient (appId 0) is retargeted to config.appId for writes.
+    const unboundClient = client.clone({ appId: 0n })
+    const config = new RegistryConfig({ appId: client.appId, netauth: ARC90_NETAUTH })
+    const registry = new AsaMetadataRegistry({ config, algod, appClient: unboundClient })
+
+    expect(unboundClient.appId).toBe(0n)
+    expect(registry.write.client).not.toBe(unboundClient)
+    expect(registry.write.client.appId).toBe(client.appId)
+
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    await registry.write.createMetadata({ assetManager, metadata: buildShortMetadata(assetId) })
+
+    const record = await registry.read.getAssetMetadata({ assetId })
+    expect(record.appId).toBe(client.appId)
+    expect(record.json).toStrictEqual(sampleJsonObj)
   })
 })

@@ -54,6 +54,9 @@ export class AsaMetadataRegistry {
 
   public readonly read: AsaMetadataRegistryRead
 
+  /**
+   * @throws {Error} If `appClient` is bound to an app id other than `config.appId`.
+   */
   constructor(args: {
     config: RegistryConfig
     algod?: AlgodClientSubset | null
@@ -64,15 +67,40 @@ export class AsaMetadataRegistry {
     this.algodReader = args.algod ? new AlgodBoxReader(args.algod) : null
 
     this.baseGeneratedClient = args.appClient ?? null
-    this.generatedClientFactory = this.baseGeneratedClient
-      ? AsaMetadataRegistry.makeGeneratedClientFactory({ baseClient: this.baseGeneratedClient })
-      : null
 
-    this.avmReaderFactory = this.generatedClientFactory
-      ? (appId: bigint) => new AsaMetadataRegistryAvmRead({ client: this.generatedClientFactory!(appId) })
-      : null
+    let generatedClientFactory: ((appId: bigint) => AsaMetadataRegistryClient) | null = null
+    let avmReaderFactory: ((appId: bigint) => AsaMetadataRegistryAvmRead) | null = null
+    let write: AsaMetadataRegistryWrite | null = null
 
-    this._write = this.baseGeneratedClient ? new AsaMetadataRegistryWrite({ client: this.baseGeneratedClient }) : null
+    if (this.baseGeneratedClient) {
+      // Normalize appId from the provided generated client (0 => unbound).
+      const clientAppId = asUint64BigIntOrNull(this.baseGeneratedClient.appId, 'appId')
+
+      // Guard against accidental mismatches when callers construct the registry directly
+      // with a pinned appId. If callers want to retarget the registry, they can pass an
+      // unbound client (appId 0) or rely on the higher-level constructors.
+      if (this.config.appId !== null && clientAppId !== null && clientAppId !== this.config.appId) {
+        throw new Error(
+          `App ID mismatch: provided appClient has appId ${clientAppId}, but config specifies ${this.config.appId}`,
+        )
+      }
+
+      // Build a factory that can create a generated client for arbitrary registry appId,
+      // using the same AlgoKit Algorand client instance.
+      const factory = AsaMetadataRegistry.makeGeneratedClientFactory({ baseClient: this.baseGeneratedClient })
+      generatedClientFactory = factory
+      avmReaderFactory = (appId: bigint) => new AsaMetadataRegistryAvmRead({ client: factory(appId) })
+
+      let writeClient = this.baseGeneratedClient
+      if (clientAppId === null && this.config.appId !== null) {
+        writeClient = factory(this.config.appId)
+      }
+      write = new AsaMetadataRegistryWrite({ client: writeClient })
+    }
+
+    this.generatedClientFactory = generatedClientFactory
+    this.avmReaderFactory = avmReaderFactory
+    this._write = write
 
     this.read = new AsaMetadataRegistryRead({
       appId: this.config.appId,
@@ -117,8 +145,8 @@ export class AsaMetadataRegistry {
   ): AsaMetadataRegistry {
     // If appId isn't provided, attempt to read it from the generated client's appId.
     let inferredAppId = asUint64BigIntOrNull(args?.appId, 'appId')
-    if (inferredAppId == null && appClient.appClient) {
-      inferredAppId = asUint64BigIntOrNull(appClient.appClient.appId, 'appId')
+    if (inferredAppId === null) {
+      inferredAppId = asUint64BigIntOrNull(appClient.appId, 'appId')
     }
 
     return new AsaMetadataRegistry({
