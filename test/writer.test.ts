@@ -24,10 +24,13 @@ import {
   DEFAULT_SIMULATE_OPTIONS,
   InvalidArc3PropertiesError,
   InvalidFlagIndexError,
+  InvalidSliceError,
   MAX_BOX_SIZE,
   MAX_METADATA_SIZE,
   MAX_PAGES,
   MetadataArc3Error,
+  MetadataEncodingError,
+  MetadataNotFoundError,
   MissingAppClientError,
   getDefaultRegistryParams,
   RegistryParameters,
@@ -79,6 +82,7 @@ import {
   uploadMetadata,
   createArc3Asa,
   createArc3Payload,
+  sampleJsonObj,
 } from './helpers'
 
 const encode = (s: string): Uint8Array => new TextEncoder().encode(s)
@@ -1542,17 +1546,97 @@ describe('high-level replace methods', () => {
       // Test replacing a slice of metadata.
       await uploadMetadata({ writer, assetManager, appClient: client, metadata: buildShortMetadata(assetId) })
 
+      // Raw (unvalidated) slice write
       await writer.replaceMetadataSlice({
         assetManager,
         assetId,
         offset: 0,
         payload: encode('patch'),
+        validate: false,
       })
       const record = await reader.box.getAssetMetadataRecord({ assetId })
       expect(record).not.toBeNull()
       // Verify the slice was written at offset 0
       const body = record.body.rawBytes
       expect(new TextDecoder().decode(body.slice(0, 5))).toBe('patch')
+    })
+
+    test('replace slice validates post replacement json', async () => {
+      // ARC-89: clients MUST validate the complete post-replacement Metadata (validate=true by default).
+      const metadata = await uploadMetadata({
+        writer,
+        assetManager,
+        appClient: client,
+        metadata: buildShortMetadata(assetId),
+      })
+      const body = metadata.body.rawBytes
+      await expect(
+        writer.replaceMetadataSlice({
+          assetManager,
+          assetId,
+          offset: 0,
+          payload: encode('patch'),
+        }),
+      ).rejects.toThrow(MetadataEncodingError)
+
+      // Same-length replacement of the JSON name value keeps the Metadata valid
+      const offset = Buffer.from(body).indexOf(sampleJsonObj.name)
+      expect(sampleJsonObj.name).toHaveLength('Cosimo'.length)
+      await writer.replaceMetadataSlice({
+        assetManager,
+        assetId,
+        offset,
+        payload: encode('Cosimo'),
+      })
+      const record = await reader.box.getAssetMetadataRecord({ assetId })
+      expect(record.json['name']).toBe('Cosimo')
+    })
+
+    test('replace slice validate raises metadata not found', async () => {
+      // TS-only: no metadata box to validate the post-replacement Metadata against.
+      await expect(
+        writer.replaceMetadataSlice({ assetManager, assetId, offset: 0, payload: encode('patch') }),
+      ).rejects.toThrow(MetadataNotFoundError)
+    })
+
+    test('replace slice validate raises invalid slice', async () => {
+      // TS-only: the slice must lie within the current Metadata.
+      const metadata = await uploadMetadata({
+        writer,
+        assetManager,
+        appClient: client,
+        metadata: buildShortMetadata(assetId),
+      })
+      const payload = encode('patch')
+      await expect(
+        writer.replaceMetadataSlice({ assetManager, assetId, offset: metadata.size - payload.length + 1, payload }),
+      ).rejects.toThrow(InvalidSliceError)
+      await expect(writer.replaceMetadataSlice({ assetManager, assetId, offset: -1, payload })).rejects.toThrow(
+        InvalidSliceError,
+      )
+    })
+
+    test('replace slice validates arc3 schema', async () => {
+      // TS-only: ARC-3 flagged Metadata must still match the ARC-3 JSON schema after the replacement.
+      const arc3AssetId = await createArc3Asa({ assetManager, appClient: client })
+      const metadata = await uploadMetadata({
+        writer,
+        assetManager,
+        appClient: client,
+        metadata: AssetMetadata.fromJson({
+          assetId: arc3AssetId,
+          jsonObj: { name: 'ARC3 Test' },
+          flags: new MetadataFlags({
+            reversible: ReversibleFlags.empty(),
+            irreversible: new IrreversibleFlags({ arc3: true }),
+          }),
+        }),
+      })
+      // Valid JSON ({"name":12345678901}), but the ARC-3 'name' must be a string
+      const offset = Buffer.from(metadata.body.rawBytes).indexOf('"ARC3 Test"')
+      await expect(
+        writer.replaceMetadataSlice({ assetManager, assetId: arc3AssetId, offset, payload: encode('12345678901') }),
+      ).rejects.toThrow(MetadataArc3Error)
     })
   })
 })
@@ -1605,7 +1689,8 @@ describe('box resources sizing', () => {
     // 2 extra resources calls for the Box I/O, the Metadata Hash recomputed over 33 pages (7 + 1 tail budget txns)
     await expectGroup(composer, { txns: [REPLACE_SLICE, ...repeat(2, EXTRA_RESOURCES)], feePool: 11 * minFee })
 
-    await writer.replaceMetadataSlice({ assetManager, assetId, offset, payload })
+    // Raw (unvalidated) slice write: the maxed Metadata is not JSON
+    await writer.replaceMetadataSlice({ assetManager, assetId, offset, payload, validate: false })
     const box = await getMetadataBox(assetId)
     expect(box.body.rawBytes.slice(offset)).toEqual(payload)
   })

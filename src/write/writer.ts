@@ -12,10 +12,16 @@ import { microAlgo } from '@algorandfoundation/algokit-utils'
 import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
 import type { SendParams } from '@algorandfoundation/algokit-utils/types/transaction'
 import * as flagConsts from '../flags'
-import { AsaNotFoundError, InvalidFlagIndexError, MissingAppClientError } from '../errors'
+import {
+  AsaNotFoundError,
+  InvalidFlagIndexError,
+  InvalidSliceError,
+  MetadataNotFoundError,
+  MissingAppClientError,
+} from '../errors'
 import { AssetMetadata, MbrDelta, RegistryParameters } from '../models'
 import { asBigInt, toNumber } from '../internal/numbers'
-import { toBytes } from '../internal/bytes'
+import { concatBytes, toBytes } from '../internal/bytes'
 import {
   AsaMetadataRegistryClient,
   AsaMetadataRegistryComposer,
@@ -23,7 +29,13 @@ import {
 } from '../generated'
 import { AsaMetadataRegistryAvmRead, SimulateOptions } from '../read/avm'
 import { parseMbrDelta, returnValues } from '../internal/avm'
-import { ARC3_PROPERTIES_FLAG_TO_KEY, validateArc3Properties, validateArc3Values } from '../validation'
+import {
+  ARC3_PROPERTIES_FLAG_TO_KEY,
+  decodeMetadataJson,
+  validateArc3Properties,
+  validateArc3Schema,
+  validateArc3Values,
+} from '../validation'
 import {
   ARC89_CREATE_METADATA_FIXED_SIZE,
   ARC89_EXTRA_PAYLOAD_FIXED_SIZE,
@@ -572,6 +584,15 @@ export class AsaMetadataRegistryWrite {
     return parseMbrDelta(ret)
   }
 
+  /**
+   * Replace a slice of the on-chain metadata.
+   *
+   * With `validate` (default), the complete post-replacement Metadata is validated client side,
+   * as ARC-89 requires: it must decode to a JSON object (and match the ARC-3 schema if flagged).
+   *
+   * @throws {MetadataNotFoundError} If the Asset has no metadata (with `validate`).
+   * @throws {InvalidSliceError} If the slice exceeds the Metadata size (with `validate`).
+   */
   async replaceMetadataSlice(args: {
     assetManager: TransactionSignerAccount
     assetId: bigint | number
@@ -579,7 +600,22 @@ export class AsaMetadataRegistryWrite {
     payload: Uint8Array | ArrayBuffer | number[]
     options?: WriteOptions
     sendParams?: SendParams | null
+    validate?: boolean
   }): Promise<void> {
+    if (args.validate ?? true) {
+      // ARC-89: clients MUST validate the complete post-replacement Metadata.
+      const box = await parseMetadataBox(this.client, args.assetId)
+      if (box === null) throw new MetadataNotFoundError(`No metadata box for asset ${args.assetId}`)
+      const payload = toBytes(args.payload, 'payload')
+      const body = box.body.rawBytes
+      if (args.offset < 0 || args.offset + payload.length > body.length) {
+        throw new InvalidSliceError('Slice exceeds the Metadata size')
+      }
+      const newBody = concatBytes([body.slice(0, args.offset), payload, body.slice(args.offset + payload.length)])
+      const obj = decodeMetadataJson(newBody)
+      if (box.header.flags.irreversible.arc3) validateArc3Schema(obj)
+    }
+
     const composer = await this.buildReplaceMetadataSliceGroup({
       assetManager: args.assetManager,
       assetId: args.assetId,
