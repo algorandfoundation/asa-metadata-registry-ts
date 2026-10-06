@@ -122,11 +122,19 @@ describe('metadata body', () => {
 
   test('chunked payload fits in first', () => {
     // Test chunkedPayload when data fits in first chunk.
-    const data = new Uint8Array(100).fill(120)
+    const data = new Uint8Array(constants.FIRST_PAYLOAD_MAX_SIZE).fill(120)
     const body = new MetadataBody(data)
     const chunks = body.chunkedPayload()
     expect(chunks.length).toBe(1)
     expect(chunks[0]).toEqual(data)
+  })
+
+  test('chunked payload one byte over first', () => {
+    // Test the 4,094-byte first-payload boundary.
+    const data = new Uint8Array(constants.FIRST_PAYLOAD_MAX_SIZE + 1).fill(120)
+    const chunks = new MetadataBody(data).chunkedPayload()
+
+    expect(chunks.map((chunk) => chunk.length)).toEqual([constants.FIRST_PAYLOAD_MAX_SIZE, 1])
   })
 
   test('chunked payload multiple chunks', () => {
@@ -141,6 +149,16 @@ describe('metadata body', () => {
     expect(chunks[0].length).toBe(headSize)
     expect(chunks[1].length).toBe(extraSize)
     expect(chunks[2].length).toBe(100)
+  })
+
+  test('chunked payload at max metadata size', () => {
+    // Test that a box-sized payload needs eight application calls.
+    const body = new MetadataBody(new Uint8Array(constants.MAX_METADATA_SIZE).fill(120))
+    const chunks = body.chunkedPayload()
+
+    expect(chunks.length).toBe(8)
+    expect(chunks.slice(0, -1).every((chunk) => chunk.length === constants.EXTRA_PAYLOAD_MAX_SIZE)).toBe(true)
+    expect(chunks[chunks.length - 1].length).toBe(constants.MAX_METADATA_SIZE - 7 * constants.EXTRA_PAYLOAD_MAX_SIZE)
   })
 
   test('validate size within limit', () => {
@@ -164,6 +182,7 @@ describe('metadata body', () => {
     const params = getDefaultRegistryParams()
     const data = new Uint8Array(params.maxMetadataSize + 1).fill(120)
     const body = new MetadataBody(data)
+    expect(() => body.validateSize(params)).toThrow(RangeError)
     expect(() => body.validateSize(params)).toThrow(/exceeds max/)
   })
 
@@ -267,6 +286,22 @@ describe('metadata header', () => {
     expect(header.isArc3Compliant).toBe(true)
   })
 
+  test('is arc54 burnable', () => {
+    // Test isArc54Burnable property.
+    const flags = new MetadataFlags({
+      reversible: ReversibleFlags.empty(),
+      irreversible: new IrreversibleFlags({ burnable: true }),
+    })
+    const header = new MetadataHeader({
+      identifiers: 0,
+      flags,
+      metadataHash: new Uint8Array(32),
+      revision: 1000,
+      deprecatedBy: 0,
+    })
+    expect(header.isArc54Burnable).toBe(true)
+  })
+
   test('is arc89 native', () => {
     // Test isArc89Native property.
     const flags = new MetadataFlags({
@@ -313,6 +348,22 @@ describe('metadata header', () => {
       deprecatedBy: 0,
     })
     expect(header.isArc62CirculatingSupply).toBe(true)
+  })
+
+  test('is ntt cross chain', () => {
+    // Test isNttCrossChain property.
+    const flags = new MetadataFlags({
+      reversible: new ReversibleFlags({ ntt: true }),
+      irreversible: IrreversibleFlags.empty(),
+    })
+    const header = new MetadataHeader({
+      identifiers: 0,
+      flags,
+      metadataHash: new Uint8Array(32),
+      revision: 1000,
+      deprecatedBy: 0,
+    })
+    expect(header.isNttCrossChain).toBe(true)
   })
 
   test('from tuple', () => {
@@ -854,15 +905,16 @@ describe('AssetMetadata.deriveAndValidateFlagsFromArc3Json', () => {
 
   test('flags provided but arc3 flag missing raises', () => {
     const obj = { name: 'T', decimals: 0 }
-    expect(() =>
+    const call = () =>
       derive(
         obj,
         new MetadataFlags({
           reversible: ReversibleFlags.empty(),
           irreversible: IrreversibleFlags.empty(),
         }),
-      ),
-    ).toThrow(/ARC3 metadata flag is not set/)
+      )
+    expect(call).toThrow(MetadataArc3Error)
+    expect(call).toThrow(/ARC3 metadata flag is not set/)
   })
 
   test('flags provided arc20 requires arc3 raises', () => {
@@ -886,15 +938,16 @@ describe('AssetMetadata.deriveAndValidateFlagsFromArc3Json', () => {
         'arc-20': { 'application-id': 0 }, // must be a positive uint64
       },
     }
-    expect(() =>
+    const call = () =>
       derive(
         obj,
         new MetadataFlags({
           reversible: new ReversibleFlags({ arc20: true }),
           irreversible: new IrreversibleFlags({ arc3: true }),
         }),
-      ),
-    ).toThrow(InvalidArc3PropertiesError)
+      )
+    expect(call).toThrow(InvalidArc3PropertiesError)
+    expect(call).toThrow(/application-id/)
   })
 })
 

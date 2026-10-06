@@ -1,8 +1,14 @@
-import { describe, expect, test } from 'vitest'
-import { constants as c } from '@algorandfoundation/asa-metadata-registry-sdk'
+/**
+ * Unit tests for src/constants module.
+ *
+ * Ported from Python `tests/sdk/test_constants.py`.
+ */
+
+import { describe, expect, expectTypeOf, test } from 'vitest'
+import { constants as c, validation } from '@algorandfoundation/asa-metadata-registry-sdk'
 
 describe('constants', () => {
-  test('validate size constraints', () => {
+  test('constants', () => {
     expect(c.MAX_ARG_SIZE).toBe(4096)
     expect(c.HEADER_SIZE).toBeLessThanOrEqual(c.MAX_LOG_SIZE - c.ARC4_RETURN_PREFIX_SIZE)
     expect(c.MAX_METADATA_SIZE).toBe(c.MAX_BOX_SIZE - c.HEADER_SIZE)
@@ -11,8 +17,8 @@ describe('constants', () => {
     expect(c.MAX_PAGES).toBe(33)
     expect(c.MAX_PAGES).toBeLessThanOrEqual(256)
 
-    // Fixed length arguments occupy separate ApplicationArgs entries: only the byte[] length
-    // prefix counts against the payload arg.
+    // Python also asserts these equal the contract's `smart_contracts.constants`; that module is
+    // Python-only, so the TS test pins the ARC-89 v1.0.0 contract values below instead.
     expect(c.FIRST_PAYLOAD_MAX_SIZE).toBe(4094)
     expect(c.EXTRA_PAYLOAD_MAX_SIZE).toBe(4094)
     expect(c.REPLACE_PAYLOAD_MAX_SIZE).toBe(4094)
@@ -46,9 +52,13 @@ describe('constants', () => {
   })
 
   test('arc3 properties keys are in sync', () => {
-    // Ensure ARC3_PROPERTIES_KEYS and individual key constants stay in sync if new ARC keys are added.
+    // Ensure ARC3_PROPERTIES_KEYS and Arc3PropertiesKeys stay in sync if new ARC keys are added.
     expect(c.ARC3_PROPERTIES_KEYS).toContain(c.ARC3_PROPERTIES_KEY_ARC20)
     expect(c.ARC3_PROPERTIES_KEYS).toContain(c.ARC3_PROPERTIES_KEY_ARC62)
-    expect(c.ARC3_PROPERTIES_KEYS.length).toBe(2)
+    // Python: `set(ARC3_PROPERTIES_KEYS) == set(get_args(Arc3PropertiesKey))`
+    expectTypeOf<validation.Arc3PropertiesKeys>().toEqualTypeOf<(typeof c.ARC3_PROPERTIES_KEYS)[number]>()
+    expectTypeOf<validation.Arc3PropertiesKeys>().toEqualTypeOf<'arc-20' | 'arc-62'>()
+    expect(new Set(c.ARC3_PROPERTIES_KEYS)).toEqual(new Set(['arc-20', 'arc-62']))
+    expect(new Set(Object.values(validation.ARC3_PROPERTIES_FLAG_TO_KEY))).toEqual(new Set(c.ARC3_PROPERTIES_KEYS))
   })
 })

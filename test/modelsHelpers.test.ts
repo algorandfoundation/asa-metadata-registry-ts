@@ -7,6 +7,7 @@
  * - MetadataExistence
  * - Pagination
  * - PaginatedMetadata
+ * - MetadataSlice
  * - Internal helper functions
  */
 
@@ -15,7 +16,8 @@ import { models, enums, constants } from '@algorandfoundation/asa-metadata-regis
 import { toBytes } from '@/internal/bytes'
 import { setBit, isNonzero32, readUint64BE } from '@/internal/models'
 
-const { MbrDeltaSign, MbrDelta, RegistryParameters, MetadataExistence, Pagination, PaginatedMetadata } = models
+const { MbrDeltaSign, MbrDelta, RegistryParameters, MetadataExistence, Pagination, PaginatedMetadata, MetadataSlice } =
+  models
 
 describe('mbr delta sign', () => {
   // Tests for MbrDeltaSign enum.
@@ -350,15 +352,16 @@ describe('pagination', () => {
   test('basic pagination', () => {
     // Test basic pagination values.
     const pagination = new Pagination({
+      deprecatedBy: 0,
       metadataSize: 5000,
       pageSize: 1000,
       totalPages: 5,
       revision: 42,
-      deprecatedBy: 0,
     })
     expect(pagination.metadataSize).toBe(5000)
     expect(pagination.pageSize).toBe(1000)
     expect(pagination.totalPages).toBe(5)
+    expect(pagination.revision).toBe(42n)
   })
 
   test('from tuple', () => {
@@ -367,6 +370,8 @@ describe('pagination', () => {
     expect(pagination.metadataSize).toBe(3000)
     expect(pagination.pageSize).toBe(1000)
     expect(pagination.totalPages).toBe(3)
+    expect(pagination.revision).toBe(42n)
+    expect(pagination.deprecatedBy).toBe(7n)
   })
 
   test('from tuple zero metadata', () => {
@@ -454,6 +459,27 @@ describe('paginated metadata advanced', () => {
     // Test fromTuple with pageContent as list of ints.
     const result = PaginatedMetadata.fromTuple([false, 2000, [1, 2, 3, 4, 5]])
     expect(result.pageContent).toEqual(new Uint8Array([1, 2, 3, 4, 5]))
+  })
+})
+
+describe('metadata slice', () => {
+  // Tests for MetadataSlice class.
+  test('metadata slice from tuple', () => {
+    const data = new TextEncoder().encode('data')
+    const metadataSlice = MetadataSlice.fromTuple([42, data])
+    expect(metadataSlice).toStrictEqual(new MetadataSlice({ revision: 42, content: data }))
+  })
+
+  test('from tuple invalid length', () => {
+    // Test fromTuple with wrong number of elements.
+    expect(() => MetadataSlice.fromTuple([42])).toThrow(/Expected \(revision, content\)/)
+    expect(() => MetadataSlice.fromTuple([42, new Uint8Array(), 1])).toThrow(/Expected \(revision, content\)/)
+  })
+
+  test('from tuple invalid revision type', () => {
+    // Test fromTuple with non-int revision.
+    expect(() => MetadataSlice.fromTuple(['not int' as any, new Uint8Array()])).toThrow(TypeError)
+    expect(() => MetadataSlice.fromTuple(['not int' as any, new Uint8Array()])).toThrow(/revision must be int/)
   })
 })
 

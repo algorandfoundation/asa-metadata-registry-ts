@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, test } from 'vitest'
-import { hashing, constants } from '@algorandfoundation/asa-metadata-registry-sdk'
+import { hashing, constants, InvalidPageIndexError } from '@algorandfoundation/asa-metadata-registry-sdk'
 import { concatBytes } from '@/internal/bytes'
 
 const {
@@ -144,6 +144,7 @@ describe('compute header hash', () => {
   })
 
   test('deterministic', () => {
+    // Test that header hash is deterministic.
     const params = {
       metadataIdentifiers: 42,
       reversibleFlags: 128,
@@ -224,99 +225,67 @@ describe('compute header hash', () => {
   })
 
   test('metadata identifiers out of range negative throws', () => {
-    // Test that negative metadataIdentifiers raises ValueError.
-    expect(() =>
-      computeHeaderHash({
-        metadataIdentifiers: -1,
-        reversibleFlags: 0,
-        irreversibleFlags: 0,
-        metadataSize: 100,
-      }),
-    ).toThrow(/metadataIdentifiers must fit in byte/)
+    // Test that negative metadataIdentifiers raises RangeError.
+    const call = () =>
+      computeHeaderHash({ metadataIdentifiers: -1, reversibleFlags: 0, irreversibleFlags: 0, metadataSize: 100 })
+    expect(call).toThrow(RangeError)
+    expect(call).toThrow(/metadataIdentifiers must fit in byte/)
   })
 
   test('metadata identifiers out of range overflow throws', () => {
-    // Test that metadataIdentifiers > 255 raises ValueError.
-    expect(() =>
-      computeHeaderHash({
-        metadataIdentifiers: 256,
-        reversibleFlags: 0,
-        irreversibleFlags: 0,
-        metadataSize: 100,
-      }),
-    ).toThrow(/metadataIdentifiers must fit in byte/)
+    // Test that metadataIdentifiers > 255 raises RangeError.
+    const call = () =>
+      computeHeaderHash({ metadataIdentifiers: 256, reversibleFlags: 0, irreversibleFlags: 0, metadataSize: 100 })
+    expect(call).toThrow(RangeError)
+    expect(call).toThrow(/metadataIdentifiers must fit in byte/)
   })
 
   test('reversible flags out of range negative throws', () => {
-    // Test that negative reversibleFlags raises ValueError.
-    expect(() =>
-      computeHeaderHash({
-        metadataIdentifiers: 0,
-        reversibleFlags: -1,
-        irreversibleFlags: 0,
-        metadataSize: 100,
-      }),
-    ).toThrow(/reversibleFlags must fit in byte/)
+    // Test that negative reversibleFlags raises RangeError.
+    const call = () =>
+      computeHeaderHash({ metadataIdentifiers: 0, reversibleFlags: -1, irreversibleFlags: 0, metadataSize: 100 })
+    expect(call).toThrow(RangeError)
+    expect(call).toThrow(/reversibleFlags must fit in byte/)
   })
 
   test('reversible flags out of range overflow throws', () => {
-    // Test that reversibleFlags > 255 raises ValueError.
-    expect(() =>
-      computeHeaderHash({
-        metadataIdentifiers: 0,
-        reversibleFlags: 256,
-        irreversibleFlags: 0,
-        metadataSize: 100,
-      }),
-    ).toThrow(/reversibleFlags must fit in byte/)
+    // Test that reversibleFlags > 255 raises RangeError.
+    const call = () =>
+      computeHeaderHash({ metadataIdentifiers: 0, reversibleFlags: 256, irreversibleFlags: 0, metadataSize: 100 })
+    expect(call).toThrow(RangeError)
+    expect(call).toThrow(/reversibleFlags must fit in byte/)
   })
 
   test('irreversible flags out of range negative throws', () => {
-    // Test that negative irreversibleFlags raises ValueError.
-    expect(() =>
-      computeHeaderHash({
-        metadataIdentifiers: 0,
-        reversibleFlags: 0,
-        irreversibleFlags: -1,
-        metadataSize: 100,
-      }),
-    ).toThrow(/irreversibleFlags must fit in byte/)
+    // Test that negative irreversibleFlags raises RangeError.
+    const call = () =>
+      computeHeaderHash({ metadataIdentifiers: 0, reversibleFlags: 0, irreversibleFlags: -1, metadataSize: 100 })
+    expect(call).toThrow(RangeError)
+    expect(call).toThrow(/irreversibleFlags must fit in byte/)
   })
 
   test('irreversible flags out of range overflow throws', () => {
-    // Test that irreversibleFlags > 255 raises ValueError.
-    expect(() =>
-      computeHeaderHash({
-        metadataIdentifiers: 0,
-        reversibleFlags: 0,
-        irreversibleFlags: 256,
-        metadataSize: 100,
-      }),
-    ).toThrow(/irreversibleFlags must fit in byte/)
+    // Test that irreversibleFlags > 255 raises RangeError.
+    const call = () =>
+      computeHeaderHash({ metadataIdentifiers: 0, reversibleFlags: 0, irreversibleFlags: 256, metadataSize: 100 })
+    expect(call).toThrow(RangeError)
+    expect(call).toThrow(/irreversibleFlags must fit in byte/)
   })
 
   test('metadata size out of range negative throws', () => {
-    // Test that negative metadataSize raises ValueError.
-    expect(() =>
-      computeHeaderHash({
-        metadataIdentifiers: 0,
-        reversibleFlags: 0,
-        irreversibleFlags: 0,
-        metadataSize: -1,
-      }),
-    ).toThrow(/metadataSize must fit in uint16/)
+    // Test that negative metadataSize raises RangeError.
+    const call = () =>
+      computeHeaderHash({ metadataIdentifiers: 0, reversibleFlags: 0, irreversibleFlags: 0, metadataSize: -1 })
+    expect(call).toThrow(RangeError)
+    expect(call).toThrow(/metadataSize must fit in uint16/)
   })
 
   test('metadata size out of range overflow throws', () => {
-    // Test that metadataSize > 65535 raises ValueError.
-    expect(() =>
-      computeHeaderHash({
-        metadataIdentifiers: 0,
-        reversibleFlags: 0,
-        irreversibleFlags: 0,
-        metadataSize: 65536,
-      }),
-    ).toThrow(/metadataSize must fit in uint16/)
+    // Test that metadataSize > 65535 raises RangeError.
+    const call = () =>
+      computeHeaderHash({ metadataIdentifiers: 0, reversibleFlags: 0, irreversibleFlags: 0, metadataSize: 65536 })
+    expect(call).toThrow(RangeError)
+    expect(call).toThrow(/metadataSize must fit in uint16/)
   })
 
   test('header hash uses correct domain separator', () => {
@@ -409,13 +378,17 @@ describe('paginate', () => {
   })
 
   test('page size zero throws', () => {
-    // Test that pageSize of 0 raises ValueError.
-    expect(() => paginate(new Uint8Array(10), 0)).toThrow(/pageSize must be > 0/)
+    // Test that pageSize of 0 raises RangeError.
+    const call = () => paginate(new TextEncoder().encode('test'), 0)
+    expect(call).toThrow(RangeError)
+    expect(call).toThrow(/pageSize must be > 0/)
   })
 
   test('page size negative throws', () => {
-    // Test that negative pageSize raises ValueError.
-    expect(() => paginate(new Uint8Array(10), -1)).toThrow(/pageSize must be > 0/)
+    // Test that negative pageSize raises RangeError.
+    const call = () => paginate(new TextEncoder().encode('test'), -1)
+    expect(call).toThrow(RangeError)
+    expect(call).toThrow(/pageSize must be > 0/)
   })
 
   test('preserves metadata content', () => {
@@ -510,33 +483,24 @@ describe('compute page hash', () => {
   })
 
   test('page index out of range negative throws', () => {
-    // Test that negative pageIndex raises ValueError.
-    expect(() =>
-      computePageHash({
-        pageIndex: -1,
-        pageContent: new TextEncoder().encode('test'),
-      }),
-    ).toThrow(/pageIndex must fit in uint8/)
+    // Test that negative pageIndex raises InvalidPageIndexError.
+    const call = () => computePageHash({ pageIndex: -1, pageContent: new TextEncoder().encode('test') })
+    expect(call).toThrow(InvalidPageIndexError)
+    expect(call).toThrow(/pageIndex must fit in uint8/)
   })
 
   test('page index out of range overflow throws', () => {
-    // Test that pageIndex > 255 raises ValueError.
-    expect(() =>
-      computePageHash({
-        pageIndex: 256,
-        pageContent: new TextEncoder().encode('test'),
-      }),
-    ).toThrow(/pageIndex must fit in uint8/)
+    // Test that pageIndex > 255 raises InvalidPageIndexError.
+    const call = () => computePageHash({ pageIndex: 256, pageContent: new TextEncoder().encode('test') })
+    expect(call).toThrow(InvalidPageIndexError)
+    expect(call).toThrow(/pageIndex must fit in uint8/)
   })
 
   test('page content too large throws', () => {
-    // Test that pageContent larger than uint16 max raises ValueError.
-    expect(() =>
-      computePageHash({
-        pageIndex: 0,
-        pageContent: new Uint8Array(2 ** 16).fill(120),
-      }),
-    ).toThrow(/pageContent length must fit in uint16/)
+    // Test that pageContent larger than uint16 max raises RangeError.
+    const call = () => computePageHash({ pageIndex: 0, pageContent: new Uint8Array(2 ** 16).fill(120) })
+    expect(call).toThrow(RangeError)
+    expect(call).toThrow(/pageContent length must fit in uint16/)
   })
 
   test('page hash uses correct domain separator', () => {
@@ -669,12 +633,7 @@ describe('compute metadata hash', () => {
     })
     const pages = paginate(metadata, pageSize)
 
-    const pageHashes = pages.map((pageContent, i) =>
-      computePageHash({
-        pageIndex: i,
-        pageContent,
-      }),
-    )
+    const pageHashes = pages.map((pageContent, i) => computePageHash({ pageIndex: i, pageContent }))
     const data = concatBytes([HASH_DOMAIN_METADATA, hh, ...pageHashes])
     const expected = sha512_256(data)
 

@@ -2,31 +2,38 @@
  * Extensive tests for src/write/writer module.
  *
  * Tests cover:
- * - WriteOptions configuration (mock)
- * - AsaMetadataRegistryWrite initialization and validation (mock when possible)
- * - Group building methods
- * - High-level send methods
- * - Flag management methods (mock when possible)
- * - Utility methods (mock)
- * - Fee pooling and padding
- * - Extra resources handling (mock)
+ * - WriteOptions configuration
+ * - AsaMetadataRegistryWrite initialization and validation
+ * - Group building methods (group composition and pooled fees)
+ * - High-level send methods (e.g., createMetadata, replaceMetadata)
+ * - Flag management methods
+ * - Utility methods
+ * - Fee pooling and padding (opcode budget, Box I/O resources, app args surcharge)
+ * - Extra resources handling
  * - Error handling and edge cases
  */
 
-import { describe, expect, test, vi, beforeAll, beforeEach } from 'vitest'
-import { Address, getApplicationAddress, modelsv2, type TransactionSigner } from 'algosdk'
+import { describe, expect, test, vi, afterEach, beforeAll, beforeEach } from 'vitest'
+import { Address, TransactionType, getApplicationAddress, modelsv2, type TransactionSigner } from 'algosdk'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { microAlgo, type AlgorandClient } from '@algorandfoundation/algokit-utils'
 import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
 import {
   ARC3_NAME_SUFFIX,
+  AsaNotFoundError,
+  DEFAULT_SIMULATE_OPTIONS,
   InvalidArc3PropertiesError,
   InvalidFlagIndexError,
+  MAX_BOX_SIZE,
+  MAX_METADATA_SIZE,
+  MAX_PAGES,
+  MetadataArc3Error,
   MissingAppClientError,
   getDefaultRegistryParams,
   RegistryParameters,
   flags,
   AssetMetadata,
+  AssetMetadataBox,
   MbrDelta,
   AsaMetadataRegistryRead,
   AlgodBoxReader,
@@ -36,18 +43,28 @@ import {
   // writer
   AsaMetadataRegistryWrite,
   type SimulateOptions,
-  WriteOptions,
+  type WriteOptions,
   writeOptionsDefault,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
-import {
+import type {
   AsaMetadataRegistryClient,
   AsaMetadataRegistryComposer,
-  AsaMetadataRegistryFactory,
   AsaMetadataRegistryComposerResults,
+  AsaMetadataRegistryFactory,
 } from '@/generated'
 import { parseMbrDelta } from '@/internal/avm'
 import * as validation from '@/validation'
-import { appendExtraResources, chunksForSlice } from '@/internal/writer'
+import {
+  ARC89_CREATE_METADATA_FIXED_SIZE,
+  ARC89_EXTRA_PAYLOAD_FIXED_SIZE,
+  ARC89_REPLACE_METADATA_SLICE_FIXED_SIZE,
+  appArgsSurchargeFee,
+  appendExtraResources,
+  boxIoExtraResources,
+  chunksForSlice,
+  hashBudgetTxns,
+  tailBudgetTxns,
+} from '@/internal/writer'
 import {
   type AddressWithSigners,
   deployRegistry,
@@ -63,15 +80,16 @@ import {
   createArc3Payload,
 } from './helpers'
 
+const encode = (s: string): Uint8Array => new TextEncoder().encode(s)
+
 // ================================================================
 // Mocks
 // ================================================================
 
 const createMockAppClient = (): AsaMetadataRegistryClient => {
   return {
-    appClient: { appId: 12345n },
     appId: 12345n,
-    appAddress: 'IEEMEG2UHU5HZZ4AWTKJ4ZQCBX3LBZQBE7YYGLPOT5G4HHCXNPFP47DKCM',
+    appAddress: getApplicationAddress(12345n),
     clone: vi.fn(),
     newGroup: vi.fn(),
     algorand: {
@@ -91,6 +109,38 @@ const createMockComposer = (): AsaMetadataRegistryComposer<unknown[]> => {
     send: vi.fn(),
     simulate: vi.fn(),
   } as unknown as AsaMetadataRegistryComposer<unknown[]>
+}
+
+// ================================================================
+// Group composition helpers
+// ================================================================
+
+const PAY = TransactionType.pay
+const CREATE = 'arc89_create_metadata'
+const REPLACE = 'arc89_replace_metadata'
+const REPLACE_LARGER = 'arc89_replace_metadata_larger'
+const REPLACE_SLICE = 'arc89_replace_metadata_slice'
+const DELETE = 'arc89_delete_metadata'
+const EXTRA_PAYLOAD = 'arc89_extra_payload'
+const EXTRA_RESOURCES = 'extra_resources'
+
+const repeat = <T>(count: number, value: T): T[] => Array.from({ length: count }, () => value)
+
+/**
+ * Build (without sending) a writer group and assert its composition: the transaction sequence (ABI
+ * method name, or transaction type) and the fee pool, pooled on the first app call (all others are fee-less).
+ */
+const expectGroup = async (
+  composer: AsaMetadataRegistryComposer,
+  expected: { txns: readonly string[]; feePool: number },
+) => {
+  const { transactions, methodCalls } = await (await composer.composer()).buildTransactions()
+  expect(transactions.map((txn, i) => methodCalls.get(i)?.name ?? txn.type)).toEqual(expected.txns)
+  const head = transactions.findIndex((txn) => txn.type === TransactionType.appl)
+  expect(transactions.map((txn) => txn.fee)).toEqual(
+    transactions.map((_, i) => (i === head ? BigInt(expected.feePool) : 0n)),
+  )
+  return transactions
 }
 
 // ================================================================
@@ -119,6 +169,21 @@ beforeEach(() => {
   vi.resetAllMocks()
   mockClient = createMockAppClient()
 })
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+/** Box reader bound to the test registry (Python `reader_with_algod`). */
+const createReader = (): AsaMetadataRegistryRead =>
+  new AsaMetadataRegistryRead({ appId: client.appId, algod: new AlgodBoxReader(algorand.client.algod) })
+
+/** Read and parse the metadata box via the generated client (throws if the box does not exist). */
+const getMetadataBox = async (assetId: bigint): Promise<AssetMetadataBox> => {
+  const value = await client.state.box.assetMetadata.value(assetId)
+  expect(value).toBeDefined()
+  return AssetMetadataBox.parse({ assetId, value: value! })
+}
 
 /** Create an ARC-3 ASA (`@arc3` name suffix). ARC-20 also requires DefaultFrozen and a Clawback address. */
 const createArc3TestAsa = async (args: {
@@ -174,7 +239,7 @@ describe('chunking helpers', () => {
   // Tests for module-level internal chunksForSlice function.
   test('chunks for slice single', () => {
     // Test slicing a small payload into single chunk.
-    const payload = new TextEncoder().encode('slice')
+    const payload = encode('slice')
     const chunks = chunksForSlice(payload, 100)
     expect(chunks).toHaveLength(1)
     expect(chunks[0]).toEqual(payload)
@@ -201,10 +266,51 @@ describe('chunking helpers', () => {
   })
 
   test('chunks for slice invalid max size', () => {
-    // Test slicing with invalid max size.
-    const payload = new TextEncoder().encode('test')
-    expect(() => chunksForSlice(payload, 0)).toThrow(RangeError)
-    expect(() => chunksForSlice(payload, -1)).toThrow(RangeError)
+    // Test that invalid max size raises RangeError.
+    const payload = encode('test')
+    expect(() => chunksForSlice(payload, 0)).toThrow(new RangeError('maxSize must be > 0'))
+    expect(() => chunksForSlice(payload, -1)).toThrow(new RangeError('maxSize must be > 0'))
+  })
+
+  test('app args surcharge fee', () => {
+    // Test exact pooled fee rounding for oversized application arguments.
+    expect(appArgsSurchargeFee(1000, [2048])).toBe(0)
+    expect(appArgsSurchargeFee(1000, [4112])).toBe(207)
+    expect(appArgsSurchargeFee(1000, [4112, 4108])).toBe(413)
+  })
+})
+
+describe('resource sizing helpers', () => {
+  // Tests for the fee pool and resource sizing helpers (Python private helpers, reference values).
+  test('app call fixed sizes', () => {
+    // Aggregate encoded size of the non-payload arguments (method selector and payload length prefix included).
+    expect(ARC89_CREATE_METADATA_FIXED_SIZE).toBe(18)
+    expect(ARC89_EXTRA_PAYLOAD_FIXED_SIZE).toBe(14)
+    expect(ARC89_REPLACE_METADATA_SLICE_FIXED_SIZE).toBe(16)
+  })
+
+  test('box io extra resources', () => {
+    // The head call covers 7 box references (one slot is spent on the asset), every other app call 8.
+    expect(boxIoExtraResources(0)).toBe(0)
+    expect(boxIoExtraResources(7 * 2048)).toBe(0)
+    expect(boxIoExtraResources(7 * 2048 + 1)).toBe(1)
+    expect(boxIoExtraResources(15 * 2048)).toBe(1)
+    expect(boxIoExtraResources(15 * 2048 + 1)).toBe(2)
+    expect(boxIoExtraResources(MAX_BOX_SIZE)).toBe(2)
+    // Other app calls in the group (extra payloads, extra resources) already add box references.
+    expect(boxIoExtraResources(MAX_BOX_SIZE, 1)).toBe(1)
+    expect(boxIoExtraResources(MAX_BOX_SIZE, 2)).toBe(0)
+    expect(boxIoExtraResources(MAX_BOX_SIZE, 7)).toBe(0)
+  })
+
+  test('hash budget txns', () => {
+    // Metadata Hash opcode budget: the first inner transaction at two pages, then one every five pages.
+    expect([0, 1, 2, 6, 7, 11, 12, MAX_PAGES].map((pages) => hashBudgetTxns(pages))).toEqual([0, 0, 1, 1, 2, 2, 3, 7])
+  })
+
+  test('tail budget txns', () => {
+    // Opcode budget reserved by the head call for the calls after it (none without trailing calls).
+    expect([0, 1, 4, 5, 9, 10, 14].map((calls) => tailBudgetTxns(calls))).toEqual([0, 1, 1, 2, 2, 3, 4])
   })
 })
 
@@ -245,7 +351,6 @@ describe('send group helper', () => {
   let sendResult: AsaMetadataRegistryComposerResults<unknown[]>
 
   beforeEach(() => {
-    vi.resetAllMocks()
     composer = createMockComposer()
     sendResult = { groupId: 'group-id', txIds: ['tx-id'], returns: [], confirmations: [], transactions: [] }
   })
@@ -335,6 +440,7 @@ describe('send group helper', () => {
 
     const result = await AsaMetadataRegistryWrite.sendGroup({
       composer,
+      sendParams: { coverAppCallInnerTransactionFees: false, populateAppCallResources: false },
       options: writeOptionsDefault,
       simulate: simulateOptions,
     })
@@ -348,47 +454,33 @@ describe('send group helper', () => {
 
 describe('send group helper simulate', () => {
   // Test sendGroup helper for simulation.
-  let assetManager: AddressWithSigners
-  let writer: AsaMetadataRegistryWrite
-  let boxReader: AlgodBoxReader
-  let reader: AsaMetadataRegistryRead
-  let assetId: bigint
-
-  beforeEach(async () => {
-    writer = new AsaMetadataRegistryWrite({ client })
-    boxReader = new AlgodBoxReader(algorand.client.algod)
-    reader = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader })
-    assetManager = await createFundedAccount(fixture)
-    assetId = await createArc89Asa({ assetManager, appClient: client })
-  })
-
-  test('simulate create metadata', async () => {
+  test('send group simulate', async () => {
     // Test simulating a create metadata transaction group.
+    const writer = new AsaMetadataRegistryWrite({ client })
+    const assetManager = await createFundedAccount(fixture)
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
     const metadata = buildShortMetadata(assetId)
-    await expect(reader.box.getAssetMetadataRecord({ assetId })).rejects.toThrow()
 
     const composer = await writer.buildCreateMetadataGroup({ assetManager, metadata })
-    // Any custom simulate options can go here
-    const simulateOptions: SimulateOptions = {
-      allowEmptySignatures: true,
-      skipSignatures: true,
-      allowUnnamedResources: true,
-    }
-
-    // Simulate
+    const simulate: SimulateOptions = { ...DEFAULT_SIMULATE_OPTIONS } // Any custom options can go here
     const simulateResult = await AsaMetadataRegistryWrite.sendGroup({
       composer,
-      simulate: simulateOptions,
+      sendParams: null,
+      options: null,
+      simulate,
     })
 
-    expect(simulateResult).not.toBeNull()
-    // Head call + extraResources call (Box I/O budget)
+    expect(simulateResult).toBeDefined()
+    // arc89_create_metadata + the extra_resources call appended for non-empty metadata
     expect(simulateResult.returns).toHaveLength(2)
+
+    // Example of inspecting a return value from simulate
     const mbrDelta = parseMbrDelta(simulateResult.returns[0])
     expect(mbrDelta).toBeInstanceOf(MbrDelta)
     expect(mbrDelta.isPositive).toBe(true)
 
-    await expect(reader.box.getAssetMetadataRecord({ assetId })).rejects.toThrow()
+    // Simulate must not persist metadata
+    await expect(client.state.box.assetMetadata.value(assetId)).rejects.toThrow(/box not found/)
   })
 })
 
@@ -424,14 +516,15 @@ describe('writer initialization', () => {
     // Test that _params() returns cached params if available.
     const params = getDefaultRegistryParams()
     const writer = new AsaMetadataRegistryWrite({ client: mockClient, params })
-    const result = await (writer as any)._params()
+    const result = await writer['_params']()
     expect(result).toBe(params)
   })
 
   test('_params fetches from on-chain if not cached', async () => {
     // Test that _params() fetches from on-chain if not cached.
     const writer = new AsaMetadataRegistryWrite({ client })
-    const result = await (writer as any)._params()
+    const result = await writer['_params']()
+    // Should fetch from chain
     expect(result).toBeInstanceOf(RegistryParameters)
     expect(result.headerSize).toBeGreaterThan(0)
   })
@@ -444,13 +537,11 @@ describe('writer initialization', () => {
 describe('high-level send methods', () => {
   let assetManager: AddressWithSigners
   let writer: AsaMetadataRegistryWrite
-  let boxReader: AlgodBoxReader
   let reader: AsaMetadataRegistryRead
 
   beforeAll(async () => {
     writer = new AsaMetadataRegistryWrite({ client })
-    boxReader = new AlgodBoxReader(algorand.client.algod)
-    reader = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader })
+    reader = createReader()
     assetManager = await createFundedAccount(fixture)
   })
 
@@ -484,8 +575,9 @@ describe('high-level send methods', () => {
       const mbrDelta = await writer.createMetadata({ assetManager, metadata })
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
       expect(mbrDelta.isPositive).toBe(true)
-      const boxValue = await reader.box.getAssetMetadataRecord({ assetId })
-      expect(boxValue).not.toBeNull()
+      // Verify metadata was created
+      const box = await getMetadataBox(assetId)
+      expect(box.body.rawBytes).toEqual(metadata.body.rawBytes)
     })
 
     test('create large metadata', async () => {
@@ -494,8 +586,8 @@ describe('high-level send methods', () => {
       const mbrDelta = await writer.createMetadata({ assetManager, metadata, validateArc3: false })
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
       expect(mbrDelta.isPositive).toBe(true)
-      const boxValue = await reader.box.getAssetMetadataRecord({ assetId })
-      expect(boxValue).not.toBeNull()
+      const record = await reader.box.getAssetMetadataRecord({ assetId })
+      expect(record.body.size).toBe(MAX_METADATA_SIZE)
     })
 
     test('create with custom send params', async () => {
@@ -507,11 +599,12 @@ describe('high-level send methods', () => {
         sendParams: { coverAppCallInnerTransactionFees: false },
       })
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
-      const boxValue = await reader.box.getAssetMetadataRecord({ assetId })
-      expect(boxValue).not.toBeNull()
+      const record = await reader.box.getAssetMetadataRecord({ assetId })
+      expect(record).not.toBeNull()
     })
 
     test('create validate arc3 raises asa not found', async () => {
+      // createMetadata should raise AsaNotFoundError when validateArc3=true and the ASA doesn't exist.
       // Destroy the ASA so on-chain lookup fails during ARC-3 validation.
       await algorand.send.assetDestroy({ sender: assetManager.addr, assetId })
 
@@ -520,26 +613,33 @@ describe('high-level send methods', () => {
         jsonObj: { name: 'Missing ASA', decimals: 0 },
       })
 
-      await expect(writer.createMetadata({ assetManager, metadata, validateArc3: true })).rejects.toThrow(
-        new RegExp(`Asset ${assetId} does not exist`),
-      )
+      const result = writer.createMetadata({ assetManager, metadata, validateArc3: true })
+      await expect(result).rejects.toThrow(AsaNotFoundError)
+      await expect(result).rejects.toThrow(`Asset ${assetId} does not exist`)
     })
 
     test('create validate arc3 fails invalid decimals', async () => {
-      // arc_89_asa has decimals=0, but metadata says decimals=6
+      // createMetadata should raise MetadataArc3Error when validateArc3=true and decimals don't match.
+      // The ARC-89 ASA has decimals=0, but metadata says decimals=6
       const metadata = AssetMetadata.fromJson({
         assetId,
         jsonObj: { name: 'Wrong Decimals', decimals: 6 },
       })
 
-      await expect(writer.createMetadata({ assetManager, metadata, validateArc3: true })).rejects.toThrow(
-        /ARC-3 field 'decimals' must match ASA decimals \(0\), got 6/,
-      )
+      const result = writer.createMetadata({ assetManager, metadata, validateArc3: true })
+      await expect(result).rejects.toThrow(MetadataArc3Error)
+      await expect(result).rejects.toThrow(/ARC-3 field 'decimals' must match ASA decimals \(0\), got 6/)
     })
+  })
 
-    test('create arc3 decimals validation skipped when decimals missing', async () => {
-      // If 'decimals' is not present in JSON, writer must not fetch ASA params or validate decimals.
+  describe('create metadata arc3 compliant', () => {
+    // Test createMetadata validation for declared ARC-3 compliant ASAs.
+
+    test('arc3 decimals validation skipped when decimals missing', async () => {
+      // If 'decimals' isn't present in JSON, writer must not fetch ASA params or validate decimals.
+      const assetId = await createArc89Asa({ assetManager, appClient: client })
       const validateSpy = vi.spyOn(validation, 'validateArc3Values')
+      // If decimals validation were attempted, this on-chain API would be called.
       const getByIdSpy = vi.spyOn(writer.client.algorand.asset, 'getById')
 
       const metadata = AssetMetadata.fromJson({
@@ -551,48 +651,35 @@ describe('high-level send methods', () => {
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
       expect(validateSpy).not.toHaveBeenCalled()
       expect(getByIdSpy).not.toHaveBeenCalled()
-
-      validateSpy.mockRestore()
-      getByIdSpy.mockRestore()
     })
 
-    test('create arc3 decimals zero triggers decimals validation', async () => {
-      // When 'decimals' is explicitly set to 0, writer must fetch ASA params and run decimals validation.
-      // ASA has decimals=0, metadata says decimals=0 -> should pass.
+    test('arc3 decimals zero triggers decimals validation', async () => {
+      // When 'decimals' is explicitly set to 0, writer must fetch ASA params and run decimals validation
+      // under validateArc3=true (the ASA has decimals=0, so the validation passes).
+      const assetId = await createArc89Asa({ assetManager, appClient: client })
       const validateSpy = vi.spyOn(validation, 'validateArc3Values')
       const getByIdSpy = vi.spyOn(writer.client.algorand.asset, 'getById')
 
       const metadata = AssetMetadata.fromJson({
         assetId,
-        jsonObj: { name: 'Zero Decimals', decimals: 0 },
+        jsonObj: { name: 'Zero Decimals', description: 'Should trigger decimals validation', decimals: 0 },
       })
 
       const mbrDelta = await writer.createMetadata({ assetManager, metadata, validateArc3: true })
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
-      expect(mbrDelta.isPositive).toBe(true)
+      // Writer must fetch ASA params and invoke ARC-3 validation.
       expect(getByIdSpy).toHaveBeenCalledOnce()
       expect(validateSpy).toHaveBeenCalledOnce()
-
-      validateSpy.mockRestore()
-      getByIdSpy.mockRestore()
-    })
-  })
-
-  describe('create metadata arc3 compliant', () => {
-    // Test createMetadata validation for declared ARC-3 compliant ASAs.
-    let assetId: bigint
-
-    beforeEach(async () => {
-      assetId = await createArc3Asa({ assetManager, appClient: client })
     })
 
-    test('invalid properties when no reversible flags are set creates metadata', async () => {
+    test('invalid properties no rev flags creates metadata', async () => {
       // Test that arc3 flag without arc20/arc62 reversible flags skips properties validation.
+      const assetId = await createArc3Asa({ assetManager, appClient: client })
       const metadata = AssetMetadata.fromJson({
         assetId,
-        jsonObj: createArc3Payload({ name: 'ARC3 test', properties: {} }),
+        jsonObj: createArc3Payload({ name: 'ARC3 Compliant Test', properties: {} }),
         flags: new MetadataFlags({
-          reversible: ReversibleFlags.empty(),
+          reversible: new ReversibleFlags(),
           irreversible: new IrreversibleFlags({ arc3: true }),
         }),
       })
@@ -602,32 +689,32 @@ describe('high-level send methods', () => {
       expect(mbrDelta.isPositive).toBe(true)
     })
 
-    test.each([new ReversibleFlags({ arc20: true }), new ReversibleFlags({ arc62: true })])(
-      'no arc3 flag skips validation',
-      async (revFlag) => {
-        // Test that arc20/arc62 reversible flags without arc3 flag skip properties validation.
-        // ARC-20 still requires the ASA-level conditions (DefaultFrozen, Clawback)
-        const assetId = await createArc3TestAsa({
-          assetManager,
-          defaultFrozen: revFlag.arc20,
-          clawback: revFlag.arc20 ? assetManager.addr : undefined,
-        })
-        const metadata = AssetMetadata.fromJson({
-          assetId,
-          jsonObj: createArc3Payload({ name: 'No ARC3', properties: {} }),
-          flags: new MetadataFlags({
-            reversible: revFlag,
-            irreversible: new IrreversibleFlags({ arc3: false }),
-          }),
-        })
+    test.each([
+      { id: 'arc20', revFlag: new ReversibleFlags({ arc20: true }) },
+      { id: 'arc62', revFlag: new ReversibleFlags({ arc62: true }) },
+    ])('no arc3 flag skips validation ($id)', async ({ revFlag }) => {
+      // Test that arc20/arc62 reversible flags without arc3 flag skip properties validation.
+      // ARC-20 still requires the ASA-level conditions (DefaultFrozen, Clawback)
+      const assetId = await createArc3TestAsa({
+        assetManager,
+        defaultFrozen: revFlag.arc20,
+        clawback: revFlag.arc20 ? assetManager.addr : undefined,
+      })
+      const metadata = AssetMetadata.fromJson({
+        assetId,
+        jsonObj: createArc3Payload({ name: 'ARC3 Compliant Test', properties: {} }),
+        flags: new MetadataFlags({
+          reversible: revFlag,
+          irreversible: new IrreversibleFlags({ arc3: false }),
+        }),
+      })
 
-        const mbrDelta = await writer.createMetadata({ assetManager, metadata })
-        expect(mbrDelta).toBeInstanceOf(MbrDelta)
-        expect(mbrDelta.isPositive).toBe(true)
-      },
-    )
+      const mbrDelta = await writer.createMetadata({ assetManager, metadata })
+      expect(mbrDelta).toBeInstanceOf(MbrDelta)
+      expect(mbrDelta.isPositive).toBe(true)
+    })
 
-    test('valid properties both flags creates metadata', async () => {
+    test('both flags valid properties creates metadata', async () => {
       // Test that both arc20+arc62 flags with valid properties creates metadata successfully.
       const assetId = await createArc3TestAsa({
         assetManager,
@@ -637,7 +724,7 @@ describe('high-level send methods', () => {
       const metadata = AssetMetadata.fromJson({
         assetId,
         jsonObj: createArc3Payload({
-          name: 'ARC3 both flags valid',
+          name: 'ARC3 Compliant Test',
           properties: {
             'arc-20': { 'application-id': 123456 },
             'arc-62': { 'application-id': 654321 },
@@ -655,9 +742,9 @@ describe('high-level send methods', () => {
     })
 
     test.each([
-      [flags.REV_FLG_ARC20, 'arc-20'],
-      [flags.REV_FLG_ARC62, 'arc-62'],
-    ] as const)('valid properties creates metadata (flag %i)', async (flagIndex, arcKey) => {
+      { id: 'arc20', flagIndex: flags.REV_FLG_ARC20 },
+      { id: 'arc62', flagIndex: flags.REV_FLG_ARC62 },
+    ])('valid properties creates metadata ($id)', async ({ flagIndex }) => {
       // Test that valid properties with arc3 + arc20/arc62 flags creates metadata successfully.
       const isArc20 = flagIndex === flags.REV_FLG_ARC20
       const assetId = await createArc3TestAsa({
@@ -665,9 +752,14 @@ describe('high-level send methods', () => {
         defaultFrozen: isArc20,
         clawback: isArc20 ? getApplicationAddress(123456) : undefined,
       })
+
+      const arcKey = isArc20 ? 'arc-20' : 'arc-62'
       const metadata = AssetMetadata.fromJson({
         assetId,
-        jsonObj: createArc3Payload({ name: 'ARC3 One Flag', properties: { [arcKey]: { 'application-id': 123456 } } }),
+        jsonObj: createArc3Payload({
+          name: 'ARC3 Compliant Test',
+          properties: { [arcKey]: { 'application-id': 123456 } },
+        }),
         flags: new MetadataFlags({
           reversible: new ReversibleFlags({
             arc20: flagIndex === flags.REV_FLG_ARC20,
@@ -688,25 +780,23 @@ describe('high-level send methods', () => {
     test('delete existing metadata', async () => {
       // Test deleting existing metadata.
       const assetId = await createArc89Asa({ assetManager, appClient: client })
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+      const metadata = await uploadMetadata({
+        writer,
+        assetManager,
+        appClient: client,
+        metadata: buildShortMetadata(assetId),
+      })
 
       const mbrDelta = await writer.deleteMetadata({ assetManager, assetId: metadata.assetId })
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
       expect(mbrDelta.isNegative).toBe(true)
-      // TODO: replace with reader when refactored
-      await expect(client.state.box.assetMetadata.value(metadata.assetId)).rejects.toThrow()
+      // Verify deletion
+      await expect(client.state.box.assetMetadata.value(metadata.assetId)).rejects.toThrow(/box not found/)
     })
   })
 
   describe('set reversible flag', () => {
     // Test setReversibleFlag method.
-    // Test createMetadata validation for declared ARC-3 compliant ASAs.
-    let arc3AssetId: bigint
-
-    beforeEach(async () => {
-      arc3AssetId = await createArc3Asa({ assetManager, appClient: client })
-    })
 
     // Flag index validation (unit-testable, throws before chain interaction).
     test('rejects negative flag index', async () => {
@@ -718,12 +808,18 @@ describe('high-level send methods', () => {
       ).rejects.toThrow(InvalidFlagIndexError)
     })
 
-    test('rejects flag index > 7', async () => {
+    test('fail invalid flag index', async () => {
+      // Test that an out-of-range flag index raises InvalidFlagIndexError.
       const writer = new AsaMetadataRegistryWrite({ client: mockClient })
       const account = createMockSigningAccount()
 
       await expect(
-        writer.setReversibleFlag({ assetManager: account, assetId: 123, flagIndex: 8, value: true }),
+        writer.setReversibleFlag({
+          assetManager: account,
+          assetId: 123,
+          flagIndex: flags.REV_FLG_RESERVED_7 + 1,
+          value: true,
+        }),
       ).rejects.toThrow(InvalidFlagIndexError)
     })
 
@@ -731,55 +827,53 @@ describe('high-level send methods', () => {
     test('set reversible flag true', async () => {
       // Test setting a reversible flag to true.
       const assetId = await createArc89Asa({ assetManager, appClient: client })
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+      await uploadMetadata({ writer, assetManager, appClient: client, metadata: buildShortMetadata(assetId) })
 
       await writer.setReversibleFlag({
         assetManager,
-        assetId: metadata.assetId,
+        assetId,
         flagIndex: flags.REV_FLG_NTT,
         value: true,
       })
-      const record = await reader.box.getAssetMetadataRecord({ assetId })
-      expect(record).not.toBeNull()
-      expect(record.header.isNttCrossChain).toBe(true)
+      // Verify flag was set
+      const updated = await getMetadataBox(assetId)
+      expect(updated.header.flags.reversible.ntt).toBe(true)
     })
 
     test('set reversible flag false', async () => {
       // Test setting a reversible flag to false.
       const assetId = await createArc89Asa({ assetManager, appClient: client })
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+      await uploadMetadata({ writer, assetManager, appClient: client, metadata: buildShortMetadata(assetId) })
 
       // First set to true
       await writer.setReversibleFlag({
         assetManager,
-        assetId: metadata.assetId,
+        assetId,
         flagIndex: flags.REV_FLG_ARC62,
         value: true,
       })
-
-      let record = await reader.box.getAssetMetadataRecord({ assetId })
-      expect(record).not.toBeNull()
-      expect(record.header.isArc62CirculatingSupply).toBe(true)
+      expect((await getMetadataBox(assetId)).header.isArc62CirculatingSupply).toBe(true)
 
       // Then set to false
       await writer.setReversibleFlag({
         assetManager,
-        assetId: metadata.assetId,
+        assetId,
         flagIndex: flags.REV_FLG_ARC62,
         value: false,
       })
-      record = await reader.box.getAssetMetadataRecord({ assetId })
-      expect(record).not.toBeNull()
-      expect(record.header.isArc62CirculatingSupply).toBe(false)
+      const updated = await getMetadataBox(assetId)
+      expect(updated.header.isArc62CirculatingSupply).toBe(false)
     })
 
-    test.each([flags.REV_FLG_ARC20, flags.REV_FLG_ARC62])('rejects arc3 invalid properties', async (flagIndex) => {
+    test.each([
+      { id: 'arc20', flagIndex: flags.REV_FLG_ARC20 },
+      { id: 'arc62', flagIndex: flags.REV_FLG_ARC62 },
+    ])('fail arc3 invalid properties ($id)', async ({ flagIndex }) => {
       // Test that missing properties with arc3 + arc20/arc62 flags raises InvalidArc3PropertiesError.
+      const arc3AssetId = await createArc3Asa({ assetManager, appClient: client })
       const metadata = AssetMetadata.fromJson({
         assetId: arc3AssetId,
-        jsonObj: createArc3Payload({ name: 'ARC3 set flag', properties: {} }),
+        jsonObj: createArc3Payload({ name: 'ARC3 Test', properties: {} }),
         flags: new MetadataFlags({
           reversible: ReversibleFlags.empty(),
           irreversible: new IrreversibleFlags({ arc3: true }),
@@ -798,23 +892,21 @@ describe('high-level send methods', () => {
     })
 
     test.each([
-      [flags.REV_FLG_ARC20, 'arc-20', 'isArc20SmartAsa'],
-      [flags.REV_FLG_ARC62, 'arc-62', 'isArc62CirculatingSupply'],
-    ] as const)('valid arc3 properties sets flag', async (flagIndex, arcKey, expectedHeaderProp) => {
-      // Test that enabling an ARC-3 mapped flag succeeds when the metadata body has a valid properties entry.
+      { id: 'arc20', flagIndex: flags.REV_FLG_ARC20, arcKey: 'arc-20' },
+      { id: 'arc62', flagIndex: flags.REV_FLG_ARC62, arcKey: 'arc-62' },
+    ])('arc3 valid properties sets flag ($id)', async ({ flagIndex, arcKey }) => {
+      // Test that valid properties with arc3 + arc20/arc62 flags sets the flag successfully.
+      const appId = 123456
       // ARC-20 also requires DefaultFrozen and the controlling App account as Clawback
       const isArc20 = flagIndex === flags.REV_FLG_ARC20
-      const arc3AssetId = await createArc3TestAsa({
+      const assetId = await createArc3TestAsa({
         assetManager,
         defaultFrozen: isArc20,
-        clawback: isArc20 ? getApplicationAddress(123456) : undefined,
+        clawback: isArc20 ? getApplicationAddress(appId) : undefined,
       })
       const metadata = AssetMetadata.fromJson({
-        assetId: arc3AssetId,
-        jsonObj: {
-          name: 'ARC3 set flag valid',
-          properties: { [arcKey]: { 'application-id': 123456 } },
-        },
+        assetId,
+        jsonObj: createArc3Payload({ name: 'ARC3 Test', properties: { [arcKey]: { 'application-id': appId } } }),
         flags: new MetadataFlags({
           reversible: ReversibleFlags.empty(),
           irreversible: new IrreversibleFlags({ arc3: true }),
@@ -824,14 +916,15 @@ describe('high-level send methods', () => {
 
       await writer.setReversibleFlag({
         assetManager,
-        assetId: arc3AssetId,
+        assetId,
         flagIndex,
         value: true,
       })
 
-      const record = await reader.box.getAssetMetadataRecord({ assetId: arc3AssetId })
+      const record = await reader.box.getAssetMetadataRecord({ assetId })
       expect(record).not.toBeNull()
-      expect(record.header[expectedHeaderProp]).toBe(true)
+      expect(record.header.flags.reversible.arc20).toBe(flagIndex === flags.REV_FLG_ARC20)
+      expect(record.header.flags.reversible.arc62).toBe(flagIndex === flags.REV_FLG_ARC62)
     })
   })
 
@@ -861,6 +954,16 @@ describe('high-level send methods', () => {
       ).rejects.toThrow(InvalidFlagIndexError)
     })
 
+    test('rejects immutable flag index (7)', async () => {
+      // Flag 7 (IMMUTABLE) is reserved to setImmutable.
+      const writer = new AsaMetadataRegistryWrite({ client: mockClient })
+      const account = createMockSigningAccount()
+
+      await expect(
+        writer.setIrreversibleFlag({ assetManager: account, assetId: 123, flagIndex: flags.IRR_FLG_IMMUTABLE }),
+      ).rejects.toThrow(InvalidFlagIndexError)
+    })
+
     test('rejects flag index > 7', async () => {
       const writer = new AsaMetadataRegistryWrite({ client: mockClient })
       const account = createMockSigningAccount()
@@ -874,17 +977,16 @@ describe('high-level send methods', () => {
     test('set irreversible flag', async () => {
       // Test setting an irreversible flag.
       const assetId = await createArc89Asa({ assetManager, appClient: client })
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+      await uploadMetadata({ writer, assetManager, appClient: client, metadata: buildShortMetadata(assetId) })
 
       await writer.setIrreversibleFlag({
         assetManager,
-        assetId: metadata.assetId,
+        assetId,
         flagIndex: flags.IRR_FLG_RESERVED_3,
       })
-      const record = await reader.box.getAssetMetadataRecord({ assetId })
-      expect(record).not.toBeNull()
-      expect(record.header.flags.irreversible.reserved3).toBe(true)
+      // Verify flag was set
+      const updated = await getMetadataBox(assetId)
+      expect(updated.header.flags.irreversible.reserved3).toBe(true)
     })
   })
 
@@ -893,13 +995,12 @@ describe('high-level send methods', () => {
     test('set immutable', async () => {
       // Test setting metadata as immutable.
       const assetId = await createArc89Asa({ assetManager, appClient: client })
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+      await uploadMetadata({ writer, assetManager, appClient: client, metadata: buildShortMetadata(assetId) })
 
-      await writer.setImmutable({ assetManager, assetId: metadata.assetId })
-      const record = await reader.box.getAssetMetadataRecord({ assetId })
-      expect(record).not.toBeNull()
-      expect(record.header.isImmutable).toBe(true)
+      await writer.setImmutable({ assetManager, assetId })
+      // Verify immutable flag was set
+      const updated = await getMetadataBox(assetId)
+      expect(updated.header.isImmutable).toBe(true)
     })
   })
 
@@ -967,12 +1068,12 @@ describe('high-level send methods', () => {
         flagIndex: flags.IRR_FLG_RESERVED_3,
       })
 
-      // Verify both flags are set
-      const record = await reader.box.getAssetMetadataRecord({ assetId })
-      expect(record.header.isArc62CirculatingSupply).toBe(true)
-      expect(record.header.flags.reversible.arc62).toBe(true)
-      expect(record.header.flags.irreversible.reserved3).toBe(true)
-      expect(record.header.flags.reversible.reserved3).toBe(true)
+      // Verify all flags are set
+      const result = await getMetadataBox(assetId)
+      expect(result.header.isArc62CirculatingSupply).toBe(true)
+      expect(result.header.flags.reversible.arc62).toBe(true)
+      expect(result.header.flags.reversible.reserved3).toBe(true)
+      expect(result.header.flags.irreversible.reserved3).toBe(true)
     })
   })
 })
@@ -982,48 +1083,34 @@ describe('high-level send methods', () => {
 // ================================================================
 
 describe('write single transaction simulation', () => {
-  // Test direct composer.simulate() usage for single-transaction writer flows.
-  let assetManager: AddressWithSigners
-  let writer: AsaMetadataRegistryWrite
-  let boxReader: AlgodBoxReader
-  let reader: AsaMetadataRegistryRead
-  let assetId: bigint
-
-  beforeEach(async () => {
-    writer = new AsaMetadataRegistryWrite({ client })
-    boxReader = new AlgodBoxReader(algorand.client.algod)
-    reader = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader })
-    assetManager = await createFundedAccount(fixture)
-    assetId = await createArc89Asa({ assetManager, appClient: client })
-  })
-
+  // Test direct composer.simulate() for single-transaction writer methods.
   test('simulate set reversible flag single transaction', async () => {
-    // Test simulating setReversibleFlag via direct composer.simulate().
-    const metadata = buildShortMetadata(assetId)
-    await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+    // Test simulating setReversibleFlag via direct composer.
+    const writer = new AsaMetadataRegistryWrite({ client })
+    const reader = createReader()
+    const assetManager = await createFundedAccount(fixture)
+    const assetId = await createArc89Asa({ assetManager, appClient: client })
+    await uploadMetadata({ writer, assetManager, appClient: client, metadata: buildShortMetadata(assetId) })
+    const minFee = (await client.algorand.getSuggestedParams()).minFee
 
     const before = await reader.box.getAssetMetadataRecord({ assetId })
-    const suggestedParams = await client.algorand.getSuggestedParams()
+
     const composer = writer.client.newGroup()
     composer.arc89SetReversibleFlag({
-      args: { assetId: metadata.assetId, flag: flags.REV_FLG_NTT, value: true },
+      args: { assetId, flag: flags.REV_FLG_NTT, value: true },
       sender: assetManager.addr,
       signer: assetManager.signer,
-      staticFee: microAlgo(Number(suggestedParams.minFee)),
+      staticFee: microAlgo(minFee),
     })
-    // Any custom simulate options can go here
-    const simulateOptions: SimulateOptions = {
-      allowEmptySignatures: true,
-      skipSignatures: true,
-      allowUnnamedResources: true,
-    }
-    const simulateResult = await composer.simulate(simulateOptions)
 
-    expect(simulateResult).not.toBeNull()
+    const simulate: SimulateOptions = { ...DEFAULT_SIMULATE_OPTIONS } // Any custom options can go here
+    const simulateResult = await composer.simulate(simulate)
+
+    expect(simulateResult).toBeDefined()
     expect(simulateResult.simulateResponse).toBeDefined()
     expect(simulateResult.returns).toHaveLength(1)
+    // void method: no return value (a decode error would throw)
     expect(simulateResult.returns[0]).toBeUndefined()
-
     const after = await reader.box.getAssetMetadataRecord({ assetId })
     expect(after).toEqual(before)
   })
@@ -1034,12 +1121,15 @@ describe('write single transaction simulation', () => {
 // ================================================================
 
 describe('group builder methods', () => {
+  // Builder tests also assert the group composition and the pooled fee (Python v1.0.0 reference values).
   let assetManager: AddressWithSigners
   let writer: AsaMetadataRegistryWrite
+  let minFee: number
 
   beforeAll(async () => {
     writer = new AsaMetadataRegistryWrite({ client })
     assetManager = await createFundedAccount(fixture)
+    minFee = Number((await algorand.getSuggestedParams()).minFee)
   })
 
   describe('build create metadata group', () => {
@@ -1054,14 +1144,18 @@ describe('group builder methods', () => {
       // Test building create group for empty metadata.
       const metadata = buildEmptyMetadata(assetId)
       const composer = await writer.buildCreateMetadataGroup({ assetManager, metadata })
-      expect(composer).not.toBeNull()
+      expect(composer).toBeDefined()
+      // MBR payment + head call, no opcode budget nor extra resources for empty metadata
+      await expectGroup(composer, { txns: [PAY, CREATE], feePool: 2 * minFee })
     })
 
     test('build create short metadata', async () => {
       // Test building create group for short metadata.
       const metadata = buildShortMetadata(assetId)
       const composer = await writer.buildCreateMetadataGroup({ assetManager, metadata })
-      expect(composer).not.toBeNull()
+      expect(composer).toBeDefined()
+      // + the extra_resources call appended for non-empty metadata, opcode budget in the fee pool
+      await expectGroup(composer, { txns: [PAY, CREATE, EXTRA_RESOURCES], feePool: 4 * minFee })
     })
 
     test('build create with custom options', async () => {
@@ -1069,98 +1163,103 @@ describe('group builder methods', () => {
       const metadata = buildShortMetadata(assetId)
       const options: WriteOptions = { ...writeOptionsDefault, extraResources: 2, feePaddingTxns: 1 }
       const composer = await writer.buildCreateMetadataGroup({ assetManager, metadata, options })
-      expect(composer).not.toBeNull()
+      expect(composer).toBeDefined()
+      await expectGroup(composer, { txns: [PAY, CREATE, ...repeat(3, EXTRA_RESOURCES)], feePool: 7 * minFee })
     })
 
     test('build create large metadata', async () => {
       // Test building create group for large metadata (multiple chunks).
       const metadata = buildMaxedMetadata(assetId)
       const composer = await writer.buildCreateMetadataGroup({ assetManager, metadata })
-      expect(composer).not.toBeNull()
+      expect(composer).toBeDefined()
+      // 8 payload chunks (4,094 bytes, the last one 4,059), opcode budget (ARC-89 native Asset URL check
+      // included) and the app args surcharge (arguments above 2,048 bytes)
+      const surcharge = appArgsSurchargeFee(minFee, [4112, ...repeat(6, 4108), 4073])
+      await expectGroup(composer, {
+        txns: [PAY, CREATE, ...repeat(7, EXTRA_PAYLOAD), EXTRA_RESOURCES],
+        feePool: 13 * minFee + surcharge,
+      })
     })
   })
 
   describe('build replace metadata group', () => {
     // Test buildReplaceMetadataGroup method.
-    let assetId: bigint
+    let mutableShortMetadata: AssetMetadata
 
     beforeEach(async () => {
-      assetId = await createArc89Asa({ assetManager, appClient: client })
+      const assetId = await createArc89Asa({ assetManager, appClient: client })
+      mutableShortMetadata = await uploadMetadata({
+        writer,
+        assetManager,
+        appClient: client,
+        metadata: buildShortMetadata(assetId),
+      })
     })
 
     test('build replace smaller metadata', async () => {
       // Test building replace group when new metadata is smaller/equal.
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
-
       // Replace with empty (smaller)
       const newMetadata = AssetMetadata.fromBytes({
-        assetId: metadata.assetId,
+        assetId: mutableShortMetadata.assetId,
         metadataBytes: new Uint8Array(),
         validateJsonObject: false,
       })
       const composer = await writer.buildReplaceMetadataGroup({
         assetManager,
         metadata: newMetadata,
-        assumeCurrentSize: metadata.size,
+        assumeCurrentSize: mutableShortMetadata.size,
       })
-      expect(composer).not.toBeNull()
+      expect(composer).toBeDefined()
+      // Head call + MBR refund inner payment
+      await expectGroup(composer, { txns: [REPLACE], feePool: 2 * minFee })
     })
 
     test('build replace larger metadata', async () => {
       // Test building replace group when new metadata is larger.
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
-
       // Replace with larger content
       const newMetadata = AssetMetadata.fromBytes({
-        assetId: metadata.assetId,
-        metadataBytes: new Uint8Array(metadata.size + 1000).fill(120),
+        assetId: mutableShortMetadata.assetId,
+        metadataBytes: new Uint8Array(mutableShortMetadata.size + 1000).fill(0x78),
         validateJsonObject: false,
       })
       const composer = await writer.buildReplaceMetadataGroup({
         assetManager,
         metadata: newMetadata,
-        assumeCurrentSize: metadata.size,
+        assumeCurrentSize: mutableShortMetadata.size,
       })
-      expect(composer).not.toBeNull()
+      expect(composer).toBeDefined()
+      await expectGroup(composer, { txns: [PAY, REPLACE_LARGER, EXTRA_RESOURCES], feePool: 5 * minFee })
     })
 
     test('build replace auto detect size', async () => {
       // Test replace group auto-detects current size when not provided.
-      const assetId = await createArc89Asa({ assetManager, appClient: client })
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
-
       const newMetadata = AssetMetadata.fromBytes({
-        assetId: metadata.assetId,
-        metadataBytes: new TextEncoder().encode('new'),
+        assetId: mutableShortMetadata.assetId,
+        metadataBytes: encode('new'),
         validateJsonObject: false,
       })
       // Don't pass assumeCurrentSize, should fetch from chain
       const composer = await writer.buildReplaceMetadataGroup({ assetManager, metadata: newMetadata })
-      expect(composer).not.toBeNull()
+      expect(composer).toBeDefined()
+      await expectGroup(composer, { txns: [REPLACE, EXTRA_RESOURCES], feePool: 5 * minFee })
     })
 
     test('build replace with options', async () => {
       // Test building replace group with custom options.
-      const assetId = await createArc89Asa({ assetManager, appClient: client })
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
-
       const newMetadata = AssetMetadata.fromBytes({
-        assetId: metadata.assetId,
-        metadataBytes: new TextEncoder().encode('updated'),
+        assetId: mutableShortMetadata.assetId,
+        metadataBytes: encode('updated'),
         validateJsonObject: false,
       })
       const options: WriteOptions = { ...writeOptionsDefault, extraResources: 2, feePaddingTxns: 1 }
       const composer = await writer.buildReplaceMetadataGroup({
         assetManager,
         metadata: newMetadata,
-        assumeCurrentSize: metadata.size,
+        assumeCurrentSize: mutableShortMetadata.size,
         options,
       })
-      expect(composer).not.toBeNull()
+      expect(composer).toBeDefined()
+      await expectGroup(composer, { txns: [REPLACE, ...repeat(3, EXTRA_RESOURCES)], feePool: 8 * minFee })
     })
   })
 
@@ -1170,53 +1269,56 @@ describe('group builder methods', () => {
 
     beforeEach(async () => {
       assetId = await createArc89Asa({ assetManager, appClient: client })
+      await uploadMetadata({ writer, assetManager, appClient: client, metadata: buildShortMetadata(assetId) })
     })
 
     test('build slice small payload', async () => {
       // Test building slice group with small payload (single chunk).
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
-
       const composer = await writer.buildReplaceMetadataSliceGroup({
         assetManager,
         assetId,
         offset: 0,
-        payload: new TextEncoder().encode('slice'),
+        payload: encode('slice'),
       })
-      expect(composer).not.toBeNull()
+      expect(composer).toBeDefined()
+      await expectGroup(composer, { txns: [REPLACE_SLICE], feePool: minFee })
     })
 
     test('build slice large payload', async () => {
       // Test building slice group with large payload (multiple chunks).
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
-
+      const params = await writer['_params']()
       // Create payload larger than replacePayloadMaxSize
-      const params = getDefaultRegistryParams()
-      const largePayload = new Uint8Array(params.replacePayloadMaxSize * 2 + 100).fill(120)
+      const largePayload = new Uint8Array(params.replacePayloadMaxSize * 2 + 100).fill(0x78)
       const composer = await writer.buildReplaceMetadataSliceGroup({
         assetManager,
-        assetId: metadata.assetId,
-        offset: 0,
+        assetId,
+        offset: 10,
         payload: largePayload,
       })
-      expect(composer).not.toBeNull()
+      expect(composer).toBeDefined()
+      // Every slice call recomputes the Metadata Hash: its opcode budget is pooled once per slice call
+      const surcharge = appArgsSurchargeFee(minFee, [4110, 4110, 116])
+      const txns = await expectGroup(composer, { txns: repeat(3, REPLACE_SLICE), feePool: 6 * minFee + surcharge })
+      // Each chunk is written at its own offset
+      const offsets = txns.map((txn) => {
+        const offset = txn.applicationCall!.appArgs[2]!
+        return (offset[0]! << 8) | offset[1]!
+      })
+      expect(offsets).toEqual([10, 10 + params.replacePayloadMaxSize, 10 + 2 * params.replacePayloadMaxSize])
     })
 
     test('build slice with options', async () => {
       // Test building slice group with custom options.
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
-
       const options: WriteOptions = { ...writeOptionsDefault, extraResources: 3 }
       const composer = await writer.buildReplaceMetadataSliceGroup({
         assetManager,
-        assetId: metadata.assetId,
+        assetId,
         offset: 0,
-        payload: new TextEncoder().encode('updated slice'),
+        payload: encode('updated slice'),
         options,
       })
-      expect(composer).not.toBeNull()
+      expect(composer).toBeDefined()
+      await expectGroup(composer, { txns: [REPLACE_SLICE, ...repeat(3, EXTRA_RESOURCES)], feePool: 5 * minFee })
     })
   })
 
@@ -1226,25 +1328,23 @@ describe('group builder methods', () => {
 
     beforeEach(async () => {
       assetId = await createArc89Asa({ assetManager, appClient: client })
+      await uploadMetadata({ writer, assetManager, appClient: client, metadata: buildShortMetadata(assetId) })
     })
 
     test('build delete', async () => {
       // Test building delete group.
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
-
       const composer = await writer.buildDeleteMetadataGroup({ assetManager, assetId })
-      expect(composer).not.toBeNull()
+      expect(composer).toBeDefined()
+      // Head call + MBR refund inner payment
+      await expectGroup(composer, { txns: [DELETE], feePool: 2 * minFee })
     })
 
     test('build delete with options', async () => {
       // Test building delete group with custom options.
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
-
       const options: WriteOptions = { ...writeOptionsDefault, extraResources: 1, feePaddingTxns: 2 }
       const composer = await writer.buildDeleteMetadataGroup({ assetManager, assetId, options })
-      expect(composer).not.toBeNull()
+      expect(composer).toBeDefined()
+      await expectGroup(composer, { txns: [DELETE, EXTRA_RESOURCES], feePool: 5 * minFee })
     })
   })
 })
@@ -1256,13 +1356,11 @@ describe('group builder methods', () => {
 describe('high-level replace methods', () => {
   let assetManager: AddressWithSigners
   let writer: AsaMetadataRegistryWrite
-  let boxReader: AlgodBoxReader
   let reader: AsaMetadataRegistryRead
 
   beforeAll(async () => {
     writer = new AsaMetadataRegistryWrite({ client })
-    boxReader = new AlgodBoxReader(algorand.client.algod)
-    reader = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader })
+    reader = createReader()
     assetManager = await createFundedAccount(fixture)
   })
 
@@ -1276,12 +1374,16 @@ describe('high-level replace methods', () => {
 
     test('replace with smaller metadata', async () => {
       // Test replacing with smaller metadata.
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+      const metadata = await uploadMetadata({
+        writer,
+        assetManager,
+        appClient: client,
+        metadata: buildShortMetadata(assetId),
+      })
 
       const newMetadata = AssetMetadata.fromBytes({
-        assetId: metadata.assetId,
-        metadataBytes: new TextEncoder().encode('small'),
+        assetId,
+        metadataBytes: encode('small'),
         validateJsonObject: false,
       })
       const mbrDelta = await writer.replaceMetadata({
@@ -1294,19 +1396,17 @@ describe('high-level replace methods', () => {
       // Should be negative or zero since smaller
       expect(mbrDelta.isNegative || mbrDelta.isZero).toBe(true)
       const record = await reader.box.getAssetMetadataRecord({ assetId })
-      expect(record).not.toBeNull()
-      expect(record.body.rawBytes).toEqual(new TextEncoder().encode('small'))
+      expect(record.body.rawBytes).toEqual(encode('small'))
       expect(record.body.size).toBe(5)
     })
 
     test('replace with larger metadata', async () => {
       // Test replacing with larger metadata.
-      const metadata = buildEmptyMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+      await uploadMetadata({ writer, assetManager, appClient: client, metadata: buildEmptyMetadata(assetId) })
 
       const newMetadata = AssetMetadata.fromBytes({
-        assetId: metadata.assetId,
-        metadataBytes: new Uint8Array(1000).fill(120),
+        assetId,
+        metadataBytes: new Uint8Array(1000).fill(0x78),
         validateJsonObject: false,
       })
       const mbrDelta = await writer.replaceMetadata({
@@ -1318,81 +1418,37 @@ describe('high-level replace methods', () => {
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
       expect(mbrDelta.isPositive).toBe(true)
       const record = await reader.box.getAssetMetadataRecord({ assetId })
-      expect(record).not.toBeNull()
       expect(record.body.size).toBe(1000)
-      expect(record.body.rawBytes).toEqual(new Uint8Array(1000).fill(120))
+      expect(record.body.rawBytes).toEqual(new Uint8Array(1000).fill(0x78))
     })
 
     test('replace auto detect current size', async () => {
       // Test replace auto-detects current size.
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+      await uploadMetadata({ writer, assetManager, appClient: client, metadata: buildShortMetadata(assetId) })
 
       const newMetadata = AssetMetadata.fromBytes({
-        assetId: metadata.assetId,
-        metadataBytes: new TextEncoder().encode('replacement'),
+        assetId,
+        metadataBytes: encode('replacement'),
         validateJsonObject: false,
       })
       const mbrDelta = await writer.replaceMetadata({ assetManager, metadata: newMetadata, validateArc3: false })
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
       const record = await reader.box.getAssetMetadataRecord({ assetId })
-      expect(record).not.toBeNull()
-      expect(record.body.rawBytes).toEqual(new TextEncoder().encode('replacement'))
+      expect(record.body.rawBytes).toEqual(encode('replacement'))
     })
 
-    test('replace validate arc3 fails invalid decimals', async () => {
-      // replaceMetadata should raise MetadataArc3Error when validateArc3=true and decimals don't match.
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
-
-      // assetId has decimals=0, but metadata says decimals=6
-      const newMetadata = AssetMetadata.fromJson({
-        assetId,
-        jsonObj: { name: 'Wrong Decimals', decimals: 6 },
-      })
-
-      await expect(
-        writer.replaceMetadata({
-          assetManager,
-          metadata: newMetadata,
-          assumeCurrentSize: metadata.size,
-          validateArc3: true,
-        }),
-      ).rejects.toThrow(/ARC-3 field 'decimals' must match ASA decimals \(0\), got 6/)
-    })
-
-    test('replace validate arc3 raises asa not found', async () => {
-      // replaceMetadata should raise AsaNotFoundError when validateArc3=true and the ASA doesn't exist.
-      const metadata = buildShortMetadata(assetId)
-      const uploaded = await uploadMetadata({ writer, assetManager, appClient: client, metadata })
-
-      // Destroy the ASA so on-chain lookup fails during ARC-3 validation.
-      await algorand.send.assetDestroy({ sender: assetManager.addr, assetId })
-
-      const newMetadata = AssetMetadata.fromJson({
-        assetId,
-        jsonObj: { name: 'Missing ASA', decimals: 0 },
-      })
-
-      await expect(
-        writer.replaceMetadata({
-          assetManager,
-          metadata: newMetadata,
-          assumeCurrentSize: uploaded.size,
-          validateArc3: true,
-        }),
-      ).rejects.toThrow(new RegExp(`Asset ${assetId} does not exist`))
-    })
-
-    test('replace arc3 decimals zero triggers decimals validation', async () => {
+    test('arc3 decimals zero triggers decimals validation', async () => {
       // When 'decimals' is explicitly 0, replaceMetadata must still validate under validateArc3=true.
+      const metadata = await uploadMetadata({
+        writer,
+        assetManager,
+        appClient: client,
+        metadata: buildShortMetadata(assetId),
+      })
       const validateSpy = vi.spyOn(validation, 'validateArc3Values')
       const getByIdSpy = vi.spyOn(writer.client.algorand.asset, 'getById')
 
-      const metadata = buildShortMetadata(assetId)
-      const uploaded = await uploadMetadata({ writer, assetManager, appClient: client, metadata })
-
-      // ASA has decimals=0, metadata says decimals=0 -> should pass.
+      // The ASA has decimals=0, metadata says decimals=0 -> should pass.
       const newMetadata = AssetMetadata.fromJson({
         assetId,
         jsonObj: { name: 'Zero Decimals', decimals: 0 },
@@ -1401,15 +1457,62 @@ describe('high-level replace methods', () => {
       const mbrDelta = await writer.replaceMetadata({
         assetManager,
         metadata: newMetadata,
-        assumeCurrentSize: uploaded.size,
+        assumeCurrentSize: metadata.size,
         validateArc3: true,
       })
       expect(mbrDelta).toBeInstanceOf(MbrDelta)
       expect(getByIdSpy).toHaveBeenCalledOnce()
       expect(validateSpy).toHaveBeenCalledOnce()
+    })
 
-      validateSpy.mockRestore()
-      getByIdSpy.mockRestore()
+    test('replace validate arc3 raises asa not found', async () => {
+      // replaceMetadata should raise AsaNotFoundError when validateArc3=true and the ASA doesn't exist.
+      const metadata = await uploadMetadata({
+        writer,
+        assetManager,
+        appClient: client,
+        metadata: buildShortMetadata(assetId),
+      })
+      const newMetadata = AssetMetadata.fromJson({
+        assetId,
+        jsonObj: { name: 'Missing ASA', decimals: 0 },
+      })
+
+      await algorand.send.assetDestroy({ sender: assetManager.addr, assetId })
+
+      const result = writer.replaceMetadata({
+        assetManager,
+        metadata: newMetadata,
+        assumeCurrentSize: metadata.size,
+        validateArc3: true,
+      })
+      await expect(result).rejects.toThrow(AsaNotFoundError)
+      await expect(result).rejects.toThrow(`Asset ${assetId} does not exist`)
+    })
+
+    test('replace validate arc3 fails invalid decimals', async () => {
+      // replaceMetadata should raise MetadataArc3Error when validateArc3=true and decimals don't match.
+      const metadata = await uploadMetadata({
+        writer,
+        assetManager,
+        appClient: client,
+        metadata: buildShortMetadata(assetId),
+      })
+
+      // The ASA has decimals=0, but metadata says decimals=6
+      const newMetadata = AssetMetadata.fromJson({
+        assetId,
+        jsonObj: { name: 'Wrong Decimals', decimals: 6 },
+      })
+
+      const result = writer.replaceMetadata({
+        assetManager,
+        metadata: newMetadata,
+        assumeCurrentSize: metadata.size,
+        validateArc3: true,
+      })
+      await expect(result).rejects.toThrow(MetadataArc3Error)
+      await expect(result).rejects.toThrow(/ARC-3 field 'decimals' must match ASA decimals \(0\), got 6/)
     })
   })
 
@@ -1423,14 +1526,13 @@ describe('high-level replace methods', () => {
 
     test('replace slice', async () => {
       // Test replacing a slice of metadata.
-      const metadata = buildShortMetadata(assetId)
-      await uploadMetadata({ writer, assetManager, appClient: client, metadata })
+      await uploadMetadata({ writer, assetManager, appClient: client, metadata: buildShortMetadata(assetId) })
 
       await writer.replaceMetadataSlice({
         assetManager,
         assetId,
         offset: 0,
-        payload: new TextEncoder().encode('patch'),
+        payload: encode('patch'),
       })
       const record = await reader.box.getAssetMetadataRecord({ assetId })
       expect(record).not.toBeNull()
@@ -1438,5 +1540,69 @@ describe('high-level replace methods', () => {
       const body = record.body.rawBytes
       expect(new TextDecoder().decode(body.slice(0, 5))).toBe('patch')
     })
+  })
+})
+
+// ================================================================
+// Box Resources Sizing Tests (TS-only)
+// ================================================================
+
+describe('box resources sizing', () => {
+  // TS-only: writes touching a maxed metadata box size the Box I/O (extra resources calls) and the
+  // Metadata Hash opcode budget on the current box (Python v1.0.0 `_box_resources`).
+  let assetManager: AddressWithSigners
+  let writer: AsaMetadataRegistryWrite
+  let minFee: number
+  let assetId: bigint
+
+  beforeAll(async () => {
+    writer = new AsaMetadataRegistryWrite({ client })
+    assetManager = await createFundedAccount(fixture)
+    minFee = Number((await algorand.getSuggestedParams()).minFee)
+  })
+
+  beforeEach(async () => {
+    assetId = await createArc89Asa({ assetManager, appClient: client })
+    await uploadMetadata({
+      writer,
+      assetManager,
+      appClient: client,
+      metadata: buildMaxedMetadata(assetId),
+      validateArc3: false,
+    })
+  })
+
+  test('set flags and immutable on maxed metadata', async () => {
+    await writer.setReversibleFlag({ assetManager, assetId, flagIndex: flags.REV_FLG_NTT, value: true })
+    await writer.setIrreversibleFlag({ assetManager, assetId, flagIndex: flags.IRR_FLG_RESERVED_3 })
+    await writer.setImmutable({ assetManager, assetId })
+
+    const box = await getMetadataBox(assetId)
+    expect(box.header.flags.reversible.ntt).toBe(true)
+    expect(box.header.flags.irreversible.reserved3).toBe(true)
+    expect(box.header.isImmutable).toBe(true)
+    expect(box.body.size).toBe(MAX_METADATA_SIZE)
+  })
+
+  test('replace slice on maxed metadata', async () => {
+    const payload = encode('patch')
+    const offset = MAX_METADATA_SIZE - payload.length
+    const composer = await writer.buildReplaceMetadataSliceGroup({ assetManager, assetId, offset, payload })
+    // 2 extra resources calls for the Box I/O, the Metadata Hash recomputed over 33 pages (7 + 1 tail budget txns)
+    await expectGroup(composer, { txns: [REPLACE_SLICE, ...repeat(2, EXTRA_RESOURCES)], feePool: 11 * minFee })
+
+    await writer.replaceMetadataSlice({ assetManager, assetId, offset, payload })
+    const box = await getMetadataBox(assetId)
+    expect(box.body.rawBytes.slice(offset)).toEqual(payload)
+  })
+
+  test('delete maxed metadata', async () => {
+    const composer = await writer.buildDeleteMetadataGroup({ assetManager, assetId })
+    // Head call + MBR refund inner payment + 2 extra resources calls for the Box I/O
+    await expectGroup(composer, { txns: [DELETE, ...repeat(2, EXTRA_RESOURCES)], feePool: 4 * minFee })
+
+    const mbrDelta = await writer.deleteMetadata({ assetManager, assetId })
+    expect(mbrDelta.isNegative).toBe(true)
+    await expect(client.state.box.assetMetadata.value(assetId)).rejects.toThrow(/box not found/)
   })
 })

@@ -46,8 +46,8 @@ const createMinimalBoxValue = (args?: {
   result.set(metadataHash, 3)
 
   // Write uint64 big-endian
-  const lmrView = new DataView(result.buffer, result.byteOffset + 35, 8)
-  lmrView.setBigUint64(0, revision, false)
+  const revisionView = new DataView(result.buffer, result.byteOffset + 35, 8)
+  revisionView.setBigUint64(0, revision, false)
 
   const dbView = new DataView(result.buffer, result.byteOffset + 43, 8)
   dbView.setBigUint64(0, deprecatedBy, false)
@@ -185,6 +185,7 @@ describe('asset metadata box parse', () => {
     boxValue[1] = 0 // rev_flags
     boxValue[2] = 0 // irr_flags
     // Only 31 bytes for hash (wrong)
+    expect(() => AssetMetadataBox.parse({ assetId: 777n, value: boxValue })).toThrow(BoxParseError)
     expect(() => AssetMetadataBox.parse({ assetId: 777n, value: boxValue })).toThrow(/Box value too small/)
   })
 
@@ -223,13 +224,14 @@ describe('asset metadata box parse', () => {
     const boxValue = createMinimalBoxValue({ metadata })
 
     // Set max to less than metadata size - should raise
-    expect(() =>
+    const parse = () =>
       AssetMetadataBox.parse({
         assetId: 1111n,
         value: boxValue,
         maxMetadataSize: 50,
-      }),
-    ).toThrow(/exceeds maxMetadataSize/)
+      })
+    expect(parse).toThrow(BoxParseError)
+    expect(parse).toThrow(/exceeds maxMetadataSize/)
   })
 
   test('parse box max uint64 rounds', () => {
@@ -533,9 +535,9 @@ describe('asset metadata box advanced', () => {
     const boxValue = createMinimalBoxValue({ metadata })
 
     // Should raise because metadata exceeds custom max_metadata_size
-    expect(() => AssetMetadataBox.parse({ assetId: 123n, value: boxValue, params: customParams })).toThrow(
-      /exceeds maxMetadataSize/,
-    )
+    const parse = () => AssetMetadataBox.parse({ assetId: 123n, value: boxValue, params: customParams })
+    expect(parse).toThrow(BoxParseError)
+    expect(parse).toThrow(/exceeds maxMetadataSize/)
   })
 
   test('parse known header validation edge case', () => {
@@ -564,6 +566,7 @@ describe('asset metadata box advanced', () => {
     // e.g., not enough bytes for uint64 fields
     const malformedValue = new Uint8Array(50) // 50 bytes, just short of full header
 
+    expect(() => AssetMetadataBox.parse({ assetId: 123n, value: malformedValue })).toThrow(BoxParseError)
     expect(() => AssetMetadataBox.parse({ assetId: 123n, value: malformedValue })).toThrow(/Box value too small/)
   })
 
@@ -577,12 +580,13 @@ describe('asset metadata box advanced', () => {
     // This should trigger the "Box value too small for known header" error
     const shortValue = new Uint8Array(48) // Less than min_known_header
 
-    expect(() =>
+    const parse = () =>
       AssetMetadataBox.parse({
         assetId: 123n,
         value: shortValue,
         headerSize: customHeaderSize,
-      }),
-    ).toThrow(/Box value too small/)
+      })
+    expect(parse).toThrow(BoxParseError)
+    expect(parse).toThrow(/Box value too small/)
   })
 })

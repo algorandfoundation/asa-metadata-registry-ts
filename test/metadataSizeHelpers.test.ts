@@ -97,14 +97,15 @@ describe('metadata size helpers', () => {
     expect(oversizedMetadata.size).toBeGreaterThan(constants.MAX_METADATA_SIZE)
     expect(oversizedMetadata.isShort).toBe(false)
 
-    expect(() => oversizedMetadata.body.validateSize()).toThrowError(/exceeds max/i)
+    expect(() => oversizedMetadata.body.validateSize()).toThrow(RangeError)
+    expect(() => oversizedMetadata.body.validateSize()).toThrow(/exceeds max/i)
 
     // Should still be able to compute hash (even though invalid)
     const hashValue = oversizedMetadata.computeMetadataHash()
     expect(hashValue.length).toBe(32)
 
     // MBR calculation should still work
-    const mbrDelta = oversizedMetadata.getMbrDelta()
+    const mbrDelta = oversizedMetadata.getMbrDelta({ oldSize: null })
     expect(mbrDelta.isPositive).toBe(true) // Positive for creation
     expect(mbrDelta.amount).toBeGreaterThan(0)
   })
@@ -160,7 +161,7 @@ describe('mbr calculations for different sizes', () => {
     ]
 
     for (const [, metadata] of sizesAndMetadata) {
-      const mbrDelta = metadata.getMbrDelta()
+      const mbrDelta = metadata.getMbrDelta({ oldSize: null })
 
       // All should require positive MBR for creation
       expect(mbrDelta.isPositive).toBe(true)
@@ -168,9 +169,9 @@ describe('mbr calculations for different sizes', () => {
     }
 
     // Maxed should require the most MBR
-    const emptyDelta = emptyMetadata.getMbrDelta()
-    const shortDelta = shortMetadata.getMbrDelta()
-    const maxedDelta = maxedMetadata.getMbrDelta()
+    const emptyDelta = emptyMetadata.getMbrDelta({ oldSize: null })
+    const shortDelta = shortMetadata.getMbrDelta({ oldSize: null })
+    const maxedDelta = maxedMetadata.getMbrDelta({ oldSize: null })
 
     expect(emptyDelta.amount).toBeLessThan(shortDelta.amount)
     expect(shortDelta.amount).toBeLessThan(maxedDelta.amount)

@@ -21,6 +21,7 @@ import {
   bitmasks,
   constants,
   computeMetadataHash,
+  InvalidPageIndexError,
   MetadataArc3Error,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
 
@@ -58,8 +59,8 @@ describe('metadata header advanced', () => {
     expect(serialized[2]).toBe(flags.irreversibleByte)
     expect(serialized.slice(3, 35)).toEqual(new Uint8Array(32).fill(0xaa))
     // Check uint64 encoding
-    const lmrView = new DataView(serialized.buffer, serialized.byteOffset + 35, 8)
-    expect(lmrView.getBigUint64(0, false)).toBe(12345n)
+    const revisionView = new DataView(serialized.buffer, serialized.byteOffset + 35, 8)
+    expect(revisionView.getBigUint64(0, false)).toBe(12345n)
     const dbView = new DataView(serialized.buffer, serialized.byteOffset + 43, 8)
     expect(dbView.getBigUint64(0, false)).toBe(67890n)
   })
@@ -205,12 +206,14 @@ describe('metadata body advanced', () => {
   test('get page negative index raises', () => {
     // Test getPage with negative index.
     const body = new MetadataBody(new Uint8Array(1000).fill(120))
+    expect(() => body.getPage(-1)).toThrow(InvalidPageIndexError)
     expect(() => body.getPage(-1)).toThrow(/pageIndex must be non-negative/)
   })
 
   test('get page index out of range raises', () => {
     // Test getPage with index beyond total pages.
     const body = new MetadataBody(new Uint8Array(1000).fill(120))
+    expect(() => body.getPage(100)).toThrow(InvalidPageIndexError)
     expect(() => body.getPage(100)).toThrow(/out of range/)
   })
 

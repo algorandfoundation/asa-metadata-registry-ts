@@ -1,6 +1,8 @@
 /**
  * Unit tests for src/deployments module.
  *
+ * Ported from Python `tests/sdk/test_deployments.py`.
+ *
  * Tests cover:
  * - RegistryDeployment valid construction across networks
  * - RegistryDeployment constructor validation errors
@@ -22,7 +24,7 @@ import {
 
 describe('registry deployment', () => {
   // Tests for RegistryDeployment construction and validation.
-  test('valid initialization for localnet, testnet, and mainnet', () => {
+  test('valid initialization for all networks', () => {
     // Test valid initialization for localnet, testnet, and mainnet.
     const localnet = new RegistryDeployment({
       network: 'localnet',
@@ -34,7 +36,7 @@ describe('registry deployment', () => {
     const testnet = new RegistryDeployment({
       network: 'testnet',
       genesisHashB64: TESTNET_GH_B64,
-      appId: TESTNET_ASA_METADATA_REGISTRY_APP_ID,
+      appId: 123,
       creatorAddress: TESTNET_TRUSTED_DEPLOYER_ADDR,
       arc90UriNetauth: 'net:testnet',
     })
@@ -51,57 +53,35 @@ describe('registry deployment', () => {
     expect(mainnet.network).toBe('mainnet')
   })
 
-  test('throws when genesis hash is null for testnet/mainnet', () => {
+  test.each(['testnet', 'mainnet'] as const)('throws when genesis hash is null for non-localnet (%s)', (network) => {
     // Test validation error when genesisHashB64 is missing on non-localnet.
     expect(
       () =>
         new RegistryDeployment({
-          network: 'testnet',
+          network,
           genesisHashB64: null,
-          appId: TESTNET_ASA_METADATA_REGISTRY_APP_ID,
-          creatorAddress: TESTNET_TRUSTED_DEPLOYER_ADDR,
-          arc90UriNetauth: 'net:testnet',
-        }),
-    ).toThrow(/genesisHashB64 required for non-localnet/)
-
-    expect(
-      () =>
-        new RegistryDeployment({
-          network: 'mainnet',
-          genesisHashB64: null,
-          appId: null,
-          creatorAddress: MAINNET_TRUSTED_DEPLOYER_ADDR,
-          arc90UriNetauth: null,
+          appId: network === 'testnet' ? TESTNET_ASA_METADATA_REGISTRY_APP_ID : null,
+          creatorAddress: network === 'testnet' ? TESTNET_TRUSTED_DEPLOYER_ADDR : MAINNET_TRUSTED_DEPLOYER_ADDR,
+          arc90UriNetauth: network === 'testnet' ? 'net:testnet' : null,
         }),
     ).toThrow(/genesisHashB64 required for non-localnet/)
   })
 
-  test('throws when netauth is null for testnet/localnet', () => {
+  test.each(['testnet', 'localnet'] as const)('throws when arc90 netauth is null for non-mainnet (%s)', (network) => {
     // Test validation error when arc90UriNetauth is missing on non-mainnet.
     expect(
       () =>
         new RegistryDeployment({
-          network: 'testnet',
-          genesisHashB64: TESTNET_GH_B64,
-          appId: TESTNET_ASA_METADATA_REGISTRY_APP_ID,
-          creatorAddress: TESTNET_TRUSTED_DEPLOYER_ADDR,
-          arc90UriNetauth: null,
-        }),
-    ).toThrow(/arc90UriNetauth required for non-mainnet/)
-
-    expect(
-      () =>
-        new RegistryDeployment({
-          network: 'localnet',
-          genesisHashB64: null,
-          appId: null,
-          creatorAddress: null,
+          network,
+          genesisHashB64: network === 'testnet' ? TESTNET_GH_B64 : null,
+          appId: network === 'testnet' ? TESTNET_ASA_METADATA_REGISTRY_APP_ID : null,
+          creatorAddress: network === 'testnet' ? TESTNET_TRUSTED_DEPLOYER_ADDR : null,
           arc90UriNetauth: null,
         }),
     ).toThrow(/arc90UriNetauth required for non-mainnet/)
   })
 
-  test('instances are immutable', () => {
+  test('instance is immutable', () => {
     // Test that RegistryDeployment instances are immutable.
     const deployment = new RegistryDeployment({
       network: 'testnet',
@@ -113,14 +93,14 @@ describe('registry deployment', () => {
 
     expect(Object.isFrozen(deployment)).toBe(true)
     expect(() => {
-      ;(deployment as any).appId = 999
+      ;(deployment as any).appId = 2
     }).toThrow(TypeError)
   })
 })
 
 describe('default deployments', () => {
   // Tests for DEFAULT_DEPLOYMENTS canonical values.
-  test('match deployment expected values', () => {
+  test('default deployments match expected values', () => {
     // Test DEFAULT_DEPLOYMENTS values against expected deployments.
     const expectedTestnet = new RegistryDeployment({
       network: 'testnet',
