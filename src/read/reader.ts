@@ -255,10 +255,12 @@ export class AsaMetadataRegistryRead {
    * Fetch a full ARC-89 metadata record (header + metadata bytes).
    *
    * When `source=AUTO`, the SDK prefers BOX reads (fast) if algod is available; otherwise AVM.
+   * Non-atomic reads that observe a Revision change are retried up to `driftRetries` times.
    * The look-up and Deprecated By pointers stay within the trusted registry versions.
    *
    * @throws {RegistryResolutionError} If a Deprecated By pointer names an untrusted registry, or
    * the deprecation chain exceeds `maxDeprecationHops`.
+   * @throws {MetadataDriftError} If the Metadata keeps changing across `driftRetries` retries.
    */
   async getAssetMetadata(args: {
     assetId?: bigint | number | null
@@ -268,10 +270,15 @@ export class AsaMetadataRegistryRead {
     followDeprecation?: boolean
     maxDeprecationHops?: number
     simulate?: SimulateOptions
+    driftRetries?: number
   }): Promise<AssetMetadataRecord> {
     const source = args.source ?? MetadataSource.AUTO
     const followDep = args.followDeprecation ?? true
     const maxHops = args.maxDeprecationHops ?? 5
+    const driftRetries = args.driftRetries ?? 2
+    if (driftRetries < 0 || maxHops < 0) {
+      throw new RangeError('driftRetries and maxDeprecationHops must be >= 0')
+    }
 
     const uri = await this.resolveArc90Uri({
       assetId: args.assetId ?? null,
@@ -295,12 +302,21 @@ export class AsaMetadataRegistryRead {
     }
 
     for (let hop = 0; hop <= maxHops; hop++) {
-      const record = await this.getAssetMetadataOnce({
-        appId: currentAppId,
-        assetId: currentAssetId,
-        source,
-        simulate: args.simulate,
-      })
+      let record: AssetMetadataRecord | null = null
+      for (let attempt = 0; attempt <= driftRetries; attempt++) {
+        try {
+          record = await this.getAssetMetadataOnce({
+            appId: currentAppId,
+            assetId: currentAssetId,
+            source,
+            simulate: args.simulate,
+          })
+          break
+        } catch (e) {
+          if (!(e instanceof MetadataDriftError) || attempt === driftRetries) throw e
+        }
+      }
+      if (record === null) throw new RegistryResolutionError('Failed to fetch metadata')
 
       const target = record.header.deprecatedBy
       if (followDep && target !== 0n && target !== currentAppId) {
@@ -361,11 +377,13 @@ export class AsaMetadataRegistryRead {
       const avm = this.avm({ appId: args.appId })
       const header = await avm.arc89GetMetadataHeader({ assetId: args.assetId, simulate: args.simulate })
       const pagination = await avm.arc89GetMetadataPagination({ assetId: args.assetId, simulate: args.simulate })
+      if (pagination.revision !== header.revision) {
+        throw new MetadataDriftError('Metadata changed between header and pagination reads')
+      }
 
+      // Fetch pages in batches (max 16 tx/group in Algorand; keep a safe default of 10).
       const totalPages = pagination.totalPages
       const batchSize = 10
-
-      let lastRevision: bigint | null = null
       const chunks: Uint8Array[] = []
 
       for (let start = 0; start < totalPages; start += batchSize) {
@@ -382,8 +400,7 @@ export class AsaMetadataRegistryRead {
 
         for (const v of values) {
           const paged = parsePaginatedMetadata(v)
-          if (lastRevision === null) lastRevision = paged.revision
-          else if (paged.revision !== lastRevision) {
+          if (paged.revision !== header.revision) {
             throw new MetadataDriftError('Metadata changed between simulated page reads')
           }
           chunks.push(paged.pageContent)
@@ -391,7 +408,10 @@ export class AsaMetadataRegistryRead {
       }
 
       const bodyRaw = concatBytes(chunks)
-      const body = new MetadataBody(bodyRaw.slice(0, pagination.metadataSize))
+      if (bodyRaw.length !== pagination.metadataSize) {
+        throw new MetadataDriftError('Assembled metadata size does not match the pagination size')
+      }
+      const body = new MetadataBody(bodyRaw)
 
       return new AssetMetadataRecord({ appId: args.appId, assetId: args.assetId, header, body })
     }

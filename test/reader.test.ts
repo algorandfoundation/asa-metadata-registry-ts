@@ -24,6 +24,7 @@ import {
   AsaNotFoundError,
   AssetMetadataRecord,
   B64_STD_ENCODING,
+  BoxNotFoundError,
   InvalidArc90UriError,
   InvalidPageIndexError,
   InvalidSliceError,
@@ -610,6 +611,19 @@ describe('get asset metadata', () => {
     await expect(promise).rejects.toThrow(/Metadata changed between simulated page reads/)
   })
 
+  test('avm detects pagination drift', async () => {
+    const reader = new AsaMetadataRegistryRead({ appId: 123, avmFactory })
+    const avm = mockAvm(123)
+    avm.arc89GetMetadataHeader.mockResolvedValue(sampleMetadataHeader)
+    avm.arc89GetMetadataPagination.mockResolvedValue(
+      new Pagination({ deprecatedBy: 0, metadataSize: 150, pageSize: 100, totalPages: 2, revision: 1001 }),
+    )
+
+    const promise = reader.getAssetMetadata({ assetId: 456, source: MetadataSource.AVM })
+    await expect(promise).rejects.toThrow(MetadataDriftError)
+    await expect(promise).rejects.toThrow(/Metadata changed between header and pagination reads/)
+  })
+
   test('follows deprecation', async () => {
     // Test metadata follows deprecation chain.
     const reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader, trustedVersions: [789] })
@@ -682,6 +696,13 @@ describe('get asset metadata', () => {
     mockAssetInfo({})
 
     expect((await reader.getAssetMetadata({ assetId: 456 })).appId).toBe(789n)
+  })
+
+  test.each([{ driftRetries: -1 }, { maxDeprecationHops: -1 }])('rejects negative limits %o', async (limits) => {
+    const reader = new AsaMetadataRegistryRead({ appId: 123 })
+    const promise = reader.getAssetMetadata({ assetId: 456, ...limits })
+    await expect(promise).rejects.toThrow(RangeError)
+    await expect(promise).rejects.toThrow(/>= 0/)
   })
 
   test('no deprecation follow', async () => {
@@ -1386,6 +1407,79 @@ describe('trusted registry resolution', () => {
     const result = await reader.getAssetMetadata({ assetId: 456 })
     expect(result.appId).toBe(789n)
     expect(mockAvm(123).arc89GetMetadataHeader).not.toHaveBeenCalled()
+  })
+})
+
+// ================================================================
+// TS-only: Drift Retries Tests
+// ================================================================
+
+describe('drift retries', () => {
+  // Non-atomic AVM reads observing a Revision change are retried up to `driftRetries` times.
+  const pageA = new Uint8Array(100).fill(0x41)
+  const pageB = new Uint8Array(50).fill(0x42)
+
+  const mockTwoPageAvm = () => {
+    const avm = mockAvm(123)
+    avm.arc89GetMetadataHeader.mockResolvedValue(sampleMetadataHeader)
+    avm.arc89GetMetadataPagination.mockResolvedValue(
+      new Pagination({ deprecatedBy: 0, metadataSize: 150, pageSize: 100, totalPages: 2, revision: 1000 }),
+    )
+    return avm
+  }
+
+  test('drifting avm read is retried until consistent', async () => {
+    const reader = new AsaMetadataRegistryRead({ appId: 123, avmFactory })
+    const avm = mockTwoPageAvm()
+    avm.simulateMany
+      .mockResolvedValueOnce([
+        [true, 1000n, pageA],
+        [false, 1001n, pageB],
+      ])
+      .mockResolvedValueOnce([
+        [true, 1000n, pageA],
+        [false, 1000n, pageB],
+      ])
+
+    const result = await reader.getAssetMetadata({ assetId: 456, source: MetadataSource.AVM })
+    expect(result.body.rawBytes).toEqual(concatBytes([pageA, pageB]))
+    expect(avm.simulateMany).toHaveBeenCalledTimes(2)
+  })
+
+  test.each([
+    { label: 'default 2 retries', driftRetries: undefined, attempts: 3 },
+    { label: 'no retries', driftRetries: 0, attempts: 1 },
+    { label: '1 retry', driftRetries: 1, attempts: 2 },
+  ])('drifting avm read is attempted driftRetries + 1 times: $label', async ({ driftRetries, attempts }) => {
+    const reader = new AsaMetadataRegistryRead({ appId: 123, avmFactory })
+    const avm = mockTwoPageAvm()
+    avm.arc89GetMetadataPagination.mockResolvedValue(
+      new Pagination({ deprecatedBy: 0, metadataSize: 150, pageSize: 100, totalPages: 2, revision: 1001 }),
+    )
+
+    await expect(reader.getAssetMetadata({ assetId: 456, source: MetadataSource.AVM, driftRetries })).rejects.toThrow(
+      MetadataDriftError,
+    )
+    expect(avm.arc89GetMetadataHeader).toHaveBeenCalledTimes(attempts)
+  })
+
+  test('avm read detects assembled size mismatch', async () => {
+    const reader = new AsaMetadataRegistryRead({ appId: 123, avmFactory })
+    const avm = mockTwoPageAvm()
+    avm.simulateMany.mockResolvedValue([[false, 1000n, pageA]])
+
+    const promise = reader.getAssetMetadata({ assetId: 456, source: MetadataSource.AVM })
+    await expect(promise).rejects.toThrow(MetadataDriftError)
+    await expect(promise).rejects.toThrow(/Assembled metadata size does not match the pagination size/)
+  })
+
+  test('other errors are not retried', async () => {
+    const reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader })
+    algod.getApplicationBoxByName.mockImplementation(() => rejectedRequest(new Error('HTTP 404: box not found')))
+    mockAssetInfo({})
+
+    await expect(reader.getAssetMetadata({ assetId: 456 })).rejects.toThrow(BoxNotFoundError)
+    expect(algod.getApplicationBoxByName).toHaveBeenCalledOnce()
   })
 })
 
