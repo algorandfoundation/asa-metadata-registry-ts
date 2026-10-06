@@ -364,6 +364,21 @@ describe('get params', () => {
     expect(params.headerSize).toBe(defaults.headerSize)
     expect(params.maxMetadataSize).toBe(defaults.maxMetadataSize)
   })
+
+  test('get params retries avm after error', async () => {
+    // TS-only: the defaults are not cached after an AVM failure, so later reads retry.
+    const reader = new AsaMetadataRegistryRead({ appId: 123, avmFactory })
+
+    const customParams = RegistryParameters.defaults()
+    const getter = mockAvm(123).arc89GetMetadataRegistryParameters
+    getter.mockRejectedValueOnce(new Error('AVM error')).mockResolvedValueOnce(customParams)
+
+    expect(await (reader as any).getParams()).toBe(getDefaultRegistryParams())
+    expect((reader as any).paramsCache).toBeNull()
+    expect(await (reader as any).getParams()).toBe(customParams)
+    expect(await (reader as any).getParams()).toBe(customParams)
+    expect(getter).toHaveBeenCalledTimes(2)
+  })
 })
 
 // ================================================================
@@ -932,6 +947,22 @@ describe('dispatcher methods', () => {
       expect(result.metadataSize).toBe(metadataContent.length)
       expect(result.revision).toBe(sampleMetadataHeader.revision)
       expect(result.deprecatedBy).toBe(sampleMetadataHeader.deprecatedBy)
+    })
+
+    test('box source uses on chain registry parameters', async () => {
+      // Python's `box` property resolves the registry parameters (on-chain via AVM when available).
+      const reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader, avmFactory })
+      const onChainParams = new RegistryParameters({ ...getDefaultRegistryParams(), pageSize: 100 })
+      const getter = mockAvm(123).arc89GetMetadataRegistryParameters
+      getter.mockResolvedValue(onChainParams)
+      const metadataContent = utf8('{"test": "data"}'.repeat(10)) // 160 bytes
+      mockBoxResponse(boxValue(sampleMetadataHeader, metadataContent))
+
+      const result = await reader.arc89GetMetadataPagination({ assetId: 456, source: MetadataSource.BOX })
+      expect(result.pageSize).toBe(100)
+      expect(result.totalPages).toBe(2)
+      await reader.arc89GetMetadataHeader({ assetId: 456, source: MetadataSource.BOX })
+      expect(getter).toHaveBeenCalledOnce() // cached
     })
 
     test('avm source', async () => {

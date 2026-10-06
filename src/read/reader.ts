@@ -95,7 +95,8 @@ export class AsaMetadataRegistryRead {
         this.paramsCache = p
         return p
       } catch {
-        // Fall back to defaults.
+        // Fall back to the compiled defaults without caching, so later reads retry.
+        return getDefaultRegistryParams()
       }
     }
 
@@ -108,11 +109,23 @@ export class AsaMetadataRegistryRead {
   // Sub-readers
   // ------------------------------------------------------------------
 
-  /** BOX reader bound to the configured registry app id. */
+  /**
+   * BOX reader bound to the configured registry app id.
+   *
+   * Synchronous accessor: it uses the registry parameters already fetched (or the compiled
+   * defaults); the dispatcher methods resolve the on-chain parameters first, when AVM is available.
+   */
   get box(): AsaMetadataRegistryBoxRead {
     if (!this.algod) throw new Error('BOX reader requires an algod client')
     const params = this.paramsCache ?? getDefaultRegistryParams()
     return new AsaMetadataRegistryBoxRead({ algod: this.algod, appId: this.requireAppId(), params })
+  }
+
+  /** BOX reader bound to the configured registry app id, with the resolved registry parameters. */
+  private async boxReader(): Promise<AsaMetadataRegistryBoxRead> {
+    if (!this.algod) throw new Error('BOX reader requires an algod client')
+    const appId = this.requireAppId()
+    return new AsaMetadataRegistryBoxRead({ algod: this.algod, appId, params: await this.getParams() })
   }
 
   /** AVM reader bound to the requested registry app id (defaults to configured app id). */
@@ -359,6 +372,7 @@ export class AsaMetadataRegistryRead {
     source: MetadataSource
     simulate?: SimulateOptions
   }): Promise<AssetMetadataRecord> {
+    const params = await this.getParams()
     let source = args.source
 
     if (source === MetadataSource.AUTO) {
@@ -369,7 +383,6 @@ export class AsaMetadataRegistryRead {
 
     if (source === MetadataSource.BOX) {
       if (!this.algod) throw new Error('BOX source selected but algod is not configured')
-      const params = await this.getParams()
       return await this.algod.getAssetMetadataRecord({ appId: args.appId, assetId: args.assetId, params })
     }
 
@@ -471,7 +484,9 @@ export class AsaMetadataRegistryRead {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      const [asaExists, metadataExists] = await this.box.arc89CheckMetadataExists({ assetId: args.assetId })
+      const [asaExists, metadataExists] = await (
+        await this.boxReader()
+      ).arc89CheckMetadataExists({ assetId: args.assetId })
       return new MetadataExistence({ asaExists, metadataExists })
     }
 
@@ -489,7 +504,7 @@ export class AsaMetadataRegistryRead {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89IsMetadataImmutable({ assetId: args.assetId })
+      return await (await this.boxReader()).arc89IsMetadataImmutable({ assetId: args.assetId })
     }
 
     return await this.avm({ appId: this.requireAppId() }).arc89IsMetadataImmutable({
@@ -506,7 +521,7 @@ export class AsaMetadataRegistryRead {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89IsMetadataShort({ assetId: args.assetId })
+      return await (await this.boxReader()).arc89IsMetadataShort({ assetId: args.assetId })
     }
 
     return await this.avm({ appId: this.requireAppId() }).arc89IsMetadataShort({
@@ -523,7 +538,7 @@ export class AsaMetadataRegistryRead {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89GetMetadataHeader({ assetId: args.assetId })
+      return await (await this.boxReader()).arc89GetMetadataHeader({ assetId: args.assetId })
     }
 
     return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataHeader({
@@ -540,7 +555,7 @@ export class AsaMetadataRegistryRead {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89GetMetadataPagination({ assetId: args.assetId })
+      return await (await this.boxReader()).arc89GetMetadataPagination({ assetId: args.assetId })
     }
 
     return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataPagination({
@@ -558,7 +573,7 @@ export class AsaMetadataRegistryRead {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89GetMetadata({ assetId: args.assetId, page: args.page })
+      return await (await this.boxReader()).arc89GetMetadata({ assetId: args.assetId, page: args.page })
     }
 
     return await this.avm({ appId: this.requireAppId() }).arc89GetMetadata({
@@ -578,7 +593,9 @@ export class AsaMetadataRegistryRead {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89GetMetadataSlice({ assetId: args.assetId, offset: args.offset, size: args.size })
+      return await (
+        await this.boxReader()
+      ).arc89GetMetadataSlice({ assetId: args.assetId, offset: args.offset, size: args.size })
     }
 
     return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataSlice({
@@ -598,7 +615,7 @@ export class AsaMetadataRegistryRead {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89GetMetadataHeaderHash({ assetId: args.assetId })
+      return await (await this.boxReader()).arc89GetMetadataHeaderHash({ assetId: args.assetId })
     }
 
     return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataHeaderHash({
@@ -617,7 +634,7 @@ export class AsaMetadataRegistryRead {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89GetMetadataPageHash({ assetId: args.assetId, page: args.page })
+      return await (await this.boxReader()).arc89GetMetadataPageHash({ assetId: args.assetId, page: args.page })
     }
 
     return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataPageHash({
@@ -636,7 +653,7 @@ export class AsaMetadataRegistryRead {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
-      return await this.box.arc89GetMetadataHash({ assetId: args.assetId })
+      return await (await this.boxReader()).arc89GetMetadataHash({ assetId: args.assetId })
     }
 
     return await this.avm({ appId: this.requireAppId() }).arc89GetMetadataHash({
@@ -662,7 +679,7 @@ export class AsaMetadataRegistryRead {
       })
     }
 
-    return await this.box.getStringByKey({ assetId: args.assetId, key: args.key })
+    return await (await this.boxReader()).getStringByKey({ assetId: args.assetId, key: args.key })
   }
 
   async arc89GetMetadataUint64ByKey(args: {
@@ -681,7 +698,7 @@ export class AsaMetadataRegistryRead {
       })
     }
 
-    return await this.box.getUint64ByKey({ assetId: args.assetId, key: args.key })
+    return await (await this.boxReader()).getUint64ByKey({ assetId: args.assetId, key: args.key })
   }
 
   async arc89GetMetadataObjectByKey(args: {
@@ -700,7 +717,7 @@ export class AsaMetadataRegistryRead {
       })
     }
 
-    return await this.box.getObjectByKey({ assetId: args.assetId, key: args.key })
+    return await (await this.boxReader()).getObjectByKey({ assetId: args.assetId, key: args.key })
   }
 
   async arc89GetMetadataB64BytesByKey(args: {
@@ -721,6 +738,8 @@ export class AsaMetadataRegistryRead {
       })
     }
 
-    return await this.box.getB64BytesByKey({ assetId: args.assetId, key: args.key, b64Encoding: args.b64Encoding })
+    return await (
+      await this.boxReader()
+    ).getB64BytesByKey({ assetId: args.assetId, key: args.key, b64Encoding: args.b64Encoding })
   }
 }

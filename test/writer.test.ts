@@ -533,6 +533,15 @@ describe('writer initialization', () => {
     expect(result).toBeInstanceOf(RegistryParameters)
     expect(result.headerSize).toBeGreaterThan(0)
   })
+
+  test('_params propagates on-chain read errors', async () => {
+    // As in Python, a failing on-chain read is not masked by the compiled defaults.
+    const composer = { arc89GetMetadataRegistryParameters: vi.fn(), simulate: vi.fn() }
+    composer.simulate.mockRejectedValue(new Error('simulate failed'))
+    vi.mocked(mockClient.newGroup).mockReturnValue(composer as never)
+    const writer = new AsaMetadataRegistryWrite({ client: mockClient })
+    await expect(writer['_params']()).rejects.toThrow('simulate failed')
+  })
 })
 
 // ================================================================
