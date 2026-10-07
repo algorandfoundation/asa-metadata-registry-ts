@@ -1629,6 +1629,14 @@ describe('box reader strictness', () => {
       message: /JSON value exceeds PAGE_SIZE/,
     },
     {
+      label: 'stored object value exceeds PAGE_SIZE',
+      json: `{"config": {"a": 1${' '.repeat(PAGE_SIZE)}}}`,
+      getter: 'object' as const,
+      key: 'config',
+      error: MetadataEncodingError,
+      message: /JSON value exceeds PAGE_SIZE/,
+    },
+    {
       label: 'invalid base64',
       json: '{"data": "not base64!"}',
       getter: 'b64' as const,
@@ -1657,5 +1665,12 @@ describe('box reader strictness', () => {
     mockBoxResponse(boxValue(sampleMetadataHeader, `{"data": "${Buffer.from(decoded).toString('base64')}"}`))
 
     await expect(jsonGetters.b64(reader, 'data')).resolves.toEqual(decoded)
+  })
+
+  test('object getter returns the raw value text', async () => {
+    const raw = '{"b" : 1, "2": 2, "big": 12345678901234567890, "s": "\\u00e9"}'
+    mockBoxResponse(boxValue(sampleMetadataHeader, `{"config":  ${raw}  }`))
+
+    await expect(jsonGetters.object(reader, 'config')).resolves.toBe(raw)
   })
 })

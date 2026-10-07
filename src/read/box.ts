@@ -248,17 +248,16 @@ export class AsaMetadataRegistryBoxRead {
   }
 
   /**
-   * Returns the compact reserialization of a JSON Object value (the AVM `json_ref` returns the raw
-   * bytes of the value).
+   * Returns the raw text of a JSON Object value, as the AVM `json_ref` does.
    *
    * @throws {MetadataKeyError} If the key is missing or its value is not a JSON Object.
    */
   async getObjectByKey(args: { assetId: bigint | number; key: string }): Promise<string> {
-    const { value } = await this.shortJsonValue(args)
-    if (!isPlainObject(value)) throw new MetadataKeyError(`${args.key}: not a JSON Object`)
-    const out = JSON.stringify(value)
-    this.checkValueSize(textEncoder.encode(out))
-    return out
+    const { value, body } = await this.shortJsonValue(args)
+    const raw = scanJsonText(textDecoder.decode(body.rawBytes)).topLevelMembers.get(args.key)
+    if (raw === undefined || !isPlainObject(value)) throw new MetadataKeyError(`${args.key}: not a JSON Object`)
+    this.checkValueSize(textEncoder.encode(raw))
+    return raw
   }
 
   /**
