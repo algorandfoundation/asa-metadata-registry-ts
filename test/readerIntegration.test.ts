@@ -25,11 +25,13 @@ import {
   AsaMetadataRegistryWrite,
   AssetMetadata,
   AlgodBoxReader,
+  MetadataBody,
   assetIdToBoxName,
   b64Decode,
   b64UrlEncode,
   B64_URL_ENCODING,
   B64_STD_ENCODING,
+  SHORT_METADATA_SIZE,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
 import { AsaMetadataRegistryClient, AsaMetadataRegistryFactory } from '@/generated'
 import {
@@ -72,6 +74,7 @@ let readerFull: AsaMetadataRegistryRead
 
 // Uploaded metadata references
 let mutableShortMetadata: AssetMetadata
+let mutableMaxedShortMetadata: AssetMetadata
 let mutableMaxedMetadata: AssetMetadata
 let mutableEmptyMetadata: AssetMetadata
 let immutableShortMetadata: AssetMetadata
@@ -107,6 +110,17 @@ beforeAll(async () => {
   const shortAsaId = await createArc89Asa({ assetManager, appClient: client })
   const shortMeta = buildShortMetadata(shortAsaId)
   mutableShortMetadata = await uploadMetadata({ writer, assetManager, appClient: client, metadata: shortMeta })
+
+  // Upload mutable maxed short metadata (SHORT_METADATA_SIZE)
+  const maxedShortAsaId = await createArc89Asa({ assetManager, appClient: client })
+  const padding = SHORT_METADATA_SIZE - MetadataBody.fromJson({ ...sampleJsonObj, pad: '' }).size
+  const maxedShortMeta = buildShortMetadata(maxedShortAsaId, { ...sampleJsonObj, pad: 'x'.repeat(padding) })
+  mutableMaxedShortMetadata = await uploadMetadata({
+    writer,
+    assetManager,
+    appClient: client,
+    metadata: maxedShortMeta,
+  })
 
   // Upload mutable maxed metadata
   const maxedAsaId = await createArc89Asa({ assetManager, appClient: client })
@@ -569,6 +583,31 @@ describe('reader JSON extraction', () => {
     expect(result).toBeInstanceOf(Uint8Array)
     expect(result.length).toBeGreaterThan(0)
     expect(result).toStrictEqual(expectedDecodedB64Bytes)
+  })
+
+  test('get values by key avm (maxed short metadata)', async () => {
+    // Test extracting values via AVM when the getters parse SHORT_METADATA_SIZE bytes of JSON.
+    const assetId = mutableMaxedShortMetadata.assetId
+    expect(mutableMaxedShortMetadata.body.size).toBe(SHORT_METADATA_SIZE)
+
+    const name = await readerWithAvm.arc89GetMetadataStringByKey({ assetId, key: 'name', source: MetadataSource.AVM })
+    const answer = await readerWithAvm.arc89GetMetadataUint64ByKey({
+      assetId,
+      key: 'answer',
+      source: MetadataSource.AVM,
+    })
+    const date = await readerWithAvm.arc89GetMetadataObjectByKey({ assetId, key: 'date', source: MetadataSource.AVM })
+    const bytes = await readerWithAvm.arc89GetMetadataB64BytesByKey({
+      assetId,
+      key: 'gh_b64_std',
+      b64Encoding: B64_STD_ENCODING,
+      source: MetadataSource.AVM,
+    })
+
+    expect(name).toBe(sampleJsonObj.name)
+    expect(answer).toBe(BigInt(sampleJsonObj.answer))
+    expect(JSON.parse(date)).toStrictEqual(sampleJsonObj.date)
+    expect(bytes).toStrictEqual(expectedDecodedB64Bytes)
   })
 })
 

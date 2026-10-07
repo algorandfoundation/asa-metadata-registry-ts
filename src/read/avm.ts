@@ -33,12 +33,15 @@ import {
 /**
  * Options passed through to AlgoKit's composer `simulate()`.
  *
- * When omitted, AVM reads simulate with `{ allowUnnamedResources: true, skipSignatures: true }`.
+ * AVM reads merge them over `DEFAULT_SIMULATE_OPTIONS` and the maximum extra opcode budget.
  */
 export type SimulateOptions = AlgoKitSimulateOptions
 
 /** Default simulate options for AVM reads (no signatures, unnamed resources allowed). */
 export const DEFAULT_SIMULATE_OPTIONS: SimulateOptions = { allowUnnamedResources: true, skipSignatures: true }
+
+/** The largest extra opcode budget that algod accepts in a simulate request (AlgoKit's read-only calls use it). */
+const MAX_SIMULATE_OPCODE_BUDGET = 20_000 * 16
 
 // ------------------------------------------------------------------
 // Decode helpers (simulate return values)
@@ -122,7 +125,11 @@ export class AsaMetadataRegistryAvmRead {
   ): Promise<unknown[]> {
     const composer = this.client.newGroup() as unknown as AsaMetadataRegistryComposer<unknown[]>
     buildGroup(composer)
-    const results = await composer.simulate(args?.simulate ?? DEFAULT_SIMULATE_OPTIONS)
+    const results = await composer.simulate({
+      ...DEFAULT_SIMULATE_OPTIONS,
+      extraOpcodeBudget: MAX_SIMULATE_OPCODE_BUDGET,
+      ...args?.simulate,
+    })
     return returnValues(results)
   }
 

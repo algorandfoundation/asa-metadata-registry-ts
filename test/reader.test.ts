@@ -25,6 +25,7 @@ import {
   AssetMetadataRecord,
   B64_STD_ENCODING,
   BoxNotFoundError,
+  DEFAULT_SIMULATE_OPTIONS,
   InvalidArc90UriError,
   InvalidPageIndexError,
   InvalidSliceError,
@@ -57,6 +58,7 @@ import {
   bitmasks,
   getDefaultRegistryParams,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
+import type { AsaMetadataRegistryClient } from '@/generated'
 import { concatBytes } from '@/internal/bytes'
 
 // ================================================================
@@ -1261,6 +1263,18 @@ describe('edge cases', () => {
     await reader.arc89GetMetadataHeader({ assetId: 456, source: MetadataSource.AVM, simulate: simulateOpts })
     expect(avm.arc89GetMetadataHeader).toHaveBeenCalledOnce()
     expect(avm.arc89GetMetadataHeader).toHaveBeenCalledWith({ assetId: 456, simulate: simulateOpts })
+  })
+
+  test('simulate options merged over the defaults', async () => {
+    // Test that custom SimulateOptions keep the default AVM read options.
+    const simulate = vi.fn().mockResolvedValue({ returns: [] })
+    const composer = { arc89GetMetadataPartialUri: vi.fn(), simulate }
+    const avm = new AsaMetadataRegistryAvmRead({
+      client: { newGroup: () => composer } as unknown as AsaMetadataRegistryClient,
+    })
+
+    await avm.arc89GetMetadataPartialUri({ simulate: { extraOpcodeBudget: 1000 } })
+    expect(simulate).toHaveBeenCalledWith({ ...DEFAULT_SIMULATE_OPTIONS, extraOpcodeBudget: 1000 })
   })
 
   test('deprecation self reference stops', async () => {
