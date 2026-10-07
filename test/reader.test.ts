@@ -1636,11 +1636,26 @@ describe('box reader strictness', () => {
       error: MetadataEncodingError,
       message: /data: invalid base64 value/,
     },
+    {
+      label: 'decoded base64 value exceeds PAGE_SIZE',
+      json: `{"data": "${Buffer.alloc(PAGE_SIZE + 1).toString('base64')}"}`,
+      getter: 'b64' as const,
+      key: 'data',
+      error: MetadataEncodingError,
+      message: /JSON value exceeds PAGE_SIZE/,
+    },
   ])('json getter rejects $label', async ({ json, getter, key, error, message }) => {
     mockBoxResponse(boxValue(sampleMetadataHeader, json))
 
     const promise = jsonGetters[getter](reader, key)
     await expect(promise).rejects.toThrow(error)
     await expect(promise).rejects.toThrow(message)
+  })
+
+  test('base64 getter checks the decoded size, not the base64 text', async () => {
+    const decoded = new Uint8Array(PAGE_SIZE).fill(7)
+    mockBoxResponse(boxValue(sampleMetadataHeader, `{"data": "${Buffer.from(decoded).toString('base64')}"}`))
+
+    await expect(jsonGetters.b64(reader, 'data')).resolves.toEqual(decoded)
   })
 })

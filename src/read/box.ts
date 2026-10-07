@@ -277,15 +277,18 @@ export class AsaMetadataRegistryBoxRead {
 
     const { value } = await this.shortJsonValue(args)
     if (typeof value !== 'string') throw new MetadataKeyError(`${key}: not a JSON String`)
-    this.checkValueSize(textEncoder.encode(value))
 
+    let decoded: Uint8Array
     try {
       if (b64Encoding === enums.B64_URL_ENCODING) {
-        return b64UrlDecode(value.replace(/=+$/, ''))
+        decoded = b64UrlDecode(value.replace(/=+$/, ''))
+      } else {
+        decoded = b64DecodeStrict(value)
       }
-      return b64DecodeStrict(value)
     } catch (e) {
       throw new MetadataEncodingError(`${key}: invalid base64 value`, { cause: e })
     }
+    this.checkValueSize(decoded)
+    return decoded
   }
 }
