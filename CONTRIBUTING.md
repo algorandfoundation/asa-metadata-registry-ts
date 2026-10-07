@@ -28,6 +28,12 @@ This SDK has no runtime dependencies; this keeps things lean for consumers and a
 - Use conditional range syntax (e.g. `rollup@>=4.0.0 <4.59.0: >=4.59.0`) to limit the override to the affected range.
 - Review quarterly: re-run `pnpm audit` without overrides to drop any that are no longer needed.
 
+### Audit exceptions (`pnpm.auditConfig.ignoreGhsas`)
+
+- Only ignore an advisory when no fixed version exists (so no override can help) and the vulnerable code cannot receive untrusted input in this repo.
+- List each ignored advisory below with its reason, and review them quarterly together with the overrides.
+- `GHSA-vfj7-8cjw-p6xm` (`braces` <= 3.0.3, stack exhaustion through deeply nested patterns): reached only through `semantic-release` (`micromatch`), which runs in the release workflow on glob patterns from this repo's own configuration.
+
 ### Updates
 
 - Dependabot proposes grouped minor+patch updates monthly.
