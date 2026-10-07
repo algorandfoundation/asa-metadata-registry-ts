@@ -141,7 +141,7 @@ export const parseJsonStrict = (text: string): { value: unknown; scan: JsonTextS
   return { value, scan }
 }
 
-const NON_FINITE_LITERAL_OR_STRING_RE = /"(?:[^"\\]|\\.)*"|-?Infinity|NaN/g
+const NON_FINITE_LITERAL_OR_STRING_RE = /"(?:[^"\\]|\\.)*"?|-?Infinity|NaN/g
 
 /**
  * `JSON.parse` that, like Python's default `json.loads`, also accepts the `NaN`, `Infinity` and

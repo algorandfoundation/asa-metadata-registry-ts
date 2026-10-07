@@ -161,6 +161,13 @@ describe('parseJsonAllowNonFinite', () => {
   test.each(['{"a":-NaN}', '{"a":+Infinity}', '{"a":NaNx}', '{NaN:1}', '{"a":1,}'])('rejects %s', (text) => {
     expect(() => parseJsonAllowNonFinite(text)).toThrow(SyntaxError)
   })
+
+  test('scans an unterminated string in linear time', () => {
+    const text = `{"a":"${'\\"'.repeat(50_000)}`
+    const start = performance.now()
+    expect(() => parseJsonAllowNonFinite(text)).toThrow(SyntaxError)
+    expect(performance.now() - start).toBeLessThan(500)
+  })
 })
 
 describe('jsonIntegerMember', () => {

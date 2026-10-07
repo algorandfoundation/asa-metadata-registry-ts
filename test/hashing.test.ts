@@ -935,4 +935,11 @@ describe('compute arc3 metadata hash', () => {
     const jsonBytes = concatBytes([new Uint8Array([0xef, 0xbb, 0xbf]), new TextEncoder().encode('{"name":"x"}')])
     expect(() => computeArc3MetadataHash(jsonBytes)).toThrow('Invalid JSON metadata file.')
   })
+
+  test('crafted unterminated string raises quickly', () => {
+    const jsonBytes = new TextEncoder().encode(`{"a":"${'\\"'.repeat(50_000)}`)
+    const start = performance.now()
+    expect(() => computeArc3MetadataHash(jsonBytes)).toThrow('Invalid JSON metadata file.')
+    expect(performance.now() - start).toBeLessThan(500)
+  })
 })
