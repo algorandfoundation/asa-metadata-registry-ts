@@ -91,8 +91,9 @@ type MockAlgod = ReturnType<typeof createMockAlgod>
 const boxResponse = (value: Uint8Array): modelsv2.Box =>
   new modelsv2.Box({ name: new Uint8Array(), round: 1, value: b64Encode(value) })
 
-/** An algosdk HTTP error recognizable only by its response status (as algosdk request errors expose it). */
-const httpStatusError = (status: number): Error => Object.assign(new Error('Request failed'), { response: { status } })
+/** An algosdk HTTP error with a response status (as algosdk request errors expose it). */
+const httpStatusError = (status: number, message = 'Request failed'): Error =>
+  Object.assign(new Error(message), { response: { status } })
 
 // ================================================================
 // Helpers
@@ -204,6 +205,14 @@ describe('get box value', () => {
 
     // Other HTTP errors are not "not found"
     const serverError = httpStatusError(500)
+    algod.getApplicationBoxByName.mockReturnValue(reject(serverError))
+
+    await expect(boxReader.getBoxValue({ appId: 123, boxName: utf8('error_box') })).rejects.toBe(serverError)
+  })
+
+  test('get box value http error with not found text reraises', async () => {
+    // A known HTTP status other than 404 is not "not found", whatever the message says.
+    const serverError = httpStatusError(500, 'Received status 500: internal error for app 1404')
     algod.getApplicationBoxByName.mockReturnValue(reject(serverError))
 
     await expect(boxReader.getBoxValue({ appId: 123, boxName: utf8('error_box') })).rejects.toBe(serverError)
@@ -440,6 +449,14 @@ describe('get asset info', () => {
     algod.getAssetByID.mockReturnValue(reject(unexpected))
 
     await expect(boxReader.getAssetInfo(77777n)).rejects.toBe(unexpected)
+  })
+
+  test('get asset info http error with not found text reraises', async () => {
+    // A known HTTP status other than 404 is not "not found", whatever the message says.
+    const serverError = httpStatusError(503, 'Received status 503: catchpoint not found, retry later')
+    algod.getAssetByID.mockReturnValue(reject(serverError))
+
+    await expect(boxReader.getAssetInfo(77777n)).rejects.toBe(serverError)
   })
 
   // Python's `test_get_asset_info_invalid_response_type` checks the raw dict response of py-algosdk:

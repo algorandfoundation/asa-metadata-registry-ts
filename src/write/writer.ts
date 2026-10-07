@@ -22,6 +22,7 @@ import {
 import { AssetMetadata, MbrDelta, RegistryParameters } from '../models'
 import { asBigInt, toNumber } from '../internal/numbers'
 import { concatBytes, toBytes } from '../internal/bytes'
+import { isNotFoundError } from '../internal/http'
 import {
   AsaMetadataRegistryClient,
   AsaMetadataRegistryComposer,
@@ -91,8 +92,7 @@ const getAsaParams = async (client: AsaMetadataRegistryClient, assetId: bigint |
   try {
     return await client.algorand.asset.getById(BigInt(assetId))
   } catch (ex: unknown) {
-    const msg = String(ex).toLowerCase()
-    if (msg.includes('not exist') || msg.includes('not found')) {
+    if (isNotFoundError(ex)) {
       throw new AsaNotFoundError(`Asset ${assetId} does not exist.`, { cause: ex })
     }
     throw ex

@@ -14,7 +14,8 @@ const httpStatus = (e: unknown): number | undefined => {
 
 /** True if an Algod (algosdk) request error denotes a missing resource (HTTP 404). */
 export const isNotFoundError = (e: unknown): boolean => {
-  if (httpStatus(e) === 404) return true
+  const status = httpStatus(e)
+  if (status !== undefined) return status === 404
   const msg = asErrorMessage(e).toLowerCase()
   return msg.includes('404') || msg.includes('not found') || msg.includes('does not exist')
 }
