@@ -1666,6 +1666,22 @@ describe('box reader strictness', () => {
       error: MetadataEncodingError,
       message: /JSON value exceeds PAGE_SIZE/,
     },
+    {
+      label: 'number outside the float64 range',
+      json: '{"name": "x", "v": [1, {"w": -1e400}]}',
+      getter: 'string' as const,
+      key: 'name',
+      error: MetadataEncodingError,
+      message: /JSON getters reject numbers outside the float64 range/,
+    },
+    {
+      label: 'uint64 value -0',
+      json: '{"count": -0}',
+      getter: 'uint64' as const,
+      key: 'count',
+      error: MetadataKeyError,
+      message: /count: not a JSON Uint64/,
+    },
   ])('json getter rejects $label', async ({ json, getter, key, error, message }) => {
     mockBoxResponse(boxValue(sampleMetadataHeader, json))
 
@@ -1679,6 +1695,13 @@ describe('box reader strictness', () => {
     mockBoxResponse(boxValue(sampleMetadataHeader, `{"data": "${Buffer.from(decoded).toString('base64')}"}`))
 
     await expect(jsonGetters.b64(reader, 'data')).resolves.toEqual(decoded)
+  })
+
+  test('json getters accept numbers within the float64 range', async () => {
+    const values = '1.7976931348623157e308, 1e-400, 18446744073709551616, -0'
+    mockBoxResponse(boxValue(sampleMetadataHeader, `{"name": "x", "v": [${values}]}`))
+
+    await expect(jsonGetters.string(reader, 'name')).resolves.toBe('x')
   })
 
   test('object getter returns the raw value text', async () => {

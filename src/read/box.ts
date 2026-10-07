@@ -40,6 +40,16 @@ const MAX_UINT64 = (1n << 64n) - 1n
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
+const hasNonFiniteNumber = (value: unknown): boolean => {
+  const stack = [value]
+  while (stack.length > 0) {
+    const v = stack.pop()
+    if (typeof v === 'number' && !Number.isFinite(v)) return true
+    if (v !== null && typeof v === 'object') stack.push(...Object.values(v))
+  }
+  return false
+}
+
 /**
  * Reconstruct ARC-89 getter outputs from box contents (Algod).
  *
@@ -203,7 +213,7 @@ export class AsaMetadataRegistryBoxRead {
     return (await this.getAssetMetadataRecord(args)).json
   }
 
-  /** Same constraints as the AVM JSON getters: short Metadata, existing key. */
+  /** Same constraints as the AVM JSON getters: short Metadata, numbers within the float64 range, existing key. */
   private async shortJsonValue(args: {
     assetId: bigint | number
     key: string
@@ -213,6 +223,9 @@ export class AsaMetadataRegistryBoxRead {
       throw new MetadataEncodingError('JSON getters require short Metadata')
     }
     const obj = b.body.json
+    if (hasNonFiniteNumber(obj)) {
+      throw new MetadataEncodingError('JSON getters reject numbers outside the float64 range')
+    }
     if (!Object.prototype.hasOwnProperty.call(obj, args.key)) throw new MetadataKeyError(args.key)
     return { value: obj[args.key], body: b.body }
   }
@@ -240,8 +253,8 @@ export class AsaMetadataRegistryBoxRead {
   async getUint64ByKey(args: { assetId: bigint | number; key: string }): Promise<bigint> {
     const { body } = await this.shortJsonValue(args)
     const raw = scanJsonText(textDecoder.decode(body.rawBytes)).topLevelMembers.get(args.key)
-    const value = raw === undefined ? undefined : integerLiteralValue(raw)
-    if (value === undefined || value < 0n || value > MAX_UINT64) {
+    const value = raw === undefined || raw.startsWith('-') ? undefined : integerLiteralValue(raw)
+    if (value === undefined || value > MAX_UINT64) {
       throw new MetadataKeyError(`${args.key}: not a JSON Uint64`)
     }
     return value
