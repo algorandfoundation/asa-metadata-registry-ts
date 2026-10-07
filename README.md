@@ -12,6 +12,13 @@ The package has no runtime dependencies; install the peer dependencies alongside
 pnpm add @algorandfoundation/asa-metadata-registry-sdk @algorandfoundation/algokit-utils algosdk
 ```
 
+## Agent skill
+
+[`.claude/skills/using-asa-metadata-registry`](./.claude/skills/using-asa-metadata-registry) is an
+[agent skill](https://code.claude.com/docs/en/skills) that teaches coding agents how to use this SDK. Claude Code
+loads it automatically in this repository. To use it in your own project, copy the folder into the project's
+`.claude/skills/` folder (or into `~/.claude/skills/` for all your projects).
+
 ## Devs
 
 ### Dependencies
