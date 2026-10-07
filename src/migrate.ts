@@ -243,11 +243,11 @@ export async function migrateLegacyMetadataToRegistry(args: {
   const underlyingComposer = await migrateGroup.composer()
   if ((await underlyingComposer.count()) < MAX_GROUP_SIZE) {
     // Atomic: add ARC-2 txn to the create group
-    migrateGroup.addTransaction(arc2Txn)
+    migrateGroup.addTransaction(arc2Txn, args.assetManager.signer)
     await migrateGroup.send()
   } else {
     // Sequential: send create first, then ARC-2 separately
     await migrateGroup.send()
-    await args.registry.write.client.algorand.newGroup().addTransaction(arc2Txn).send()
+    await args.registry.write.client.algorand.newGroup().addTransaction(arc2Txn, args.assetManager.signer).send()
   }
 }

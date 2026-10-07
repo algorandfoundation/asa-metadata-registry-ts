@@ -4,7 +4,7 @@ import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { nullLogger } from '@algorandfoundation/algokit-utils/types/logging'
 import { LogicError } from '@algorandfoundation/algokit-utils/types/logic-error'
-import { getApplicationAddress, TransactionType } from 'algosdk'
+import { generateAccount, getApplicationAddress, makeBasicAccountTransactionSigner, TransactionType } from 'algosdk'
 import type { Address, modelsv2 } from 'algosdk'
 import {
   ARC3_NAME_SUFFIX,
@@ -978,6 +978,38 @@ describe('arc-2 message publishing', () => {
     expect(sent.every((p) => p.txn.txn.group !== undefined && (p.confirmedRound ?? 0n) > 0n)).toBe(true)
     const groups = new Set(sent.map((p) => Buffer.from(p.txn.txn.group!).toString('base64')))
     expect(groups.size).toBe(1)
+    expect((await registry.read.arc89CheckMetadataExists({ assetId })).metadataExists).toBe(true)
+  })
+
+  test('publishArc2Message true signs with an asset manager signer unknown to the algorand client', async () => {
+    const account = generateAccount()
+    const manager = { addr: account.addr, signer: makeBasicAccountTransactionSigner(account) }
+    await algorand.send.payment({ sender: assetManager.addr, receiver: manager.addr, amount: algo(10) })
+    const { assetId } = await algorand.send.assetCreate({
+      sender: manager.addr,
+      signer: manager.signer,
+      total: 1n,
+      assetName: 'Legacy Token',
+      manager: manager.addr,
+      reserve: manager.addr,
+      freeze: manager.addr,
+      clawback: manager.addr,
+    })
+
+    const sent = await sentTransactions(() =>
+      migrateLegacyMetadataToRegistry({
+        registry,
+        assetManager: manager,
+        assetId,
+        metadata: minimalMetadata,
+        arc3Compliant: false,
+        publishArc2Message: true,
+      }),
+    )
+
+    const arc2Txns = sent.filter((p) => p.txn.txn.type === TransactionType.acfg)
+    expect(arc2Txns).toHaveLength(1)
+    expect(arc2Txns[0]!.txn.txn.sender.toString()).toBe(manager.addr.toString())
     expect((await registry.read.arc89CheckMetadataExists({ assetId })).metadataExists).toBe(true)
   })
 })
