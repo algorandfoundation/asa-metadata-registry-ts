@@ -1004,3 +1004,27 @@ describe('model arc20AppId / arc62AppId getters', () => {
     expect(floatLiteral.arc62AppId).toBeUndefined()
   })
 })
+
+describe('asset metadata from decoded json', () => {
+  test('decoded values changed after decoding are validated', () => {
+    const withDecimals = decodeMetadataJson(new TextEncoder().encode('{"decimals":6}'))
+    withDecimals['decimals'] = 6.5
+    expect(() => AssetMetadata.fromJson({ assetId: 1n, jsonObj: withDecimals, arc3Compliant: true })).toThrow(
+      MetadataArc3Error,
+    )
+
+    const withArc20 = decodeMetadataJson(new TextEncoder().encode('{"properties":{"arc-20":{"application-id":123}}}'))
+    const arc20 = (withArc20['properties'] as Record<string, Record<string, unknown>>)['arc-20']!
+    arc20['application-id'] = 0
+    expect(() => AssetMetadata.fromJson({ assetId: 1n, jsonObj: withArc20, arc3Compliant: true })).toThrow(
+      InvalidArc3PropertiesError,
+    )
+  })
+
+  test('decoded numbers keep their source text', () => {
+    const text = '{"price":1.0,"properties":{"arc-20":{"application-id":18446744073709551615}}}'
+    const jsonObj = decodeMetadataJson(new TextEncoder().encode(text))
+    const metadata = AssetMetadata.fromJson({ assetId: 1n, jsonObj, arc3Compliant: true })
+    expect(new TextDecoder().decode(metadata.body.rawBytes)).toBe(text)
+  })
+})

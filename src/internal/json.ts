@@ -1,7 +1,8 @@
 /**
  * Strict JSON helpers that complement `JSON.parse` / `JSON.stringify` where Python's `json`
  * module (as configured by the Python SDK) is stricter: duplicate object names, lone UTF-16
- * surrogates and non-finite numbers are rejected, and integer literals are read exactly.
+ * surrogates and non-finite numbers are rejected, integer literals are read exactly, and decoded
+ * number literals are written back verbatim.
  */
 
 const LONE_SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
@@ -103,12 +104,17 @@ export const scanJsonText = (text: string): JsonTextScan => {
   return { duplicateName, loneSurrogate, topLevelMembers }
 }
 
-/** Raw source text of the number literals of the objects/arrays decoded by `parseJsonStrict`. */
-const numberLiterals = new WeakMap<object, Map<string, string>>()
+/** Raw source text and value of the number literals of the objects/arrays decoded by `parseJsonStrict`. */
+const numberLiterals = new WeakMap<object, Map<string, { source: string; value: number }>>()
 
 /** `JSON.parse` reviver context (source text access, Node >= 21). */
 interface ReviverContext {
   source?: string
+}
+
+/** `JSON` with `JSON.rawJSON` (source text access, Node >= 21). */
+interface JsonWithRawJson {
+  rawJSON(text: string): unknown
 }
 
 function recordNumberLiteral(this: object, key: string, value: unknown, context?: ReviverContext): unknown {
@@ -118,16 +124,22 @@ function recordNumberLiteral(this: object, key: string, value: unknown, context?
       literals = new Map()
       numberLiterals.set(this, literals)
     }
-    literals.set(key, context.source)
+    literals.set(key, { source: context.source, value })
   }
   return value
+}
+
+const decodedLiteral = (holder: object, key: string, value: number): string | undefined => {
+  const literal = numberLiterals.get(holder)?.get(key)
+  return literal !== undefined && literal.value === value ? literal.source : undefined
 }
 
 /**
  * Parse a JSON text rejecting duplicate object names (RFC 8259 interoperability).
  *
  * The source text of number literals is recorded, so {@link jsonIntegerMember} can tell integer
- * literals from numbers with a fraction or exponent.
+ * literals from numbers with a fraction or exponent, and {@link stringifyJsonStrict} can write
+ * unchanged numbers back verbatim.
  *
  * @throws {SyntaxError} If the text is not valid JSON or has duplicate object names.
  * @returns The parsed value and the scan of the source text.
@@ -163,12 +175,13 @@ export const integerLiteralValue = (raw: string): bigint | undefined =>
  * Exact integer value of `holder[key]` with Python's `int` semantics, or `undefined`.
  *
  * Numbers decoded by {@link parseJsonStrict} must be integer literals (exact beyond 2^53;
- * `1.0` / `1e3` are Python floats). Other (JS-built) numbers must be safe integers.
+ * `1.0` / `1e3` are Python floats). Other (JS-built or changed after decoding) numbers must be
+ * safe integers.
  */
 export const jsonIntegerMember = (holder: object, key: string): bigint | undefined => {
   const value = (holder as Record<string, unknown>)[key]
   if (typeof value !== 'number') return undefined
-  const literal = numberLiterals.get(holder)?.get(key)
+  const literal = decodedLiteral(holder, key, value)
   if (literal !== undefined) return integerLiteralValue(literal)
   return Number.isSafeInteger(value) ? BigInt(value) : undefined
 }
@@ -193,6 +206,7 @@ const notSerializable = (value: unknown): string | undefined => {
  * UTF-8 encode) instead of silently dropping or mangling values: non-finite numbers, lone
  * surrogates, functions, symbols, binary data, maps and sets are rejected. Values with an explicit
  * JSON representation (`toJSON`, e.g. `Date`) are serialized; `undefined` members are omitted.
+ * Numbers decoded by {@link parseJsonStrict} are written back verbatim while unchanged.
  *
  * @throws {TypeError} If the value is not JSON-serializable.
  */
@@ -204,6 +218,10 @@ export const stringifyJsonStrict = (value: unknown): string | undefined =>
     if (hasLoneSurrogate(name)) throw new TypeError('Object names MUST NOT contain lone surrogates')
     if (typeof v === 'number' && !Number.isFinite(v)) {
       throw new TypeError(`Non-finite JSON value ${String(v)} is not allowed by RFC 8259`)
+    }
+    if (typeof v === 'number') {
+      const literal = decodedLiteral(this as object, name, v)
+      if (literal !== undefined) return (JSON as unknown as JsonWithRawJson).rawJSON(literal)
     }
     if (typeof v === 'string' && hasLoneSurrogate(v)) throw new TypeError('Strings MUST NOT contain lone surrogates')
     return v

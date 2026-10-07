@@ -113,6 +113,12 @@ describe('stringifyJsonStrict', () => {
     expect(stringifyJsonStrict({ a: [1, 'b'], c: { d: null } })).toBe('{"a":[1,"b"],"c":{"d":null}}')
   })
 
+  test('writes unchanged decoded number literals verbatim', () => {
+    const obj = parseJsonStrict('{"a":1.0,"b":18446744073709551615,"c":[1e20],"d":6}').value as Record<string, unknown>
+    obj['d'] = 7
+    expect(stringifyJsonStrict(obj)).toBe('{"a":1.0,"b":18446744073709551615,"c":[1e20],"d":7}')
+  })
+
   test.each([NaN, Infinity, -Infinity])('rejects non-finite %s', (n) => {
     expect(() => stringifyJsonStrict({ a: { b: [n] } })).toThrow(TypeError)
   })
@@ -189,5 +195,13 @@ describe('jsonIntegerMember', () => {
     expect(jsonIntegerMember({ a: 2 ** 64 }, 'a')).toBeUndefined()
     expect(jsonIntegerMember({ a: 6n }, 'a')).toBeUndefined()
     expect(jsonIntegerMember({}, 'a')).toBeUndefined()
+  })
+
+  test('decoded members changed after decoding use their current value', () => {
+    const obj = parseJsonStrict('{"a":6,"b":123}').value as Record<string, unknown>
+    obj['a'] = 6.5
+    obj['b'] = 0
+    expect(jsonIntegerMember(obj, 'a')).toBeUndefined()
+    expect(jsonIntegerMember(obj, 'b')).toBe(0n)
   })
 })

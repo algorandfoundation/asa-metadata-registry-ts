@@ -92,7 +92,9 @@ export const decodeMetadataJson = (metadata: Uint8Array): Record<string, unknown
  * Encode a JSON object to UTF-8 bytes without BOM.
  *
  * The encoding is compact (no whitespace) and not canonicalized further; ARC-89 hashing uses
- * raw bytes. Non-finite numbers and lone surrogates are rejected (RFC 8259).
+ * raw bytes. Non-finite numbers and lone surrogates are rejected (RFC 8259). Numbers decoded by
+ * {@link decodeMetadataJson} keep their source text (e.g. `1.0`, integers beyond 2^53) while
+ * unchanged.
  */
 export const encodeMetadataJson = (obj: Record<string, unknown>): Uint8Array => {
   let txt: string | undefined
