@@ -40,7 +40,7 @@ pnpm run generate
 - `src/generated/AsaMetadataRegistry.ts`: AlgoKit typed app client (`algokit-client-generator`), wrapped by the SDK.
 - `src/generated/avm/AsaMetadataRegistry.client.ts`: AVM client (`puyats-clientgen`), an Algorand TypeScript
   contract stub for contract-to-contract calls compiled with PuyaTs. It is shipped as source in the package and is not
-  part of the SDK build.
+  part of the SDK build. Contracts import it from `@algorandfoundation/asa-metadata-registry-sdk/avm`.
 
 ### Tests
 

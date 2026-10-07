@@ -10,7 +10,8 @@
       "types": "./dist/cjs/index.d.ts",
       "import": "./dist/esm/index.js",
       "require": "./dist/cjs/index.js"
-    }
+    },
+    "./avm": "./src/generated/avm/AsaMetadataRegistry.client.ts"
   },
   "files": [
     "dist",
