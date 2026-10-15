@@ -34,9 +34,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "generate:app-client": "algokitgen generate -a arc89/smart_contracts/artifacts/asa_metadata_registry/AsaMetadataRegistry.arc56.json -o src/generated/AsaMetadataRegistry.ts",
-    "generate:avm-client": "mkdir -p src/generated/avm && puyats-clientgen arc89/smart_contracts/artifacts/asa_metadata_registry/AsaMetadataRegistry.arc56.json --out-dir ../../../../src/generated/avm",
-    "generate": "pnpm run generate:app-client && pnpm run generate:avm-client"
+    "generate:avm-client": "mkdir -p src/generated/avm && puyats-clientgen arc89/smart_contracts/artifacts/asa_metadata_registry/AsaMetadataRegistry.arc56.json --out-dir ../../../../src/generated/avm"
   },
   "repository": {
     "type": "git",
@@ -49,7 +47,6 @@
   },
   "homepage": "https://github.com/algorandfoundation/asa-metadata-registry-ts#readme",
   "devDependencies": {
-    "@algorandfoundation/algokit-client-generator": "^6.0.1",
     "@algorandfoundation/algokit-utils": "^9.2.2",
     "@algorandfoundation/puya-ts": "^1.3.1",
     "@commitlint/cli": "^20.5.3",

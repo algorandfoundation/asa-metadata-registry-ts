@@ -12,9 +12,6 @@ importers:
 
   .:
     devDependencies:
-      '@algorandfoundation/algokit-client-generator':
-        specifier: ^6.0.1
-        version: 6.0.1(@algorandfoundation/algokit-utils@9.2.2(algosdk@3.8.0))(algosdk@3.8.0)
       '@algorandfoundation/algokit-utils':
         specifier: ^9.2.2
         version: 9.2.2(algosdk@3.8.0)
@@ -95,14 +92,6 @@ packages:
 
   '@actions/io@3.0.2':
     resolution: {integrity: sha512-nRBchcMM+QK1pdjO7/idu86rbJI5YHUKCvKs0KxnSYbVe3F51UfGxuZX4Qy/fWlp6l7gWFwIkrOzN+oUK03kfw==}
-
-  '@algorandfoundation/algokit-client-generator@6.0.1':
-    resolution: {integrity: sha512-9IMblhFK7BX8vC5R9txb9wWwQTW1ThzraBWwzhk4niE0kZMzYIh5ZD+WVUxg+zTtwK66ziQVU1NO/v9Q8pEyzw==}
-    engines: {node: '>=20.0'}
-    hasBin: true
-    peerDependencies:
-      '@algorandfoundation/algokit-utils': ^9.0.0
-      algosdk: ^3.2.0
 
   '@algorandfoundation/algokit-utils@10.0.0-beta.4':
     resolution: {integrity: sha512-+X06PW7w2zWJWPp91pHoLMQizrq7E33Y1Mj/Hz/hkLiASXWwMKVX5QsQCbvsMYk+guqayCwB6782VngLR8d1RA==}
@@ -1613,9 +1602,6 @@ packages:
   jsonfile@6.2.0:
     resolution: {integrity: sha512-FGuPw30AdOIUTRMC2OMRtQV+jkVj2cfPqSeWXv1NEAJ1qZ5zb1X6z1mFhbfOB/iy3ssJCD+3KuZ8r8C3uVFlAg==}
 
-  jsonschema@1.5.0:
-    resolution: {integrity: sha512-K+A9hhqbn0f3pJX17Q/7H6yQfD/5OXgdrR5UE12gMXCiN9D5Xq2o5mddV2QEcX/bjla99ASsAAQUyMCCRWAEhw==}
-
   keyv@4.5.4:
     resolution: {integrity: sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw==}
 
@@ -2649,15 +2635,6 @@ snapshots:
       undici: 6.29.0
 
   '@actions/io@3.0.2': {}
-
-  '@algorandfoundation/algokit-client-generator@6.0.1(@algorandfoundation/algokit-utils@9.2.2(algosdk@3.8.0))(algosdk@3.8.0)':
-    dependencies:
-      '@algorandfoundation/algokit-utils': 9.2.2(algosdk@3.8.0)
-      algosdk: 3.8.0
-      chalk: 5.6.2
-      change-case: 5.4.4
-      commander: 14.0.3
-      jsonschema: 1.5.0
 
   '@algorandfoundation/algokit-utils@10.0.0-beta.4':
     dependencies:
@@ -4150,8 +4127,6 @@ snapshots:
       universalify: 2.0.1
     optionalDependencies:
       graceful-fs: 4.2.11
-
-  jsonschema@1.5.0: {}
 
   keyv@4.5.4:
     dependencies:

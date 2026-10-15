@@ -38,16 +38,21 @@ vectors) the SDK is at parity with.
 
 ### Generated clients
 
-Both clients are generated from the ARC-56 spec of the pinned `arc89` submodule:
+Both clients are generated from the ARC-56 spec of the pinned `arc89` submodule and committed:
 
-```sh
-pnpm run generate
-```
+- `src/generated/AsaMetadataRegistry.ts`: AlgoKit typed app client (`algokit-client-generator` 6.0.1), wrapped by the
+  SDK. The generator is not a project dependency; regenerate the client with the AlgoKit CLI, which runs the generator
+  through `npx` (outside the lockfile):
 
-- `src/generated/AsaMetadataRegistry.ts`: AlgoKit typed app client (`algokit-client-generator`), wrapped by the SDK.
-- `src/generated/avm/AsaMetadataRegistry.client.ts`: AVM client (`puyats-clientgen`), an Algorand TypeScript
-  contract stub for contract-to-contract calls compiled with PuyaTs. It is shipped as source in the package and is not
-  part of the SDK build. Contracts import it from `@algorandfoundation/asa-metadata-registry-sdk/avm`.
+  ```sh
+  algokit generate client arc89/smart_contracts/artifacts/asa_metadata_registry/AsaMetadataRegistry.arc56.json \
+    -l typescript -v 6.0.1 -o src/generated/AsaMetadataRegistry.ts
+  ```
+
+- `src/generated/avm/AsaMetadataRegistry.client.ts`: AVM client (`puyats-clientgen`, `pnpm run generate:avm-client`),
+  an Algorand TypeScript contract stub for contract-to-contract calls compiled with PuyaTs. It is shipped as source in
+  the package and is not part of the SDK build. Contracts import it from
+  `@algorandfoundation/asa-metadata-registry-sdk/avm`.
 
 ### Tests
 
