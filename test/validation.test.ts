@@ -18,6 +18,7 @@ const {
   isArc3Metadata,
   isPositiveUint64,
   validateArc3Properties,
+  validateArc3Schema,
   validateArc3Values,
   validateArc20Arc62RequireArc3,
 } = validation
@@ -108,6 +109,13 @@ describe('validate arc3 values', () => {
 
   test('decimals integer literal matches', () => {
     validateArc3Values(decodeMetadataJson(utf8('{"decimals":6}')), 6) // should not throw
+  })
+
+  test('decimals float literal assigned an equal integer matches', () => {
+    const obj = decodeMetadataJson(utf8('{"decimals":6.0}'))
+    obj['decimals'] = 6
+    validateArc3Schema(obj) // should not throw
+    validateArc3Values(obj, 6) // should not throw
   })
 })
 

@@ -87,6 +87,34 @@ describe('parseJsonStrict', () => {
     expect(() => parseJsonStrict('{"a":1,"a":2}')).toThrow('Duplicate JSON object names are not allowed')
   })
 
+  test('decoded members read like plain JSON values', () => {
+    const obj = parseJsonStrict('{"a":1.0,"b":[6.0,7],"c":-0,"d":1.5}').value as Record<string, unknown>
+    const plain = { a: 1, b: [6, 7], c: -0, d: 1.5 }
+    expect(obj).toEqual(plain)
+    expect({ ...obj }).toEqual(plain)
+    expect(structuredClone(obj)).toEqual(plain)
+    expect(Object.keys(obj)).toEqual(['a', 'b', 'c', 'd'])
+    expect(JSON.stringify(obj)).toBe('{"a":1,"b":[6,7],"c":0,"d":1.5}')
+  })
+
+  test('only number members such as 1.0 and -0 are accessors', () => {
+    const obj = parseJsonStrict('{"a":1.0,"b":-0,"c":9007199254740993,"d":6,"e":1.5}').value as Record<string, unknown>
+    expect(Object.getOwnPropertyDescriptor(obj, 'a')?.get).toBeTypeOf('function')
+    expect(Object.getOwnPropertyDescriptor(obj, 'b')?.get).toBeTypeOf('function')
+    for (const [key, value] of [
+      ['c', 9007199254740992],
+      ['d', 6],
+      ['e', 1.5],
+    ] as const) {
+      expect(Object.getOwnPropertyDescriptor(obj, key)).toEqual({
+        value,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      })
+    }
+  })
+
   test.each(['{"a":NaN}', '{"a":Infinity}', '{"a":-Infinity}', '{"a":1,}', "{'a':1}"])('rejects %s', (text) => {
     expect(() => parseJsonStrict(text)).toThrow(SyntaxError)
   })
@@ -117,6 +145,30 @@ describe('stringifyJsonStrict', () => {
     const obj = parseJsonStrict('{"a":1.0,"b":18446744073709551615,"c":[1e20],"d":6}').value as Record<string, unknown>
     obj['d'] = 7
     expect(stringifyJsonStrict(obj)).toBe('{"a":1.0,"b":18446744073709551615,"c":[1e20],"d":7}')
+  })
+
+  test('writes decoded members assigned an equal value from that value', () => {
+    const obj = parseJsonStrict('{"a":6.0,"b":-0,"c":[1.0],"d":1e3}').value as Record<string, unknown>
+    obj['a'] = 6
+    obj['b'] = 0
+    const c = obj['c'] as number[]
+    c[0] = 1
+    expect(stringifyJsonStrict(obj)).toBe('{"a":6,"b":0,"c":[1],"d":1e3}')
+  })
+
+  test('writes decoded integers beyond 2^53 verbatim while their value is unchanged', () => {
+    const obj = parseJsonStrict('{"a":18446744073709551615,"b":9007199254740993}').value as Record<string, unknown>
+    obj['a'] = 2 ** 64
+    obj['b'] = 2 ** 53 + 2
+    expect(stringifyJsonStrict(obj)).toBe('{"a":18446744073709551615,"b":9007199254740994}')
+  })
+
+  test('drops the source text of deleted and redefined members', () => {
+    const obj = parseJsonStrict('{"a":1.0,"b":1.0}').value as Record<string, unknown>
+    delete obj['a']
+    obj['a'] = 1
+    Object.defineProperty(obj, 'b', { value: 1, writable: true, enumerable: true, configurable: true })
+    expect(stringifyJsonStrict(obj)).toBe('{"b":1,"a":1}')
   })
 
   test.each([NaN, Infinity, -Infinity])('rejects non-finite %s', (n) => {
@@ -203,5 +255,21 @@ describe('jsonIntegerMember', () => {
     obj['b'] = 0
     expect(jsonIntegerMember(obj, 'a')).toBeUndefined()
     expect(jsonIntegerMember(obj, 'b')).toBe(0n)
+  })
+
+  test('decoded members assigned an equal value use that value', () => {
+    const obj = parseJsonStrict('{"a":6.0,"b":1e3}').value as Record<string, unknown>
+    obj['a'] = 6
+    obj['b'] = 1000
+    expect(jsonIntegerMember(obj, 'a')).toBe(6n)
+    expect(jsonIntegerMember(obj, 'b')).toBe(1000n)
+  })
+
+  test('decoded integers beyond 2^53 stay exact while their value is unchanged', () => {
+    const obj = parseJsonStrict('{"a":9007199254740993,"b":9007199254740993}').value as Record<string, unknown>
+    obj['a'] = 2 ** 53
+    obj['b'] = 2 ** 53 + 2
+    expect(jsonIntegerMember(obj, 'a')).toBe(9007199254740993n)
+    expect(jsonIntegerMember(obj, 'b')).toBeUndefined()
   })
 })

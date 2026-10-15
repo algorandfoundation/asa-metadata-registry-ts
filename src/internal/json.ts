@@ -104,8 +104,8 @@ export const scanJsonText = (text: string): JsonTextScan => {
   return { duplicateName, loneSurrogate, topLevelMembers }
 }
 
-/** Raw source text and value of the number literals of the objects/arrays decoded by `parseJsonStrict`. */
-const numberLiterals = new WeakMap<object, Map<string, { source: string; value: number }>>()
+/** Raw source text and value of the number members decoded by `parseJsonStrict`, and their getter if accessors. */
+const numberLiterals = new WeakMap<object, Map<string, { source: string; value: number; get?: () => number }>>()
 
 /** `JSON.parse` reviver context (source text access, Node >= 21). */
 interface ReviverContext {
@@ -117,21 +117,39 @@ interface JsonWithRawJson {
   rawJSON(text: string): unknown
 }
 
-function recordNumberLiteral(this: object, key: string, value: unknown, context?: ReviverContext): unknown {
-  if (typeof value === 'number' && context?.source !== undefined) {
-    let literals = numberLiterals.get(this)
-    if (literals === undefined) {
-      literals = new Map()
-      numberLiterals.set(this, literals)
-    }
-    literals.set(key, { source: context.source, value })
+const literalMatters = (source: string, value: number): boolean =>
+  JSON.stringify(value) !== source ||
+  integerLiteralValue(source) !== (Number.isSafeInteger(value) ? BigInt(value) : undefined)
+
+const trackNumberLiteral = (holder: object, key: string, source: string, value: number): void => {
+  let get: (() => number) | undefined
+  if (Number.isSafeInteger(value) || integerLiteralValue(source) === undefined) {
+    get = () => value
+    Object.defineProperty(holder, key, {
+      get,
+      set(this: object, v: unknown) {
+        Object.defineProperty(this, key, { value: v, writable: true, enumerable: true, configurable: true })
+      },
+      enumerable: true,
+      configurable: true,
+    })
   }
-  return value
+  let literals = numberLiterals.get(holder)
+  if (literals === undefined) {
+    literals = new Map()
+    numberLiterals.set(holder, literals)
+  }
+  literals.set(key, { source, value, get })
 }
 
 const decodedLiteral = (holder: object, key: string, value: number): string | undefined => {
   const literal = numberLiterals.get(holder)?.get(key)
-  return literal !== undefined && literal.value === value ? literal.source : undefined
+  if (literal === undefined) return undefined
+  const unchanged =
+    literal.get === undefined
+      ? literal.value === value
+      : Object.getOwnPropertyDescriptor(holder, key)?.get === literal.get
+  return unchanged ? literal.source : undefined
 }
 
 /**
@@ -139,17 +157,27 @@ const decodedLiteral = (holder: object, key: string, value: number): string | un
  *
  * The source text of number literals is recorded, so {@link jsonIntegerMember} can tell integer
  * literals from numbers with a fraction or exponent, and {@link stringifyJsonStrict} can write
- * unchanged numbers back verbatim.
+ * unchanged numbers back verbatim. Members written as `-0` or with a fraction or exponent that JS
+ * writes differently (e.g. `1.0`, `1e3`) become accessors whose text is dropped when a value is
+ * assigned to them (even an equal one); integers beyond 2^53, which JS numbers cannot hold
+ * exactly, keep their text while their value is unchanged.
  *
  * @throws {SyntaxError} If the text is not valid JSON or has duplicate object names.
  * @returns The parsed value and the scan of the source text.
  */
 export const parseJsonStrict = (text: string): { value: unknown; scan: JsonTextScan } => {
-  const value: unknown = JSON.parse(text, recordNumberLiteral)
+  const literals: [holder: object, key: string, source: string, value: number][] = []
+  const value: unknown = JSON.parse(text, function (this: object, key: string, v: unknown, context?: ReviverContext) {
+    if (typeof v === 'number' && context?.source !== undefined && literalMatters(context.source, v)) {
+      literals.push([this, key, context.source, v])
+    }
+    return v
+  })
   const scan = scanJsonText(text)
   if (scan.duplicateName !== undefined) {
     throw new SyntaxError('Duplicate JSON object names are not allowed')
   }
+  for (const [holder, key, source, v] of literals) trackNumberLiteral(holder, key, source, v)
   return { value, scan }
 }
 

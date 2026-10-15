@@ -64,6 +64,9 @@ const decodeMetadataText = (metadata: Uint8Array): string => {
  *
  * ARC-89 requires a UTF-8 JSON *object* (RFC 8259): duplicate object names, lone surrogate
  * escapes and non-finite numbers are rejected. Empty metadata bytes MUST be treated as `{}`.
+ * Number members written as `-0` or with a fraction or exponent that JS writes differently (e.g.
+ * `1.0`, `1e3`) are accessor properties that keep their source text until a value is assigned to
+ * them.
  */
 export const decodeMetadataJson = (metadata: Uint8Array): Record<string, unknown> => {
   if (metadata.length === 0) return {}
@@ -93,8 +96,8 @@ export const decodeMetadataJson = (metadata: Uint8Array): Record<string, unknown
  *
  * The encoding is compact (no whitespace) and not canonicalized further; ARC-89 hashing uses
  * raw bytes. Non-finite numbers and lone surrogates are rejected (RFC 8259). Numbers decoded by
- * {@link decodeMetadataJson} keep their source text (e.g. `1.0`, integers beyond 2^53) while
- * unchanged.
+ * {@link decodeMetadataJson} keep their source text (e.g. `1.0`) until a value is assigned to them
+ * (even an equal one); integers beyond 2^53 keep it while their value is unchanged.
  */
 export const encodeMetadataJson = (obj: Record<string, unknown>): Uint8Array => {
   let txt: string | undefined

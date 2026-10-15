@@ -118,7 +118,7 @@ It fails when the ASA does not exist, already has metadata, or `flags` set ARC-8
 
 - `computeArc3MetadataHash(bytes)`: the ARC-3 `am` of a metadata file.
 - `computeHeaderHash({ metadataIdentifiers, reversibleFlags, irreversibleFlags, metadataSize })`, `computePageHash({ pageIndex, pageContent })`, `computeMetadataHash({ metadataIdentifiers, reversibleFlags, irreversibleFlags, metadata, pageSize })`, `paginate(bytes, pageSize)`.
-- `decodeMetadataJson(bytes)`: strict (no BOM, no duplicate keys, no lone surrogates; keeps the source text of numbers). `encodeMetadataJson(obj)`: compact UTF-8. `validateArc3Schema(obj)` throws on invalid ARC-3.
+- `decodeMetadataJson(bytes)`: strict (no BOM, no duplicate keys, no lone surrogates; keeps the source text of numbers such as `1.0` until a value is assigned to them). `encodeMetadataJson(obj)`: compact UTF-8. `validateArc3Schema(obj)` throws on invalid ARC-3.
 - `Arc90Uri.parse(uri)` gives `{ netauth, appId, boxName, compliance, assetId }`; `.withAssetId(id)`, `.toUri()`. `completePartialAssetUrl(assetUrl, assetId)` completes a partial URI. `assetIdToBoxName(id)`, `boxNameToAssetId(bytes)`, `b64Encode`, `b64Decode`, `b64UrlEncode`, `b64UrlDecode`.
 
 ## Deployments and constants

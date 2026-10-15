@@ -1027,4 +1027,12 @@ describe('asset metadata from decoded json', () => {
     const metadata = AssetMetadata.fromJson({ assetId: 1n, jsonObj, arc3Compliant: true })
     expect(new TextDecoder().decode(metadata.body.rawBytes)).toBe(text)
   })
+
+  test('decoded numbers assigned an equal value use that value', () => {
+    const jsonObj = decodeMetadataJson(new TextEncoder().encode('{"decimals":6.0,"price":-0}'))
+    jsonObj['decimals'] = 6
+    jsonObj['price'] = 0
+    const metadata = AssetMetadata.fromJson({ assetId: 1n, jsonObj, arc3Compliant: true })
+    expect(new TextDecoder().decode(metadata.body.rawBytes)).toBe('{"decimals":6,"price":0}')
+  })
 })
