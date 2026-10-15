@@ -722,6 +722,22 @@ describe('get asset metadata', () => {
     await expect(promise).rejects.toThrow(/>= 0/)
   })
 
+  test.each([
+    { driftRetries: 1.5 },
+    { driftRetries: -1.5 },
+    { driftRetries: NaN },
+    { driftRetries: Infinity },
+    { maxDeprecationHops: 1.5 },
+    { maxDeprecationHops: -1.5 },
+    { maxDeprecationHops: NaN },
+    { maxDeprecationHops: Infinity },
+  ])('rejects non-integer limits %o', async (limits) => {
+    const reader = new AsaMetadataRegistryRead({ appId: 123 })
+    const promise = reader.getAssetMetadata({ assetId: 456, ...limits })
+    await expect(promise).rejects.toThrow(TypeError)
+    await expect(promise).rejects.toThrow(/must be integers/)
+  })
+
   test('no deprecation follow', async () => {
     // Test metadata doesn't follow deprecation when disabled.
     const reader = new AsaMetadataRegistryRead({ appId: 123, algod: algodReader })

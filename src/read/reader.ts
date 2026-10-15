@@ -289,6 +289,9 @@ export class AsaMetadataRegistryRead {
     const followDep = args.followDeprecation ?? true
     const maxHops = args.maxDeprecationHops ?? 5
     const driftRetries = args.driftRetries ?? 2
+    if (!Number.isInteger(driftRetries) || !Number.isInteger(maxHops)) {
+      throw new TypeError('driftRetries and maxDeprecationHops must be integers')
+    }
     if (driftRetries < 0 || maxHops < 0) {
       throw new RangeError('driftRetries and maxDeprecationHops must be >= 0')
     }
