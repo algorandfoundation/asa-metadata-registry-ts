@@ -126,7 +126,7 @@ computeArc3MetadataHash(fileBytes) // the ARC-3 `am` of a file
 - `fromJson({ arc3Compliant: true })` validates ARC-3 and sets the ARC-3 flag (plus ARC-20/ARC-62 from `properties`). Explicit `flags` must then include `irreversible.arc3: true`. ARC-20 and ARC-62 need ARC-3.
 - `setImmutable` and irreversible flags cannot be undone; after `setImmutable`, replace, delete and flag changes fail. `setIrreversibleFlag` accepts only indexes 2 to 6 (`IRR_FLG_ARC54` and reserved ones).
 - Custom `simulate` options merge over the defaults. AVM reads already get the maximum extra opcode budget.
-- Pass asset and app IDs as `bigint`. A `number` is accepted only up to 2^53 - 1; larger numbers throw a `RangeError`.
+- Pass asset and app IDs as `bigint`. A `number` is accepted only up to 2^53 - 1; larger numbers throw an error.
 - BOX reads throw typed errors (`BoxNotFoundError`, `MetadataKeyError`, `MetadataEncodingError`). AVM reads throw the simulate error with the contract message.
 - With a nonzero `asaAm`, `hashMatches` throws instead of returning `false` when the metadata is not immutable, or when ARC-89 native metadata without ARC-3 does not hash to `am` (`MetadataHashMismatchError`). Wrap it in try/catch and treat a throw as a failed check.
 - If Node fails to load the package from an ES module with `ERR_MODULE_NOT_FOUND` inside `dist/esm`, run the program with `tsx` or a bundler, or use CommonJS.

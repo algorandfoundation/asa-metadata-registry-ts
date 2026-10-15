@@ -1,6 +1,6 @@
 # ASA Metadata Registry SDK reference
 
-All names are exports of `@algorandfoundation/asa-metadata-registry-sdk`. IDs accept `bigint | number` (a `number` must be a safe integer, else `RangeError`); returned IDs, revisions and uint64 values are `bigint`.
+All names are exports of `@algorandfoundation/asa-metadata-registry-sdk`. IDs accept `bigint | number` (a `number` must be a safe integer, else the call throws); returned IDs, revisions and uint64 values are `bigint`.
 
 ## Contents
 
