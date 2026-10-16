@@ -123,7 +123,7 @@ export class AsaMetadataRegistryAvmRead {
     buildGroup: (composer: AsaMetadataRegistryComposer<unknown[]>) => void,
     args?: { simulate?: SimulateOptions },
   ): Promise<unknown[]> {
-    const composer = this.client.newGroup() as unknown as AsaMetadataRegistryComposer<unknown[]>
+    const composer = this.client.newGroup()
     buildGroup(composer)
     const results = await composer.simulate({
       ...DEFAULT_SIMULATE_OPTIONS,

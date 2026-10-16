@@ -137,7 +137,7 @@ const repeat = <T>(count: number, value: T): T[] => Array.from({ length: count }
  * method name, or transaction type) and the fee pool, pooled on the first app call (all others are fee-less).
  */
 const expectGroup = async (
-  composer: AsaMetadataRegistryComposer,
+  composer: AsaMetadataRegistryComposer<unknown[]>,
   expected: { txns: readonly string[]; feePool: number },
 ) => {
   const { transactions, methodCalls } = await (await composer.composer()).buildTransactions()

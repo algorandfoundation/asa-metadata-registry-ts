@@ -146,7 +146,7 @@ export class AsaMetadataRegistryWrite {
   }
 
   private newGroup(): AsaMetadataRegistryComposer<unknown[]> {
-    return this.client.newGroup() as unknown as AsaMetadataRegistryComposer<unknown[]>
+    return this.client.newGroup()
   }
 
   /** `[extraResources calls, budget inner txns]` to touch the current box of `assetId`. */
@@ -195,7 +195,7 @@ export class AsaMetadataRegistryWrite {
     assetManager: TransactionSignerAccount
     metadata: AssetMetadata
     options?: WriteOptions
-  }): Promise<AsaMetadataRegistryComposer> {
+  }): Promise<AsaMetadataRegistryComposer<unknown[]>> {
     const opt = args.options ?? writeOptionsDefault
     const { metadata } = args
     const params = await this.getParams()
@@ -253,7 +253,7 @@ export class AsaMetadataRegistryWrite {
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    return composer as unknown as AsaMetadataRegistryComposer
+    return composer
   }
 
   /**
@@ -269,7 +269,7 @@ export class AsaMetadataRegistryWrite {
     metadata: AssetMetadata
     options?: WriteOptions
     assumeCurrentSize?: number | null
-  }): Promise<AsaMetadataRegistryComposer> {
+  }): Promise<AsaMetadataRegistryComposer<unknown[]>> {
     const opt = args.options ?? writeOptionsDefault
     const avm = new AsaMetadataRegistryAvmRead({ client: this.client })
 
@@ -296,7 +296,7 @@ export class AsaMetadataRegistryWrite {
     metadata: AssetMetadata
     options: WriteOptions
     currentSize: number
-  }): Promise<AsaMetadataRegistryComposer> {
+  }): Promise<AsaMetadataRegistryComposer<unknown[]>> {
     const { metadata, options } = args
     const params = await this.getParams()
     const chunks = metadata.body.chunkedPayload(params)
@@ -349,14 +349,14 @@ export class AsaMetadataRegistryWrite {
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    return composer as unknown as AsaMetadataRegistryComposer
+    return composer
   }
 
   private async buildReplaceLarger(args: {
     assetManager: TransactionSignerAccount
     metadata: AssetMetadata
     options: WriteOptions
-  }): Promise<AsaMetadataRegistryComposer> {
+  }): Promise<AsaMetadataRegistryComposer<unknown[]>> {
     const { metadata, options } = args
     const params = await this.getParams()
     const chunks = metadata.body.chunkedPayload(params)
@@ -408,7 +408,7 @@ export class AsaMetadataRegistryWrite {
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    return composer as unknown as AsaMetadataRegistryComposer
+    return composer
   }
 
   /**
@@ -425,7 +425,7 @@ export class AsaMetadataRegistryWrite {
     offset: number
     payload: Uint8Array | ArrayBuffer | number[]
     options?: WriteOptions
-  }): Promise<AsaMetadataRegistryComposer> {
+  }): Promise<AsaMetadataRegistryComposer<unknown[]>> {
     if (!Number.isInteger(args.offset)) throw new TypeError('offset must be an integer')
     const opt = args.options ?? writeOptionsDefault
     const params = await this.getParams()
@@ -478,7 +478,7 @@ export class AsaMetadataRegistryWrite {
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    return composer as unknown as AsaMetadataRegistryComposer
+    return composer
   }
 
   /** Build (but do not send) an ARC-89 delete metadata group. */
@@ -486,7 +486,7 @@ export class AsaMetadataRegistryWrite {
     assetManager: TransactionSignerAccount
     assetId: bigint | number
     options?: WriteOptions
-  }): Promise<AsaMetadataRegistryComposer> {
+  }): Promise<AsaMetadataRegistryComposer<unknown[]>> {
     const opt = args.options ?? writeOptionsDefault
     const [ioExtra] = await this.boxResources(args.assetId, { hashing: false })
 
@@ -512,7 +512,7 @@ export class AsaMetadataRegistryWrite {
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    return composer as unknown as AsaMetadataRegistryComposer
+    return composer
   }
 
   // ------------------------------------------------------------------
@@ -554,7 +554,7 @@ export class AsaMetadataRegistryWrite {
       options: args.options,
     })
     const result = await AsaMetadataRegistryWrite.sendGroup({
-      composer: composer as unknown as AsaMetadataRegistryComposer<unknown[]>,
+      composer: composer,
       sendParams: args.sendParams,
       options: args.options,
     })
@@ -582,7 +582,7 @@ export class AsaMetadataRegistryWrite {
       assumeCurrentSize: args.assumeCurrentSize,
     })
     const result = await AsaMetadataRegistryWrite.sendGroup({
-      composer: composer as unknown as AsaMetadataRegistryComposer<unknown[]>,
+      composer: composer,
       sendParams: args.sendParams,
       options: args.options,
     })
@@ -632,7 +632,7 @@ export class AsaMetadataRegistryWrite {
       options: args.options,
     })
     await AsaMetadataRegistryWrite.sendGroup({
-      composer: composer as unknown as AsaMetadataRegistryComposer<unknown[]>,
+      composer: composer,
       sendParams: args.sendParams,
       options: args.options,
     })
@@ -650,7 +650,7 @@ export class AsaMetadataRegistryWrite {
       options: args.options,
     })
     const result = await AsaMetadataRegistryWrite.sendGroup({
-      composer: composer as unknown as AsaMetadataRegistryComposer<unknown[]>,
+      composer: composer,
       sendParams: args.sendParams,
       options: args.options,
     })
