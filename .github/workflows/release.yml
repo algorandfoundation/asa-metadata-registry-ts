@@ -87,6 +87,9 @@ jobs:
         with:
           app-id: ${{ secrets.BOT_ID }}
           private-key: ${{ secrets.BOT_SK }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
 
       - name: Checkout source code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
