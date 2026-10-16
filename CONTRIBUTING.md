@@ -38,5 +38,6 @@ This SDK has no runtime dependencies; this keeps things lean for consumers and a
 
 ### Updates
 
-- Dependabot proposes grouped minor+patch updates monthly, with a 7-day `cooldown` that matches `minimumReleaseAge`.
+- Dependabot proposes grouped minor+patch updates monthly, with a 7-day `cooldown` that matches `minimumReleaseAge`. GitHub Actions updates use the same 7-day `cooldown`.
+- Actions are pinned to a full commit SHA, with the version in a trailing comment.
 - Security updates run on their own schedule in repo settings, outside the monthly batch.
