@@ -4,10 +4,10 @@
  * Ported from Python `asa_metadata_registry/read/reader.py`.
  */
 
-import { AlgodBoxReader } from '../algod'
-import { Arc90Uri, completePartialAssetUrl } from '../codec'
-import { deploymentForGenesis, netauthForGenesis, netauthMatchesGenesis } from '../deployments'
-import { InvalidArc90UriError, MetadataDriftError, MissingAppClientError, RegistryResolutionError } from '../errors'
+import { AlgodBoxReader } from '../algod.js'
+import { Arc90Uri, completePartialAssetUrl } from '../codec.js'
+import { deploymentForGenesis, netauthForGenesis, netauthMatchesGenesis } from '../deployments.js'
+import { InvalidArc90UriError, MetadataDriftError, MissingAppClientError, RegistryResolutionError } from '../errors.js'
 import {
   AssetMetadataRecord,
   MbrDelta,
@@ -19,13 +19,13 @@ import {
   Pagination,
   RegistryParameters,
   getDefaultRegistryParams,
-} from '../models'
-import * as enums from '../enums'
-import { asBigInt } from '../internal/numbers'
-import { concatBytes } from '../internal/bytes'
-import { AsaMetadataRegistryAvmRead, SimulateOptions } from './avm'
-import { AsaMetadataRegistryBoxRead } from './box'
-import { parsePaginatedMetadata, withArgs } from '../internal/avm'
+} from '../models.js'
+import * as enums from '../enums.js'
+import { asBigInt } from '../internal/numbers.js'
+import { concatBytes } from '../internal/bytes.js'
+import { AsaMetadataRegistryAvmRead, SimulateOptions } from './avm.js'
+import { AsaMetadataRegistryBoxRead } from './box.js'
+import { parsePaginatedMetadata, withArgs } from '../internal/avm.js'
 
 /**
  * Where reads should come from.

@@ -4,10 +4,10 @@
  * Ported from Python `asa_metadata_registry/validation.py`.
  */
 
-import { MetadataArc3Error, MetadataEncodingError, InvalidArc3PropertiesError } from './errors'
-import { REV_FLG_ARC20, REV_FLG_ARC62 } from './flags'
-import { ARC3_PROPERTIES_KEY_ARC20, ARC3_PROPERTIES_KEY_ARC62, ARC3_PROPERTIES_KEYS } from './constants'
-import { jsonIntegerMember, parseJsonStrict, stringifyJsonStrict } from './internal/json'
+import { MetadataArc3Error, MetadataEncodingError, InvalidArc3PropertiesError } from './errors.js'
+import { REV_FLG_ARC20, REV_FLG_ARC62 } from './flags.js'
+import { ARC3_PROPERTIES_KEY_ARC20, ARC3_PROPERTIES_KEY_ARC62, ARC3_PROPERTIES_KEYS } from './constants.js'
+import { jsonIntegerMember, parseJsonStrict, stringifyJsonStrict } from './internal/json.js'
 
 const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf])
 

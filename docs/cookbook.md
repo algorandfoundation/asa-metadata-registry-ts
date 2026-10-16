@@ -6,10 +6,6 @@ flag and error, see the [SDK reference](../.claude/skills/using-asa-metadata-reg
 The recipes use the variables of recipe 1 (`algorand`, `registry` and `manager`, the ASA manager account) and an
 `assetId` (`bigint`).
 
-> In Node, named imports of the package from an ES module do not work yet, so run the recipes as CommonJS: for example,
-> put them in a `.cts` file and run it with `tsx`, or compile them with `tsc` and `"module": "commonjs"`. CommonJS has
-> no top-level `await`, so put the recipes in an `async` function.
-
 ## Imports
 
 ```ts

@@ -4,15 +4,15 @@
  * Ported from Python `asa_metadata_registry/registry.py`.
  */
 
-import { AlgodBoxReader, AlgodClientSubset } from './algod'
-import { Arc90Uri } from './codec'
-import { DEFAULT_DEPLOYMENTS } from './deployments'
-import { MissingAppClientError, RegistryResolutionError } from './errors'
-import { AsaMetadataRegistryAvmRead } from './read/avm'
-import { AsaMetadataRegistryRead } from './read/reader'
-import { AsaMetadataRegistryWrite } from './write/writer'
-import { AsaMetadataRegistryClient } from './generated'
-import { asUint64BigInt } from './internal/numbers'
+import { AlgodBoxReader, AlgodClientSubset } from './algod.js'
+import { Arc90Uri } from './codec.js'
+import { DEFAULT_DEPLOYMENTS } from './deployments.js'
+import { MissingAppClientError, RegistryResolutionError } from './errors.js'
+import { AsaMetadataRegistryAvmRead } from './read/avm.js'
+import { AsaMetadataRegistryRead } from './read/reader.js'
+import { AsaMetadataRegistryWrite } from './write/writer.js'
+import { AsaMetadataRegistryClient } from './generated/index.js'
+import { asUint64BigInt } from './internal/numbers.js'
 
 const asUint64BigIntOrNull = (v: bigint | number | null | undefined, name: string): bigint | null => {
   if (v === null || v === undefined) return null

@@ -4,9 +4,9 @@
  * Ported from Python `asa_metadata_registry/codec.py`.
  */
 
-import * as constants from './constants'
-import { InvalidArc90UriError } from './errors'
-import { asBigInt, toBigInt } from './internal/numbers'
+import * as constants from './constants.js'
+import { InvalidArc90UriError } from './errors.js'
+import { asBigInt, toBigInt } from './internal/numbers.js'
 
 // ---------------------------------------------------------------------------
 // Internal helpers

@@ -5,10 +5,10 @@
  */
 
 import type { SimulateOptions as AlgoKitSimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
-import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '../generated'
-import { MissingAppClientError } from '../errors'
-import { asNumber, asUint8, asUint64BigInt } from '../internal/numbers'
-import { toBytes } from '../internal/bytes'
+import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '../generated/index.js'
+import { MissingAppClientError } from '../errors.js'
+import { asNumber, asUint8, asUint64BigInt } from '../internal/numbers.js'
+import { toBytes } from '../internal/bytes.js'
 import {
   AbiValue,
   MbrDelta,
@@ -19,8 +19,8 @@ import {
   PaginatedMetadata,
   Pagination,
   RegistryParameters,
-} from '../models'
-import * as enums from '../enums'
+} from '../models.js'
+import * as enums from '../enums.js'
 import {
   parseHashRevision,
   parseMbrDelta,
@@ -28,7 +28,7 @@ import {
   parsePaginatedMetadata,
   returnValues,
   withArgs,
-} from '../internal/avm'
+} from '../internal/avm.js'
 
 /**
  * Options passed through to AlgoKit's composer `simulate()`.

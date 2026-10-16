@@ -1,12 +1,12 @@
 import { microAlgo } from '@algorandfoundation/algokit-utils'
 import type { Address, TransactionSigner } from 'algosdk'
 
-import * as consts from '../constants'
-import { uint64ToBytesBE } from './bytes'
-import { isNotFoundError } from './http'
-import { asUint64BigInt } from './numbers'
-import type { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '../generated'
-import { AssetMetadataBox } from '../models'
+import * as consts from '../constants.js'
+import { uint64ToBytesBE } from './bytes.js'
+import { isNotFoundError } from './http.js'
+import { asUint64BigInt } from './numbers.js'
+import type { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '../generated/index.js'
+import { AssetMetadataBox } from '../models.js'
 
 // ---------------------------------------------------------------------------
 // App call arguments sizes and fees (consensus v42)

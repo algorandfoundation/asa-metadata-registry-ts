@@ -7,9 +7,14 @@
   "types": "dist/cjs/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/cjs/index.d.ts",
-      "import": "./dist/esm/index.js",
-      "require": "./dist/cjs/index.js"
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
     },
     "./avm": "./src/generated/avm/AsaMetadataRegistry.client.ts"
   },
@@ -32,7 +37,8 @@
     "clean": "rm -rf dist/",
     "build:cjs": "tsc --project tsconfig.cjs.json",
     "build:esm": "tsc --project tsconfig.esm.json",
-    "build": "pnpm run build:cjs && pnpm run build:esm",
+    "build:dist-pkg": "node scripts/write-dist-package-json.mjs",
+    "build": "pnpm run build:cjs && pnpm run build:esm && pnpm run build:dist-pkg",
     "prepublishOnly": "pnpm run build",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -41,7 +47,8 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "generate:avm-client": "mkdir -p src/generated/avm && puyats-clientgen arc89/smart_contracts/artifacts/asa_metadata_registry/AsaMetadataRegistry.arc56.json --out-dir ../../../../src/generated/avm"
+    "generate:avm-client": "mkdir -p src/generated/avm && puyats-clientgen arc89/smart_contracts/artifacts/asa_metadata_registry/AsaMetadataRegistry.arc56.json --out-dir ../../../../src/generated/avm",
+    "check:package": "node scripts/check-package.mjs"
   },
   "repository": {
     "type": "git",

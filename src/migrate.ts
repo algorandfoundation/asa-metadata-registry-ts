@@ -9,16 +9,16 @@
 
 import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
 import type { Transaction } from 'algosdk'
-import { ARC2_ARC_NUMBER, ARC2_DATA_FORMAT_JSON, MAX_GROUP_SIZE, MAX_METADATA_SIZE } from './constants'
-import { Arc90Compliance, Arc90Uri, b64Decode } from './codec'
-import { MetadataHashMismatchError, MissingAppClientError } from './errors'
-import { MASK_IRR_IMMUTABLE } from './bitmasks'
-import { computeArc3MetadataHash } from './hashing'
-import { AssetMetadata, MetadataBody, MetadataFlags } from './models'
-import { decodeMetadataJson } from './validation'
-import { bytesEqual, concatBytes } from './internal/bytes'
-import type { AsaMetadataRegistry } from './registry'
-import { AsaMetadataRegistryWrite } from './write/writer'
+import { ARC2_ARC_NUMBER, ARC2_DATA_FORMAT_JSON, MAX_GROUP_SIZE, MAX_METADATA_SIZE } from './constants.js'
+import { Arc90Compliance, Arc90Uri, b64Decode } from './codec.js'
+import { MetadataHashMismatchError, MissingAppClientError } from './errors.js'
+import { MASK_IRR_IMMUTABLE } from './bitmasks.js'
+import { computeArc3MetadataHash } from './hashing.js'
+import { AssetMetadata, MetadataBody, MetadataFlags } from './models.js'
+import { decodeMetadataJson } from './validation.js'
+import { bytesEqual, concatBytes } from './internal/bytes.js'
+import type { AsaMetadataRegistry } from './registry.js'
+import { AsaMetadataRegistryWrite } from './write/writer.js'
 
 // ---------------------------------------------------------------------------
 // ARC-2 migration message helpers (JSON only)
