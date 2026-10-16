@@ -572,6 +572,28 @@ describe('writer initialization', () => {
   })
 })
 
+describe('replace metadata slice offset', () => {
+  // A non-integer offset is rejected before any network call (JS `number` has no Python `int` check).
+  type SliceArgs = Parameters<AsaMetadataRegistryWrite['replaceMetadataSlice']>[0]
+  const entryPoints = {
+    replaceMetadataSlice: (writer: AsaMetadataRegistryWrite, args: SliceArgs) => writer.replaceMetadataSlice(args),
+    'replaceMetadataSlice without validation': (writer: AsaMetadataRegistryWrite, args: SliceArgs) =>
+      writer.replaceMetadataSlice({ ...args, validate: false }),
+    buildReplaceMetadataSliceGroup: (writer: AsaMetadataRegistryWrite, args: SliceArgs) =>
+      writer.buildReplaceMetadataSliceGroup(args),
+  }
+  const cases = Object.entries(entryPoints).flatMap(([name, call]) =>
+    [1.5, -1.5, NaN, Infinity, -Infinity].map((offset) => ({ name, call, offset })),
+  )
+
+  test.each(cases)('$name rejects offset $offset (TS-only)', async ({ call, offset }) => {
+    const writer = new AsaMetadataRegistryWrite({ client: mockClient })
+    const args = { assetManager: createMockSigningAccount(), assetId: 1, offset, payload: new Uint8Array([1]) }
+    await expect(call(writer, args)).rejects.toThrow(new TypeError('offset must be an integer'))
+    expect(mockClient.newGroup).not.toHaveBeenCalled()
+  })
+})
+
 // ================================================================
 // High-Level Send Method Tests
 // ================================================================

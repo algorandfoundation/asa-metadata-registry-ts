@@ -426,6 +426,7 @@ export class AsaMetadataRegistryWrite {
     payload: Uint8Array | ArrayBuffer | number[]
     options?: WriteOptions
   }): Promise<AsaMetadataRegistryComposer> {
+    if (!Number.isInteger(args.offset)) throw new TypeError('offset must be an integer')
     const opt = args.options ?? writeOptionsDefault
     const params = await this.getParams()
     const payloadBytes = toBytes(args.payload, 'payload')
@@ -595,6 +596,7 @@ export class AsaMetadataRegistryWrite {
    * With `validate` (default), the complete post-replacement Metadata is validated client side,
    * as ARC-89 requires: it must decode to a JSON object (and match the ARC-3 schema if flagged).
    *
+   * @throws {TypeError} If `offset` is not an integer.
    * @throws {MetadataNotFoundError} If the Asset has no metadata (with `validate`).
    * @throws {InvalidSliceError} If the slice exceeds the Metadata size (with `validate`).
    */
@@ -607,6 +609,7 @@ export class AsaMetadataRegistryWrite {
     sendParams?: SendParams | null
     validate?: boolean
   }): Promise<void> {
+    if (!Number.isInteger(args.offset)) throw new TypeError('offset must be an integer')
     if (args.validate ?? true) {
       // ARC-89: clients MUST validate the complete post-replacement Metadata.
       const box = await parseMetadataBox(this.client, args.assetId)

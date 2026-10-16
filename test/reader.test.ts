@@ -731,7 +731,7 @@ describe('get asset metadata', () => {
     { maxDeprecationHops: -1.5 },
     { maxDeprecationHops: NaN },
     { maxDeprecationHops: Infinity },
-  ])('rejects non-integer limits %o', async (limits) => {
+  ])('rejects non-integer limits %o (TS-only)', async (limits) => {
     const reader = new AsaMetadataRegistryRead({ appId: 123 })
     const promise = reader.getAssetMetadata({ assetId: 456, ...limits })
     await expect(promise).rejects.toThrow(TypeError)
