@@ -62,6 +62,8 @@ export class AsaMetadataRegistryRead {
   public trustedVersions: readonly bigint[]
 
   private paramsCache: RegistryParameters | null = null
+  /** Genesis hash of the connected network; `undefined` until fetched. */
+  private genesisHashCache: string | null | undefined = undefined
 
   constructor(args: {
     appId?: bigint | number | null
@@ -142,7 +144,9 @@ export class AsaMetadataRegistryRead {
   // ------------------------------------------------------------------
 
   private async genesisHash(): Promise<string | null> {
-    return this.algod !== null ? await this.algod.getGenesisHashB64() : null
+    if (this.algod === null) return null
+    if (this.genesisHashCache === undefined) this.genesisHashCache = await this.algod.getGenesisHashB64()
+    return this.genesisHashCache
   }
 
   /** Explicit app id, else the configured one, else the deployment for the network. */

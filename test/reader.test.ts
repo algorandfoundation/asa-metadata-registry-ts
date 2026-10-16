@@ -1409,6 +1409,30 @@ describe('trusted registry resolution', () => {
     ])
   })
 
+  test('genesis hash is fetched once per reader (TS-only)', async () => {
+    // A network's genesis hash never changes, so the reader caches it.
+    mockGenesisHash(b64Decode(TESTNET_GH_B64))
+    mockAssetInfo({})
+    const reader = new AsaMetadataRegistryRead({ appId: null, algod: algodReader })
+
+    await reader.resolveArc90Uri({ assetId: 456 })
+    await reader.resolveArc90Uri({ assetId: 789 })
+    expect(algod.getTransactionParams).toHaveBeenCalledTimes(1)
+  })
+
+  test('a failed genesis hash fetch is not cached (TS-only)', async () => {
+    mockAssetInfo({})
+    algod.getTransactionParams
+      .mockImplementationOnce(() => rejectedRequest(new Error('algod unavailable')))
+      .mockImplementation(() => resolvedRequest({ genesisHash: b64Decode(TESTNET_GH_B64) }))
+    const reader = new AsaMetadataRegistryRead({ appId: null, algod: algodReader })
+
+    await expect(reader.resolveArc90Uri({ assetId: 456 })).rejects.toThrow('algod unavailable')
+    const uri = await reader.resolveArc90Uri({ assetId: 456 })
+    expect(uri.netauth).toBe('net:testnet')
+    expect(algod.getTransactionParams).toHaveBeenCalledTimes(2)
+  })
+
   test('canonical look-up on an unknown network derives a gh netauth', async () => {
     const genesisHash = new Uint8Array(32).fill(0x01)
     mockGenesisHash(genesisHash)
