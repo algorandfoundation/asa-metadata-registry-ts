@@ -131,7 +131,7 @@ export class AsaMetadataRegistryWrite {
     this.params = args.params ?? null
   }
 
-  private async _params(): Promise<RegistryParameters> {
+  private async getParams(): Promise<RegistryParameters> {
     if (this.params) return this.params
     if (this.paramsCache) return this.paramsCache
     // Prefer on-chain registry parameters (simulate); cached for the life of the writer.
@@ -156,7 +156,7 @@ export class AsaMetadataRegistryWrite {
   ): Promise<readonly [number, number]> {
     const box = await parseMetadataBox(this.client, assetId)
     if (box === null) return [0, 0]
-    const params = await this._params()
+    const params = await this.getParams()
     const extra = boxIoExtraResources(params.headerSize + box.body.size)
     let budget = 0
     if (args.hashing) {
@@ -198,7 +198,7 @@ export class AsaMetadataRegistryWrite {
   }): Promise<AsaMetadataRegistryComposer> {
     const opt = args.options ?? writeOptionsDefault
     const { metadata } = args
-    const params = await this._params()
+    const params = await this.getParams()
 
     const chunks = metadata.body.chunkedPayload(params)
     const ioExtra = boxIoExtraResources(params.headerSize + metadata.body.size, chunks.length - 1)
@@ -298,7 +298,7 @@ export class AsaMetadataRegistryWrite {
     currentSize: number
   }): Promise<AsaMetadataRegistryComposer> {
     const { metadata, options } = args
-    const params = await this._params()
+    const params = await this.getParams()
     const chunks = metadata.body.chunkedPayload(params)
     const equalSize = metadata.body.size === args.currentSize
     // The whole existing box is touched (resize), size the I/O budget on it.
@@ -358,7 +358,7 @@ export class AsaMetadataRegistryWrite {
     options: WriteOptions
   }): Promise<AsaMetadataRegistryComposer> {
     const { metadata, options } = args
-    const params = await this._params()
+    const params = await this.getParams()
     const chunks = metadata.body.chunkedPayload(params)
     const ioExtra = boxIoExtraResources(params.headerSize + metadata.body.size, chunks.length - 1)
 
@@ -427,7 +427,7 @@ export class AsaMetadataRegistryWrite {
     options?: WriteOptions
   }): Promise<AsaMetadataRegistryComposer> {
     const opt = args.options ?? writeOptionsDefault
-    const params = await this._params()
+    const params = await this.getParams()
     const payloadBytes = toBytes(args.payload, 'payload')
 
     const chunks = chunksForSlice(payloadBytes, params.replacePayloadMaxSize)

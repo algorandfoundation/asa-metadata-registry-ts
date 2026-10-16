@@ -522,43 +522,43 @@ describe('writer initialization', () => {
     )
   })
 
-  test('_params returns cached params', async () => {
-    // Test that _params() returns cached params if available.
+  test('getParams returns cached params', async () => {
+    // Test that getParams() returns cached params if available.
     const params = getDefaultRegistryParams()
     const writer = new AsaMetadataRegistryWrite({ client: mockClient, params })
-    const result = await writer['_params']()
+    const result = await writer['getParams']()
     expect(result).toBe(params)
   })
 
-  test('_params fetches from on-chain if not cached', async () => {
-    // Test that _params() fetches from on-chain if not cached.
+  test('getParams fetches from on-chain if not cached', async () => {
+    // Test that getParams() fetches from on-chain if not cached.
     const writer = new AsaMetadataRegistryWrite({ client })
-    const result = await writer['_params']()
+    const result = await writer['getParams']()
     // Should fetch from chain
     expect(result).toBeInstanceOf(RegistryParameters)
     expect(result.headerSize).toBeGreaterThan(0)
   })
 
-  test('_params propagates on-chain read errors', async () => {
+  test('getParams propagates on-chain read errors', async () => {
     // As in Python, a failing on-chain read is not masked by the compiled defaults.
     const composer = { arc89GetMetadataRegistryParameters: vi.fn(), simulate: vi.fn() }
     composer.simulate.mockRejectedValue(new Error('simulate failed'))
     vi.mocked(mockClient.newGroup).mockReturnValue(composer as never)
     const writer = new AsaMetadataRegistryWrite({ client: mockClient })
-    await expect(writer['_params']()).rejects.toThrow('simulate failed')
+    await expect(writer['getParams']()).rejects.toThrow('simulate failed')
   })
 
-  test('_params reads on-chain params once per writer (TS-only)', async () => {
+  test('getParams reads on-chain params once per writer (TS-only)', async () => {
     // TS-only: registry parameters are compiled constants, so the writer caches the first read.
     const read = vi.spyOn(AsaMetadataRegistryAvmRead.prototype, 'arc89GetMetadataRegistryParameters')
     const writer = new AsaMetadataRegistryWrite({ client })
-    const first = await writer['_params']()
-    const second = await writer['_params']()
+    const first = await writer['getParams']()
+    const second = await writer['getParams']()
     expect(read).toHaveBeenCalledTimes(1)
     expect(second).toBe(first)
   })
 
-  test('_params does not cache a failed read (TS-only)', async () => {
+  test('getParams does not cache a failed read (TS-only)', async () => {
     // TS-only: a failed on-chain read is retried on the next call.
     const params = getDefaultRegistryParams()
     const read = vi
@@ -566,8 +566,8 @@ describe('writer initialization', () => {
       .mockRejectedValueOnce(new Error('simulate failed'))
       .mockResolvedValueOnce(params)
     const writer = new AsaMetadataRegistryWrite({ client: mockClient })
-    await expect(writer['_params']()).rejects.toThrow('simulate failed')
-    expect(await writer['_params']()).toBe(params)
+    await expect(writer['getParams']()).rejects.toThrow('simulate failed')
+    expect(await writer['getParams']()).toBe(params)
     expect(read).toHaveBeenCalledTimes(2)
   })
 })
@@ -1328,7 +1328,7 @@ describe('group builder methods', () => {
 
     test('build slice large payload', async () => {
       // Test building slice group with large payload (multiple chunks).
-      const params = await writer['_params']()
+      const params = await writer['getParams']()
       // Create payload larger than replacePayloadMaxSize
       const largePayload = new Uint8Array(params.replacePayloadMaxSize * 2 + 100).fill(0x78)
       const composer = await writer.buildReplaceMetadataSliceGroup({
