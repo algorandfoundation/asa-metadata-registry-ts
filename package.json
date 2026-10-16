@@ -13,6 +13,13 @@
     },
     "./avm": "./src/generated/avm/AsaMetadataRegistry.client.ts"
   },
+  "typesVersions": {
+    "*": {
+      "avm": [
+        "./src/generated/avm/AsaMetadataRegistry.client.ts"
+      ]
+    }
+  },
   "files": [
     "dist",
     "src/generated/avm"
