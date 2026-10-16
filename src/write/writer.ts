@@ -72,12 +72,13 @@ export interface WriteOptions {
   populateAppCallResources: boolean
 }
 
-export const writeOptionsDefault: WriteOptions = {
+/** Default write options (frozen, like Python's `WriteOptions`; spread it to override fields). */
+export const writeOptionsDefault: Readonly<WriteOptions> = Object.freeze({
   extraResources: 0,
   feePaddingTxns: 0,
   coverAppCallInnerTransactionFees: true, // composer.send() options
   populateAppCallResources: true, // composer.send() options
-}
+})
 
 /*
  * Helper to build default send params from WriteOptions.

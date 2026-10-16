@@ -226,6 +226,14 @@ describe('write options', () => {
     expect(writeOptionsDefault.populateAppCallResources).toBe(true)
   })
 
+  test('default options are frozen (TS-only)', () => {
+    // Like Python's frozen WriteOptions: mutating the shared defaults would change every writer.
+    expect(Object.isFrozen(writeOptionsDefault)).toBe(true)
+    expect(() => {
+      ;(writeOptionsDefault as WriteOptions).feePaddingTxns = 5
+    }).toThrow(TypeError)
+  })
+
   test('custom options', () => {
     // Test custom WriteOptions configuration.
     const opts: WriteOptions = {

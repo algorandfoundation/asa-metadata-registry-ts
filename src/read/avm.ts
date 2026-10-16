@@ -38,7 +38,10 @@ import {
 export type SimulateOptions = AlgoKitSimulateOptions
 
 /** Default simulate options for AVM reads (no signatures, unnamed resources allowed). */
-export const DEFAULT_SIMULATE_OPTIONS: SimulateOptions = { allowUnnamedResources: true, skipSignatures: true }
+export const DEFAULT_SIMULATE_OPTIONS: Readonly<SimulateOptions> = Object.freeze({
+  allowUnnamedResources: true,
+  skipSignatures: true,
+})
 
 /** The largest extra opcode budget that algod accepts in a simulate request (AlgoKit's read-only calls use it). */
 const MAX_SIMULATE_OPCODE_BUDGET = 20_000 * 16

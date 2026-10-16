@@ -238,6 +238,16 @@ describe('metadata source enum', () => {
   })
 })
 
+describe('simulate defaults', () => {
+  test('default simulate options are frozen (TS-only)', () => {
+    // Mutating the shared defaults would change every AVM read.
+    expect(Object.isFrozen(DEFAULT_SIMULATE_OPTIONS)).toBe(true)
+    expect(() => {
+      ;(DEFAULT_SIMULATE_OPTIONS as SimulateOptions).skipSignatures = false
+    }).toThrow(TypeError)
+  })
+})
+
 // ================================================================
 // AsaMetadataRegistryRead Initialization Tests
 // ================================================================
