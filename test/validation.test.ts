@@ -62,10 +62,28 @@ describe('encode metadata json', () => {
   })
 
   test('rejects non serializable', () => {
-    // Python uses `object()`; BigInt is the JS value `JSON.stringify` cannot serialize.
-    const obj = { x: 1n } as unknown as Record<string, unknown>
+    // Python uses `object()`; a symbol is a JS value with no JSON form.
+    const obj = { x: Symbol('x') }
     expect(() => encodeMetadataJson(obj)).toThrow(MetadataEncodingError)
     expect(() => encodeMetadataJson(obj)).toThrow(/JSON-serializable/)
+  })
+
+  test('writes bigint values exactly (TS-only)', () => {
+    // Like Python's `int`: integers beyond 2^53 are written with their exact digits.
+    const data = encodeMetadataJson({ supply: 18446744073709551615n })
+    expect(new TextDecoder().decode(data)).toBe('{"supply":18446744073709551615}')
+  })
+
+  test('rejects integer numbers beyond 2^53 instead of rounding them (TS-only)', () => {
+    // JSON.stringify would write 2 ** 64 as 18446744073709552000, not its value 18446744073709551616.
+    expect(() => encodeMetadataJson({ supply: 2 ** 64 })).toThrow(MetadataEncodingError)
+    expect(() => encodeMetadataJson({ supply: 2 ** 64 })).toThrow(/use a bigint/)
+  })
+
+  test('rejects a copied decoded integer beyond 2^53 instead of rounding it (TS-only)', () => {
+    const decoded = decodeMetadataJson(new TextEncoder().encode('{"supply":18446744073709551615}'))
+    expect(new TextDecoder().decode(encodeMetadataJson(decoded))).toBe('{"supply":18446744073709551615}')
+    expect(() => encodeMetadataJson({ ...decoded, name: 'x' })).toThrow(/use a bigint/)
   })
 
   test('rejects function values', () => {
@@ -75,6 +93,11 @@ describe('encode metadata json', () => {
 })
 
 describe('validate arc3 values', () => {
+  test('decimals may be a bigint (TS-only)', () => {
+    validateArc3Values({ decimals: 6n }, 6) // should not throw
+    validateArc3Schema({ decimals: 6n }) // should not throw
+  })
+
   test('decimals optional', () => {
     validateArc3Values({}, 6) // should not throw
   })
@@ -152,6 +175,14 @@ describe('validate arc20 arc62 require arc3', () => {
 })
 
 describe('validate arc3 properties', () => {
+  test('accepts a bigint application id up to 2^64 - 1 (TS-only)', () => {
+    // Application ids beyond 2^53 can only be written exactly as bigint values.
+    const body = (appId: bigint) => ({ properties: { 'arc-20': { 'application-id': appId } } })
+    validateArc3Properties(body(18446744073709551615n), 'arc-20') // should not throw
+    expect(() => validateArc3Properties(body(2n ** 64n), 'arc-20')).toThrow(InvalidArc3PropertiesError)
+    expect(() => validateArc3Properties(body(0n), 'arc-20')).toThrow(InvalidArc3PropertiesError)
+  })
+
   test('requires properties object', () => {
     expect(() => validateArc3Properties({}, 'arc-20')).toThrow(InvalidArc3PropertiesError)
     expect(() => validateArc3Properties({}, 'arc-20')).toThrow(/properties/)
