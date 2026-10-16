@@ -153,7 +153,7 @@ export class AsaMetadataRegistryWrite {
   private async boxResources(
     assetId: bigint | number,
     args: { hashing: boolean; otherCalls?: number },
-  ): Promise<readonly [number, number]> {
+  ): Promise<readonly [extraResources: number, budgetTxns: number]> {
     const box = await parseMetadataBox(this.client, assetId)
     if (box === null) return [0, 0]
     const params = await this.getParams()

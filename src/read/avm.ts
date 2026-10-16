@@ -205,7 +205,7 @@ export class AsaMetadataRegistryAvmRead {
     assetId: bigint | number
     simulate?: SimulateOptions
     params?: unknown
-  }): Promise<readonly [boolean, bigint]> {
+  }): Promise<readonly [isShort: boolean, revision: bigint]> {
     const value = await this.simulateOne((c) => c.arc89IsMetadataShort(withArgs(args.params, [args.assetId])), {
       simulate: args.simulate,
     })
@@ -279,7 +279,7 @@ export class AsaMetadataRegistryAvmRead {
     assetId: bigint | number
     simulate?: SimulateOptions
     params?: unknown
-  }): Promise<readonly [Uint8Array, bigint]> {
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const value = await this.simulateOne((c) => c.arc89GetMetadataHeaderHash(withArgs(args.params, [args.assetId])), {
       simulate: args.simulate,
     })
@@ -292,7 +292,7 @@ export class AsaMetadataRegistryAvmRead {
     page: number
     simulate?: SimulateOptions
     params?: unknown
-  }): Promise<readonly [Uint8Array, bigint]> {
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const value = await this.simulateOne(
       (c) => c.arc89GetMetadataPageHash(withArgs(args.params, [args.assetId, args.page])),
       { simulate: args.simulate },
@@ -305,7 +305,7 @@ export class AsaMetadataRegistryAvmRead {
     assetId: bigint | number
     simulate?: SimulateOptions
     params?: unknown
-  }): Promise<readonly [Uint8Array, bigint]> {
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const value = await this.simulateOne((c) => c.arc89GetMetadataHash(withArgs(args.params, [args.assetId])), {
       simulate: args.simulate,
     })

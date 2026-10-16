@@ -520,7 +520,7 @@ export class AsaMetadataRegistryRead {
     assetId: bigint | number
     source?: MetadataSource
     simulate?: SimulateOptions
-  }): Promise<readonly [boolean, bigint]> {
+  }): Promise<readonly [isShort: boolean, revision: bigint]> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
@@ -614,7 +614,7 @@ export class AsaMetadataRegistryRead {
     assetId: bigint | number
     source?: MetadataSource
     simulate?: SimulateOptions
-  }): Promise<readonly [Uint8Array, bigint]> {
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
@@ -633,7 +633,7 @@ export class AsaMetadataRegistryRead {
     page: number
     source?: MetadataSource
     simulate?: SimulateOptions
-  }): Promise<readonly [Uint8Array, bigint]> {
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
@@ -652,7 +652,7 @@ export class AsaMetadataRegistryRead {
     assetId: bigint | number
     source?: MetadataSource
     simulate?: SimulateOptions
-  }): Promise<readonly [Uint8Array, bigint]> {
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
