@@ -52,6 +52,10 @@ runs:
       shell: bash
       run: pnpm run build
 
+    - name: Package check
+      shell: bash
+      run: pnpm run check:package
+
     - name: Install AlgoKit
       shell: bash
       run: |
