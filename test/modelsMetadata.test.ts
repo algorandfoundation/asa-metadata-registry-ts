@@ -903,6 +903,18 @@ describe('AssetMetadata.deriveAndValidateFlagsFromArc3Json', () => {
     expect(flags.reversible.arc62).toBe(true)
   })
 
+  test('bigint application id beyond 2^53 is validated and written exactly (TS-only)', () => {
+    const metadata = AssetMetadata.fromJson({
+      assetId: 1,
+      jsonObj: { properties: { 'arc-20': { 'application-id': 18446744073709551615n } } },
+      arc3Compliant: true,
+    })
+    expect(metadata.flags.reversible.arc20).toBe(true)
+    expect(new TextDecoder().decode(metadata.body.rawBytes)).toBe(
+      '{"properties":{"arc-20":{"application-id":18446744073709551615}}}',
+    )
+  })
+
   test('flags provided but arc3 flag missing raises', () => {
     const obj = { name: 'T', decimals: 0 }
     const call = () =>

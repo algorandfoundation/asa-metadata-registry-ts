@@ -72,12 +72,13 @@ export interface WriteOptions {
   populateAppCallResources: boolean
 }
 
-export const writeOptionsDefault: WriteOptions = {
+/** Default write options (frozen, like Python's `WriteOptions`; spread it to override fields). */
+export const writeOptionsDefault: Readonly<WriteOptions> = Object.freeze({
   extraResources: 0,
   feePaddingTxns: 0,
   coverAppCallInnerTransactionFees: true, // composer.send() options
   populateAppCallResources: true, // composer.send() options
-}
+})
 
 /*
  * Helper to build default send params from WriteOptions.
@@ -123,16 +124,21 @@ export class AsaMetadataRegistryWrite {
   public readonly client: AsaMetadataRegistryClient
   public readonly params: RegistryParameters | null
 
+  private paramsCache: RegistryParameters | null = null
+
   constructor(args: { client: AsaMetadataRegistryClient; params?: RegistryParameters | null }) {
     if (!args.client) throw new MissingAppClientError('Write module requires a generated AsaMetadataRegistryClient')
     this.client = args.client
     this.params = args.params ?? null
   }
 
-  private async _params(): Promise<RegistryParameters> {
+  private async getParams(): Promise<RegistryParameters> {
     if (this.params) return this.params
-    // Prefer on-chain registry parameters (simulate).
-    return await new AsaMetadataRegistryAvmRead({ client: this.client }).arc89GetMetadataRegistryParameters()
+    if (this.paramsCache) return this.paramsCache
+    // Prefer on-chain registry parameters (simulate); cached for the life of the writer.
+    const p = await new AsaMetadataRegistryAvmRead({ client: this.client }).arc89GetMetadataRegistryParameters()
+    this.paramsCache = p
+    return p
   }
 
   private async minFee(): Promise<number> {
@@ -141,17 +147,17 @@ export class AsaMetadataRegistryWrite {
   }
 
   private newGroup(): AsaMetadataRegistryComposer<unknown[]> {
-    return this.client.newGroup() as unknown as AsaMetadataRegistryComposer<unknown[]>
+    return this.client.newGroup()
   }
 
   /** `[extraResources calls, budget inner txns]` to touch the current box of `assetId`. */
   private async boxResources(
     assetId: bigint | number,
     args: { hashing: boolean; otherCalls?: number },
-  ): Promise<readonly [number, number]> {
+  ): Promise<readonly [extraResources: number, budgetTxns: number]> {
     const box = await parseMetadataBox(this.client, assetId)
     if (box === null) return [0, 0]
-    const params = await this._params()
+    const params = await this.getParams()
     const extra = boxIoExtraResources(params.headerSize + box.body.size)
     let budget = 0
     if (args.hashing) {
@@ -190,10 +196,10 @@ export class AsaMetadataRegistryWrite {
     assetManager: TransactionSignerAccount
     metadata: AssetMetadata
     options?: WriteOptions
-  }): Promise<AsaMetadataRegistryComposer> {
+  }): Promise<AsaMetadataRegistryComposer<unknown[]>> {
     const opt = args.options ?? writeOptionsDefault
     const { metadata } = args
-    const params = await this._params()
+    const params = await this.getParams()
 
     const chunks = metadata.body.chunkedPayload(params)
     const ioExtra = boxIoExtraResources(params.headerSize + metadata.body.size, chunks.length - 1)
@@ -248,7 +254,7 @@ export class AsaMetadataRegistryWrite {
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    return composer as unknown as AsaMetadataRegistryComposer
+    return composer
   }
 
   /**
@@ -264,7 +270,7 @@ export class AsaMetadataRegistryWrite {
     metadata: AssetMetadata
     options?: WriteOptions
     assumeCurrentSize?: number | null
-  }): Promise<AsaMetadataRegistryComposer> {
+  }): Promise<AsaMetadataRegistryComposer<unknown[]>> {
     const opt = args.options ?? writeOptionsDefault
     const avm = new AsaMetadataRegistryAvmRead({ client: this.client })
 
@@ -291,9 +297,9 @@ export class AsaMetadataRegistryWrite {
     metadata: AssetMetadata
     options: WriteOptions
     currentSize: number
-  }): Promise<AsaMetadataRegistryComposer> {
+  }): Promise<AsaMetadataRegistryComposer<unknown[]>> {
     const { metadata, options } = args
-    const params = await this._params()
+    const params = await this.getParams()
     const chunks = metadata.body.chunkedPayload(params)
     const equalSize = metadata.body.size === args.currentSize
     // The whole existing box is touched (resize), size the I/O budget on it.
@@ -344,16 +350,16 @@ export class AsaMetadataRegistryWrite {
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    return composer as unknown as AsaMetadataRegistryComposer
+    return composer
   }
 
   private async buildReplaceLarger(args: {
     assetManager: TransactionSignerAccount
     metadata: AssetMetadata
     options: WriteOptions
-  }): Promise<AsaMetadataRegistryComposer> {
+  }): Promise<AsaMetadataRegistryComposer<unknown[]>> {
     const { metadata, options } = args
-    const params = await this._params()
+    const params = await this.getParams()
     const chunks = metadata.body.chunkedPayload(params)
     const ioExtra = boxIoExtraResources(params.headerSize + metadata.body.size, chunks.length - 1)
 
@@ -403,7 +409,7 @@ export class AsaMetadataRegistryWrite {
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    return composer as unknown as AsaMetadataRegistryComposer
+    return composer
   }
 
   /**
@@ -420,9 +426,10 @@ export class AsaMetadataRegistryWrite {
     offset: number
     payload: Uint8Array | ArrayBuffer | number[]
     options?: WriteOptions
-  }): Promise<AsaMetadataRegistryComposer> {
+  }): Promise<AsaMetadataRegistryComposer<unknown[]>> {
+    if (!Number.isInteger(args.offset)) throw new TypeError('offset must be an integer')
     const opt = args.options ?? writeOptionsDefault
-    const params = await this._params()
+    const params = await this.getParams()
     const payloadBytes = toBytes(args.payload, 'payload')
 
     const chunks = chunksForSlice(payloadBytes, params.replacePayloadMaxSize)
@@ -472,7 +479,7 @@ export class AsaMetadataRegistryWrite {
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    return composer as unknown as AsaMetadataRegistryComposer
+    return composer
   }
 
   /** Build (but do not send) an ARC-89 delete metadata group. */
@@ -480,7 +487,7 @@ export class AsaMetadataRegistryWrite {
     assetManager: TransactionSignerAccount
     assetId: bigint | number
     options?: WriteOptions
-  }): Promise<AsaMetadataRegistryComposer> {
+  }): Promise<AsaMetadataRegistryComposer<unknown[]>> {
     const opt = args.options ?? writeOptionsDefault
     const [ioExtra] = await this.boxResources(args.assetId, { hashing: false })
 
@@ -506,7 +513,7 @@ export class AsaMetadataRegistryWrite {
       sender: args.assetManager.addr,
       signer: args.assetManager.signer,
     })
-    return composer as unknown as AsaMetadataRegistryComposer
+    return composer
   }
 
   // ------------------------------------------------------------------
@@ -548,7 +555,7 @@ export class AsaMetadataRegistryWrite {
       options: args.options,
     })
     const result = await AsaMetadataRegistryWrite.sendGroup({
-      composer: composer as unknown as AsaMetadataRegistryComposer<unknown[]>,
+      composer: composer,
       sendParams: args.sendParams,
       options: args.options,
     })
@@ -576,7 +583,7 @@ export class AsaMetadataRegistryWrite {
       assumeCurrentSize: args.assumeCurrentSize,
     })
     const result = await AsaMetadataRegistryWrite.sendGroup({
-      composer: composer as unknown as AsaMetadataRegistryComposer<unknown[]>,
+      composer: composer,
       sendParams: args.sendParams,
       options: args.options,
     })
@@ -590,6 +597,7 @@ export class AsaMetadataRegistryWrite {
    * With `validate` (default), the complete post-replacement Metadata is validated client side,
    * as ARC-89 requires: it must decode to a JSON object (and match the ARC-3 schema if flagged).
    *
+   * @throws {TypeError} If `offset` is not an integer.
    * @throws {MetadataNotFoundError} If the Asset has no metadata (with `validate`).
    * @throws {InvalidSliceError} If the slice exceeds the Metadata size (with `validate`).
    */
@@ -602,6 +610,7 @@ export class AsaMetadataRegistryWrite {
     sendParams?: SendParams | null
     validate?: boolean
   }): Promise<void> {
+    if (!Number.isInteger(args.offset)) throw new TypeError('offset must be an integer')
     if (args.validate ?? true) {
       // ARC-89: clients MUST validate the complete post-replacement Metadata.
       const box = await parseMetadataBox(this.client, args.assetId)
@@ -624,7 +633,7 @@ export class AsaMetadataRegistryWrite {
       options: args.options,
     })
     await AsaMetadataRegistryWrite.sendGroup({
-      composer: composer as unknown as AsaMetadataRegistryComposer<unknown[]>,
+      composer: composer,
       sendParams: args.sendParams,
       options: args.options,
     })
@@ -642,7 +651,7 @@ export class AsaMetadataRegistryWrite {
       options: args.options,
     })
     const result = await AsaMetadataRegistryWrite.sendGroup({
-      composer: composer as unknown as AsaMetadataRegistryComposer<unknown[]>,
+      composer: composer,
       sendParams: args.sendParams,
       options: args.options,
     })

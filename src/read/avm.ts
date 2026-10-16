@@ -38,7 +38,10 @@ import {
 export type SimulateOptions = AlgoKitSimulateOptions
 
 /** Default simulate options for AVM reads (no signatures, unnamed resources allowed). */
-export const DEFAULT_SIMULATE_OPTIONS: SimulateOptions = { allowUnnamedResources: true, skipSignatures: true }
+export const DEFAULT_SIMULATE_OPTIONS: Readonly<SimulateOptions> = Object.freeze({
+  allowUnnamedResources: true,
+  skipSignatures: true,
+})
 
 /** The largest extra opcode budget that algod accepts in a simulate request (AlgoKit's read-only calls use it). */
 const MAX_SIMULATE_OPCODE_BUDGET = 20_000 * 16
@@ -123,7 +126,7 @@ export class AsaMetadataRegistryAvmRead {
     buildGroup: (composer: AsaMetadataRegistryComposer<unknown[]>) => void,
     args?: { simulate?: SimulateOptions },
   ): Promise<unknown[]> {
-    const composer = this.client.newGroup() as unknown as AsaMetadataRegistryComposer<unknown[]>
+    const composer = this.client.newGroup()
     buildGroup(composer)
     const results = await composer.simulate({
       ...DEFAULT_SIMULATE_OPTIONS,
@@ -205,7 +208,7 @@ export class AsaMetadataRegistryAvmRead {
     assetId: bigint | number
     simulate?: SimulateOptions
     params?: unknown
-  }): Promise<readonly [boolean, bigint]> {
+  }): Promise<readonly [isShort: boolean, revision: bigint]> {
     const value = await this.simulateOne((c) => c.arc89IsMetadataShort(withArgs(args.params, [args.assetId])), {
       simulate: args.simulate,
     })
@@ -279,7 +282,7 @@ export class AsaMetadataRegistryAvmRead {
     assetId: bigint | number
     simulate?: SimulateOptions
     params?: unknown
-  }): Promise<readonly [Uint8Array, bigint]> {
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const value = await this.simulateOne((c) => c.arc89GetMetadataHeaderHash(withArgs(args.params, [args.assetId])), {
       simulate: args.simulate,
     })
@@ -292,7 +295,7 @@ export class AsaMetadataRegistryAvmRead {
     page: number
     simulate?: SimulateOptions
     params?: unknown
-  }): Promise<readonly [Uint8Array, bigint]> {
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const value = await this.simulateOne(
       (c) => c.arc89GetMetadataPageHash(withArgs(args.params, [args.assetId, args.page])),
       { simulate: args.simulate },
@@ -305,7 +308,7 @@ export class AsaMetadataRegistryAvmRead {
     assetId: bigint | number
     simulate?: SimulateOptions
     params?: unknown
-  }): Promise<readonly [Uint8Array, bigint]> {
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const value = await this.simulateOne((c) => c.arc89GetMetadataHash(withArgs(args.params, [args.assetId])), {
       simulate: args.simulate,
     })

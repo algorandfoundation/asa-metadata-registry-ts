@@ -62,6 +62,8 @@ export class AsaMetadataRegistryRead {
   public trustedVersions: readonly bigint[]
 
   private paramsCache: RegistryParameters | null = null
+  /** Genesis hash of the connected network; `undefined` until fetched. */
+  private genesisHashCache: string | null | undefined = undefined
 
   constructor(args: {
     appId?: bigint | number | null
@@ -142,7 +144,9 @@ export class AsaMetadataRegistryRead {
   // ------------------------------------------------------------------
 
   private async genesisHash(): Promise<string | null> {
-    return this.algod !== null ? await this.algod.getGenesisHashB64() : null
+    if (this.algod === null) return null
+    if (this.genesisHashCache === undefined) this.genesisHashCache = await this.algod.getGenesisHashB64()
+    return this.genesisHashCache
   }
 
   /** Explicit app id, else the configured one, else the deployment for the network. */
@@ -520,7 +524,7 @@ export class AsaMetadataRegistryRead {
     assetId: bigint | number
     source?: MetadataSource
     simulate?: SimulateOptions
-  }): Promise<readonly [boolean, bigint]> {
+  }): Promise<readonly [isShort: boolean, revision: bigint]> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
@@ -614,7 +618,7 @@ export class AsaMetadataRegistryRead {
     assetId: bigint | number
     source?: MetadataSource
     simulate?: SimulateOptions
-  }): Promise<readonly [Uint8Array, bigint]> {
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
@@ -633,7 +637,7 @@ export class AsaMetadataRegistryRead {
     page: number
     source?: MetadataSource
     simulate?: SimulateOptions
-  }): Promise<readonly [Uint8Array, bigint]> {
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {
@@ -652,7 +656,7 @@ export class AsaMetadataRegistryRead {
     assetId: bigint | number
     source?: MetadataSource
     simulate?: SimulateOptions
-  }): Promise<readonly [Uint8Array, bigint]> {
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const source = args.source ?? MetadataSource.AUTO
 
     if (source === MetadataSource.BOX || (source === MetadataSource.AUTO && this.algod)) {

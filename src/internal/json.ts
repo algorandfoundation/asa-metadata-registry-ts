@@ -204,10 +204,11 @@ export const integerLiteralValue = (raw: string): bigint | undefined =>
  *
  * Numbers decoded by {@link parseJsonStrict} must be integer literals (exact beyond 2^53;
  * `1.0` / `1e3` are Python floats). Other (JS-built or changed after decoding) numbers must be
- * safe integers.
+ * safe integers. A `bigint` (how integers beyond 2^53 are written) is an integer as is.
  */
 export const jsonIntegerMember = (holder: object, key: string): bigint | undefined => {
   const value = (holder as Record<string, unknown>)[key]
+  if (typeof value === 'bigint') return value
   if (typeof value !== 'number') return undefined
   const literal = decodedLiteral(holder, key, value)
   if (literal !== undefined) return integerLiteralValue(literal)
@@ -229,6 +230,35 @@ const notSerializable = (value: unknown): string | undefined => {
   return undefined
 }
 
+/** True if `v` has the internal slot that `valueOf` reads (a brand check that also works across realms). */
+const hasPrimitiveSlot = (valueOf: (this: unknown) => unknown, v: object): boolean => {
+  try {
+    valueOf.call(v)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The primitive `JSON.stringify` writes for a Number, String, Boolean or BigInt wrapper object
+ * (SerializeJSONProperty): `ToNumber` / `ToString` for the first two, so their `Symbol.toPrimitive`,
+ * `valueOf` and `toString` overrides apply, and the wrapped value for the last two. Other values are
+ * returned unchanged.
+ */
+const unboxLikeJson = (v: unknown): unknown => {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return v
+  if (hasPrimitiveSlot(Number.prototype.valueOf, v)) return +v // ToNumber
+  if (hasPrimitiveSlot(String.prototype.valueOf, v)) return String(v) // ToString
+  if (hasPrimitiveSlot(Boolean.prototype.valueOf, v)) return Boolean.prototype.valueOf.call(v)
+  if (hasPrimitiveSlot(BigInt.prototype.valueOf, v)) return BigInt.prototype.valueOf.call(v)
+  return v
+}
+
+/** True for an integer `number` outside the safe range (beyond 2^53 - 1) that `JSON.stringify` writes as plain digits (below 1e21). */
+const isInexactIntegerNumber = (v: number): boolean =>
+  Number.isInteger(v) && !Number.isSafeInteger(v) && !String(v).includes('e')
+
 /**
  * `JSON.stringify` that fails (like Python's `json.dumps(..., allow_nan=False)` followed by a
  * UTF-8 encode) instead of silently dropping or mangling values: non-finite numbers, lone
@@ -236,10 +266,17 @@ const notSerializable = (value: unknown): string | undefined => {
  * JSON representation (`toJSON`, e.g. `Date`) are serialized; `undefined` members are omitted.
  * Numbers decoded by {@link parseJsonStrict} are written back verbatim while unchanged.
  *
+ * Like Python's `int`, a `bigint` is written as its exact digits. An integer beyond 2^53 held in a
+ * `number` (whose digits may not be the intended value) is rejected unless its decoded source text
+ * is kept: pass it as a `bigint`.
+ *
  * @throws {TypeError} If the value is not JSON-serializable.
  */
 export const stringifyJsonStrict = (value: unknown): string | undefined =>
   JSON.stringify(value, function (this: unknown, name: string, v: unknown) {
+    // JSON.stringify unboxes wrapper objects only after the replacer runs: unbox them here, the same
+    // way, so the checks below apply to the value it would write.
+    v = unboxLikeJson(v)
     const original = (this as Record<string, unknown>)[name]
     const kind = notSerializable(original)
     if (kind !== undefined) throw new TypeError(`Object of type ${kind} is not JSON serializable`)
@@ -250,7 +287,13 @@ export const stringifyJsonStrict = (value: unknown): string | undefined =>
     if (typeof v === 'number') {
       const literal = decodedLiteral(this as object, name, v)
       if (literal !== undefined) return (JSON as unknown as JsonWithRawJson).rawJSON(literal)
+      if (isInexactIntegerNumber(v)) {
+        throw new TypeError(
+          `Integer ${String(v)} is outside the safe integer range, so a number may not hold it exactly: use a bigint`,
+        )
+      }
     }
+    if (typeof v === 'bigint') return (JSON as unknown as JsonWithRawJson).rawJSON(v.toString())
     if (typeof v === 'string' && hasLoneSurrogate(v)) throw new TypeError('Strings MUST NOT contain lone surrogates')
     return v
   })

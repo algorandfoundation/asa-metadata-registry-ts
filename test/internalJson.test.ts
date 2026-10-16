@@ -5,6 +5,7 @@
  * (duplicate names, lone surrogates, non-finite numbers) and read integer literals exactly.
  */
 
+import { runInNewContext } from 'node:vm'
 import { describe, expect, test } from 'vitest'
 import {
   hasLoneSurrogate,
@@ -157,10 +158,68 @@ describe('stringifyJsonStrict', () => {
   })
 
   test('writes decoded integers beyond 2^53 verbatim while their value is unchanged', () => {
-    const obj = parseJsonStrict('{"a":18446744073709551615,"b":9007199254740993}').value as Record<string, unknown>
+    const obj = parseJsonStrict('{"a":18446744073709551615}').value as Record<string, unknown>
     obj['a'] = 2 ** 64
+    expect(stringifyJsonStrict(obj)).toBe('{"a":18446744073709551615}')
+  })
+
+  test('rejects a decoded integer beyond 2^53 once its value changes', () => {
+    const obj = parseJsonStrict('{"b":9007199254740993}').value as Record<string, unknown>
     obj['b'] = 2 ** 53 + 2
-    expect(stringifyJsonStrict(obj)).toBe('{"a":18446744073709551615,"b":9007199254740994}')
+    expect(() => stringifyJsonStrict(obj)).toThrow(/use a bigint/)
+  })
+
+  test('rejects a decoded integer beyond 2^53 copied out of its object', () => {
+    // A copy loses the source text, and the number alone would be written rounded.
+    const obj = parseJsonStrict('{"supply":18446744073709551615}').value as Record<string, unknown>
+    expect(() => stringifyJsonStrict({ ...obj })).toThrow(/use a bigint/)
+  })
+
+  test.each([2 ** 53, -(2 ** 53), 2 ** 64, 1e20])('rejects the integer number %s beyond 2^53', (n) => {
+    expect(() => stringifyJsonStrict({ a: n })).toThrow(TypeError)
+  })
+
+  test.each([
+    [Number.MAX_SAFE_INTEGER, '9007199254740991'],
+    [-Number.MAX_SAFE_INTEGER, '-9007199254740991'],
+    [1e21, '1e+21'],
+    [1.5e300, '1.5e+300'],
+  ])('writes the number %s as JSON.stringify does', (n, text) => {
+    expect(stringifyJsonStrict({ a: n })).toBe(`{"a":${text}}`)
+  })
+
+  test('writes bigint values as their exact digits', () => {
+    expect(stringifyJsonStrict({ a: 18446744073709551615n, b: [-(2n ** 70n)], c: 0n })).toBe(
+      '{"a":18446744073709551615,"b":[-1180591620717411303424],"c":0}',
+    )
+  })
+
+  test('checks boxed primitives like their values', () => {
+    // JSON.stringify unboxes them after the replacer, so the checks must see the primitive value.
+    expect(stringifyJsonStrict({ n: new Number(5), s: new String('x'), b: new Boolean(true), i: Object(7n) })).toBe(
+      '{"n":5,"s":"x","b":true,"i":7}',
+    )
+    expect(() => stringifyJsonStrict({ n: new Number(2 ** 64) })).toThrow(/use a bigint/)
+    expect(() => stringifyJsonStrict({ n: new Number(NaN) })).toThrow(TypeError)
+    expect(() => stringifyJsonStrict({ s: new String('\uD800') })).toThrow(TypeError)
+  })
+
+  test('unboxes wrapper objects exactly as JSON.stringify does', () => {
+    // ToNumber / ToString for Number and String wrappers (so overrides apply), the wrapped value for
+    // Boolean wrappers, and only for real wrappers (with the internal slot, not just the prototype).
+    const n = Object.assign(new Number(1), { [Symbol.toPrimitive]: () => 42 })
+    const s = Object.assign(new String('a'), { toString: () => 'b' })
+    const b = Object.assign(new Boolean(false), { valueOf: () => true })
+    const fake = Object.create(Number.prototype) as object
+    const obj = { n, s, b, fake }
+    expect(stringifyJsonStrict(obj)).toBe(JSON.stringify(obj))
+    expect(stringifyJsonStrict(obj)).toBe('{"n":42,"s":"b","b":false,"fake":{}}')
+  })
+
+  test('checks wrapper objects from another realm', () => {
+    const nan = runInNewContext('new Number(NaN)') as object
+    expect(JSON.stringify({ nan })).toBe('{"nan":null}')
+    expect(() => stringifyJsonStrict({ nan })).toThrow(TypeError)
   })
 
   test('drops the source text of deleted and redefined members', () => {
@@ -229,6 +288,12 @@ describe('parseJsonAllowNonFinite', () => {
 })
 
 describe('jsonIntegerMember', () => {
+  test('bigint values are integers as is', () => {
+    const obj = { a: 18446744073709551615n, b: -3n }
+    expect(jsonIntegerMember(obj, 'a')).toBe(18446744073709551615n)
+    expect(jsonIntegerMember(obj, 'b')).toBe(-3n)
+  })
+
   test('decoded integer literals are exact', () => {
     const obj = parseJsonStrict('{"a":18446744073709551615,"b":-0,"c":[7]}').value as Record<string, unknown>
     expect(jsonIntegerMember(obj, 'a')).toBe(18446744073709551615n)
@@ -245,7 +310,6 @@ describe('jsonIntegerMember', () => {
     expect(jsonIntegerMember({ a: 6 }, 'a')).toBe(6n)
     expect(jsonIntegerMember({ a: 1.5 }, 'a')).toBeUndefined()
     expect(jsonIntegerMember({ a: 2 ** 64 }, 'a')).toBeUndefined()
-    expect(jsonIntegerMember({ a: 6n }, 'a')).toBeUndefined()
     expect(jsonIntegerMember({}, 'a')).toBeUndefined()
   })
 

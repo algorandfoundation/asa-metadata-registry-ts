@@ -98,6 +98,12 @@ export const decodeMetadataJson = (metadata: Uint8Array): Record<string, unknown
  * raw bytes. Non-finite numbers and lone surrogates are rejected (RFC 8259). Numbers decoded by
  * {@link decodeMetadataJson} keep their source text (e.g. `1.0`) until a value is assigned to them
  * (even an equal one); integers beyond 2^53 keep it while their value is unchanged.
+ *
+ * Integers beyond 2^53 must be `bigint` values, written as their exact digits: a `number` cannot
+ * hold them exactly, so one is rejected rather than written rounded (unless its decoded source
+ * text is kept). To store bytes exactly as given, build the `MetadataBody` from them instead.
+ *
+ * @throws {MetadataEncodingError} If the object is not JSON-serializable.
  */
 export const encodeMetadataJson = (obj: Record<string, unknown>): Uint8Array => {
   let txt: string | undefined
@@ -105,7 +111,8 @@ export const encodeMetadataJson = (obj: Record<string, unknown>): Uint8Array => 
     // JSON.stringify uses compact separators by default (no whitespace).
     txt = stringifyJsonStrict(obj)
   } catch (e) {
-    throw new MetadataEncodingError('Object is not JSON-serializable', { cause: e })
+    const reason = e instanceof Error ? `: ${e.message}` : ''
+    throw new MetadataEncodingError(`Object is not JSON-serializable${reason}`, { cause: e })
   }
 
   // JSON.stringify returns undefined for a top-level `undefined`.

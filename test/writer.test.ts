@@ -38,6 +38,7 @@ import {
   AssetMetadata,
   AssetMetadataBox,
   MbrDelta,
+  AsaMetadataRegistryAvmRead,
   AsaMetadataRegistryRead,
   AlgodBoxReader,
   MetadataFlags,
@@ -136,7 +137,7 @@ const repeat = <T>(count: number, value: T): T[] => Array.from({ length: count }
  * method name, or transaction type) and the fee pool, pooled on the first app call (all others are fee-less).
  */
 const expectGroup = async (
-  composer: AsaMetadataRegistryComposer,
+  composer: AsaMetadataRegistryComposer<unknown[]>,
   expected: { txns: readonly string[]; feePool: number },
 ) => {
   const { transactions, methodCalls } = await (await composer.composer()).buildTransactions()
@@ -223,6 +224,14 @@ describe('write options', () => {
     expect(writeOptionsDefault.feePaddingTxns).toBe(0)
     expect(writeOptionsDefault.coverAppCallInnerTransactionFees).toBe(true)
     expect(writeOptionsDefault.populateAppCallResources).toBe(true)
+  })
+
+  test('default options are frozen (TS-only)', () => {
+    // Like Python's frozen WriteOptions: mutating the shared defaults would change every writer.
+    expect(Object.isFrozen(writeOptionsDefault)).toBe(true)
+    expect(() => {
+      ;(writeOptionsDefault as WriteOptions).feePaddingTxns = 5
+    }).toThrow(TypeError)
   })
 
   test('custom options', () => {
@@ -521,30 +530,75 @@ describe('writer initialization', () => {
     )
   })
 
-  test('_params returns cached params', async () => {
-    // Test that _params() returns cached params if available.
+  test('getParams returns cached params', async () => {
+    // Test that getParams() returns cached params if available.
     const params = getDefaultRegistryParams()
     const writer = new AsaMetadataRegistryWrite({ client: mockClient, params })
-    const result = await writer['_params']()
+    const result = await writer['getParams']()
     expect(result).toBe(params)
   })
 
-  test('_params fetches from on-chain if not cached', async () => {
-    // Test that _params() fetches from on-chain if not cached.
+  test('getParams fetches from on-chain if not cached', async () => {
+    // Test that getParams() fetches from on-chain if not cached.
     const writer = new AsaMetadataRegistryWrite({ client })
-    const result = await writer['_params']()
+    const result = await writer['getParams']()
     // Should fetch from chain
     expect(result).toBeInstanceOf(RegistryParameters)
     expect(result.headerSize).toBeGreaterThan(0)
   })
 
-  test('_params propagates on-chain read errors', async () => {
+  test('getParams propagates on-chain read errors', async () => {
     // As in Python, a failing on-chain read is not masked by the compiled defaults.
     const composer = { arc89GetMetadataRegistryParameters: vi.fn(), simulate: vi.fn() }
     composer.simulate.mockRejectedValue(new Error('simulate failed'))
     vi.mocked(mockClient.newGroup).mockReturnValue(composer as never)
     const writer = new AsaMetadataRegistryWrite({ client: mockClient })
-    await expect(writer['_params']()).rejects.toThrow('simulate failed')
+    await expect(writer['getParams']()).rejects.toThrow('simulate failed')
+  })
+
+  test('getParams reads on-chain params once per writer (TS-only)', async () => {
+    // TS-only: registry parameters are compiled constants, so the writer caches the first read.
+    const read = vi.spyOn(AsaMetadataRegistryAvmRead.prototype, 'arc89GetMetadataRegistryParameters')
+    const writer = new AsaMetadataRegistryWrite({ client })
+    const first = await writer['getParams']()
+    const second = await writer['getParams']()
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(second).toBe(first)
+  })
+
+  test('getParams does not cache a failed read (TS-only)', async () => {
+    // TS-only: a failed on-chain read is retried on the next call.
+    const params = getDefaultRegistryParams()
+    const read = vi
+      .spyOn(AsaMetadataRegistryAvmRead.prototype, 'arc89GetMetadataRegistryParameters')
+      .mockRejectedValueOnce(new Error('simulate failed'))
+      .mockResolvedValueOnce(params)
+    const writer = new AsaMetadataRegistryWrite({ client: mockClient })
+    await expect(writer['getParams']()).rejects.toThrow('simulate failed')
+    expect(await writer['getParams']()).toBe(params)
+    expect(read).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('replace metadata slice offset', () => {
+  // A non-integer offset is rejected before any network call (JS `number` has no Python `int` check).
+  type SliceArgs = Parameters<AsaMetadataRegistryWrite['replaceMetadataSlice']>[0]
+  const entryPoints = {
+    replaceMetadataSlice: (writer: AsaMetadataRegistryWrite, args: SliceArgs) => writer.replaceMetadataSlice(args),
+    'replaceMetadataSlice without validation': (writer: AsaMetadataRegistryWrite, args: SliceArgs) =>
+      writer.replaceMetadataSlice({ ...args, validate: false }),
+    buildReplaceMetadataSliceGroup: (writer: AsaMetadataRegistryWrite, args: SliceArgs) =>
+      writer.buildReplaceMetadataSliceGroup(args),
+  }
+  const cases = Object.entries(entryPoints).flatMap(([name, call]) =>
+    [1.5, -1.5, NaN, Infinity, -Infinity].map((offset) => ({ name, call, offset })),
+  )
+
+  test.each(cases)('$name rejects offset $offset (TS-only)', async ({ call, offset }) => {
+    const writer = new AsaMetadataRegistryWrite({ client: mockClient })
+    const args = { assetManager: createMockSigningAccount(), assetId: 1, offset, payload: new Uint8Array([1]) }
+    await expect(call(writer, args)).rejects.toThrow(new TypeError('offset must be an integer'))
+    expect(mockClient.newGroup).not.toHaveBeenCalled()
   })
 })
 
@@ -1304,7 +1358,7 @@ describe('group builder methods', () => {
 
     test('build slice large payload', async () => {
       // Test building slice group with large payload (multiple chunks).
-      const params = await writer['_params']()
+      const params = await writer['getParams']()
       // Create payload larger than replacePayloadMaxSize
       const largePayload = new Uint8Array(params.replacePayloadMaxSize * 2 + 100).fill(0x78)
       const composer = await writer.buildReplaceMetadataSliceGroup({

@@ -75,7 +75,9 @@ export class AsaMetadataRegistryBoxRead {
   // ------------------------------------------------------------------
 
   /** Metadata existence by box lookup; ASA existence by `getAssetInfo`. */
-  async arc89CheckMetadataExists(args: { assetId: bigint | number }): Promise<readonly [boolean, boolean]> {
+  async arc89CheckMetadataExists(args: {
+    assetId: bigint | number
+  }): Promise<readonly [asaExists: boolean, metadataExists: boolean]> {
     const assetId = args.assetId
 
     let metadataExists = true
@@ -104,7 +106,9 @@ export class AsaMetadataRegistryBoxRead {
     return !manager || manager === ALGORAND_ZERO_ADDRESS_STRING
   }
 
-  async arc89IsMetadataShort(args: { assetId: bigint | number }): Promise<readonly [boolean, bigint]> {
+  async arc89IsMetadataShort(args: {
+    assetId: bigint | number
+  }): Promise<readonly [isShort: boolean, revision: bigint]> {
     const h = (await this.box(args.assetId)).header
     return [h.isShort, h.revision]
   }
@@ -168,7 +172,9 @@ export class AsaMetadataRegistryBoxRead {
   }
 
   /** @returns The Metadata Header Hash and the Revision it was computed at. */
-  async arc89GetMetadataHeaderHash(args: { assetId: bigint | number }): Promise<readonly [Uint8Array, bigint]> {
+  async arc89GetMetadataHeaderHash(args: {
+    assetId: bigint | number
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const b = await this.box(args.assetId)
     const hh = computeHeaderHash({
       metadataIdentifiers: b.header.identifiers,
@@ -186,7 +192,7 @@ export class AsaMetadataRegistryBoxRead {
   async arc89GetMetadataPageHash(args: {
     assetId: bigint | number
     page: number
-  }): Promise<readonly [Uint8Array, bigint]> {
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const b = await this.box(args.assetId)
     const pages = paginate(b.body.rawBytes, this.params.pageSize)
     if (!Number.isInteger(args.page) || args.page < 0 || args.page >= pages.length) {
@@ -196,7 +202,9 @@ export class AsaMetadataRegistryBoxRead {
   }
 
   /** On-chain method returns the header's stored Metadata Hash (and the Revision). */
-  async arc89GetMetadataHash(args: { assetId: bigint | number }): Promise<readonly [Uint8Array, bigint]> {
+  async arc89GetMetadataHash(args: {
+    assetId: bigint | number
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const b = await this.box(args.assetId)
     return [b.header.metadataHash, b.header.revision]
   }

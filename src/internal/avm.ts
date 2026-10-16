@@ -49,7 +49,7 @@ export const parseMetadataSlice = (v: unknown): MetadataSlice => {
 }
 
 /** Parse a `HashRevision` struct (or `(byte[32],uint64)` tuple) into `[hash, revision]`. */
-export const parseHashRevision = (v: unknown): readonly [Uint8Array, bigint] => {
+export const parseHashRevision = (v: unknown): readonly [hash: Uint8Array, revision: bigint] => {
   if (Array.isArray(v)) {
     if (v.length !== 2) throw new Error('Expected (hash, revision)')
     return [toBytes(v[0], 'hash'), asUint64BigInt(v[1], 'revision')]
