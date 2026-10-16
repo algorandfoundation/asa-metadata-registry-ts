@@ -93,7 +93,8 @@ const registry = AsaMetadataRegistry.fromAppClient(appClient, { algod, netauth: 
 
 The ASA URL is the partial ARC-90 URI of the registry, and the metadata gets the ARC-89 native flag. For any other
 ASA, leave out `flags`. For ARC-3 metadata, pass `arc3Compliant: true` instead: the SDK then validates the JSON and
-sets the ARC-3 flags.
+sets the ARC-3 flags. The registry accepts the ARC-3 flag only for an ARC-3 ASA: its name is `arc3` or ends with
+`@arc3`, or its URL ends with `#arc3`.
 
 ```ts
 const url = await registry.read.arc89GetMetadataPartialUri() // algorand://net:localnet/app/<app id>?box=
@@ -210,8 +211,8 @@ console.log(header.isNttCrossChain, header.isArc54Burnable, header.isImmutable) 
 
 ## 9. Migrate a legacy ARC-3 ASA
 
-Pass the original file, byte for byte, not a parsed object. If the ASA has a nonzero `am`, the ARC-3 hash of the file
-must match it, and the SDK also sets the immutable flag.
+Pass the original file, byte for byte, not a parsed object. If the ASA has a nonzero `am`, the SDK sets the immutable
+flag (explicit `flags` must include it), and with `arc3Compliant: true` the ARC-3 hash of the file must match it.
 
 ```ts
 const fileBytes = await readFile('metadata.json') // the original file, for example from IPFS

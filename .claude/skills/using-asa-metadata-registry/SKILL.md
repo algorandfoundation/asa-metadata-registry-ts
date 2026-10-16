@@ -9,12 +9,12 @@ description: Writes TypeScript code with @algorandfoundation/asa-metadata-regist
 
 ## How the registry works
 
-- The registry is an Algorand app. It keeps the metadata of each ASA in one box: a header (flags, Metadata Hash, revision, `deprecatedBy`) and up to 32,717 bytes of JSON.
+- The registry is an Algorand app. It keeps the metadata of each ASA in one box: a header (identifiers, flags, Metadata Hash, revision, `deprecatedBy`) and up to 32,717 bytes of JSON.
 - Writes are app calls by the **ASA manager** account, which also pays the box MBR and the fees. Reads need no signature.
 - Two read paths, chosen with the `source` option (`MetadataSource`):
-  - `BOX`: one algod box read, then the contract logic in TypeScript. Fast; needs `algod`.
+  - `BOX`: reads the box once through algod (some getters also read the ASA), then applies the contract logic in TypeScript. Fast; needs `algod`.
   - `AVM`: simulates the contract getter, so the result is exactly what an on-chain caller gets. Needs an app client.
-  - `AUTO` (default): BOX when `algod` is configured, else AVM. Exceptions: with an app client, the four JSON getters, `arc89GetMetadataRegistryParameters` and `arc89GetMetadataPartialUri` use AVM. `arc89GetMetadataPartialUri` always needs an app client.
+  - `AUTO` (default): BOX when `algod` is configured, else AVM. Exceptions: with an app client, the four JSON getters, `arc89GetMetadataRegistryParameters` and `arc89GetMetadataPartialUri` use AVM. `arc89GetMetadataPartialUri` always needs an app client, and `arc89GetMetadataMbrDelta` is AVM-only.
 
 ## Setup
 
@@ -65,11 +65,11 @@ const props = JSON.parse(await registry.read.arc89GetMetadataObjectByKey({ asset
 const metadata = AssetMetadata.fromJson({ assetId, jsonObj: { name: 'Rock #7', properties: { rarity: 'rare' } } })
 await registry.write.createMetadata({ assetManager: manager, metadata }) // returns the MbrDelta
 await registry.write.replaceMetadata({ assetManager: manager, metadata })
-await registry.write.deleteMetadata({ assetManager: manager, assetId }) // MBR refund
-await registry.write.setImmutable({ assetManager: manager, assetId }) // final
 ```
 
-The SDK splits the payload into chunks and adds the MBR payment, opcode budget and box resource calls in one atomic group. For a dry run or extra transactions in the same group, use the `build…Group` methods and `AsaMetadataRegistryWrite.sendGroup` (see [reference.md](reference.md)).
+To end, call either `registry.write.deleteMetadata({ assetManager: manager, assetId })`, which returns the MBR refund, or `registry.write.setImmutable({ assetManager: manager, assetId })`, which makes the metadata final: after it, replace, delete and flag changes fail.
+
+The SDK splits the payload into chunks and sends one atomic group with the app calls, the MBR payment when the box grows, and `extra_resources` calls for opcode budget and box references. For a dry run or extra transactions in the same group, use the `build…Group` methods and `AsaMetadataRegistryWrite.sendGroup` (see [reference.md](reference.md)).
 
 **New ARC-89 native ASA**: use the registry's partial ARC-90 URI as the ASA URL, then store the metadata with the native flag.
 
@@ -106,7 +106,7 @@ await migrateLegacyMetadataToRegistry({
 })
 ```
 
-- Pass the original file bytes, not a parsed object. When the ASA has a nonzero `am` (metadata hash), the ARC-3 hash of the stored bytes must equal it, else `MetadataHashMismatchError`. An object is re-encoded compactly and usually no longer matches.
+- Pass the original file bytes, not a parsed object. With `arc3Compliant: true` and a nonzero `am` (metadata hash), the ARC-3 hash of the stored bytes must equal it, else `MetadataHashMismatchError` (`verifyAm: false` skips this check). An object is re-encoded compactly and usually no longer matches.
 - With a nonzero `am`, the SDK sets the immutable flag. Explicit `flags` must then include `immutable: true`.
 
 ## Verify
@@ -123,10 +123,10 @@ computeArc3MetadataHash(fileBytes) // the ARC-3 `am` of a file
 - `arc89GetMetadataObjectByKey` returns the stored JSON text (whitespace kept), not an object.
 - `record.json` holds JS numbers, so integers above 2^53 lose precision. Use `arc89GetMetadataUint64ByKey` (returns a bigint) for exact uint64 values.
 - The JSON getters fail, on both paths, when any number in the document is outside the float64 range (`1e400`); the uint64 getter also rejects `-0`.
-- `fromJson({ arc3Compliant: true })` validates ARC-3 and sets the ARC-3 flag (plus ARC-20/ARC-62 from `properties`). Explicit `flags` must then include `irreversible.arc3: true`. ARC-20 and ARC-62 need ARC-3.
+- `fromJson({ arc3Compliant: true })` validates ARC-3 and sets the ARC-3 flag (plus ARC-20/ARC-62 from `properties`). Explicit `flags` must then include `irreversible.arc3: true`. ARC-20 and ARC-62 need ARC-3. The registry accepts the ARC-3 flag only for an ARC-3 ASA: its name is `arc3` or ends with `@arc3`, or its URL ends with `#arc3`.
 - `setImmutable` and irreversible flags cannot be undone; after `setImmutable`, replace, delete and flag changes fail. `setIrreversibleFlag` accepts only indexes 2 to 6 (`IRR_FLG_ARC54` and reserved ones).
 - Custom `simulate` options merge over the defaults. AVM reads already get the maximum extra opcode budget.
 - Pass asset and app IDs as `bigint`. A `number` is accepted only up to 2^53 - 1; larger numbers throw an error.
-- BOX reads throw typed errors (`BoxNotFoundError`, `MetadataKeyError`, `MetadataEncodingError`). AVM reads throw the simulate error with the contract message.
+- BOX reads throw typed errors (`BoxNotFoundError`, `MetadataKeyError`, `MetadataEncodingError`). When the contract fails, AVM reads throw the `LogicError` (from `@algorandfoundation/algokit-utils/types/logic-error`) of the simulated call instead.
 - With a nonzero `asaAm`, `hashMatches` throws instead of returning `false` when the metadata is not immutable, or when ARC-89 native metadata without ARC-3 does not hash to `am` (`MetadataHashMismatchError`). Wrap it in try/catch and treat a throw as a failed check.
-- If Node fails to load the package from an ES module with `ERR_MODULE_NOT_FOUND` inside `dist/esm`, run the program with `tsx` or a bundler, or use CommonJS.
+- In Node, named imports of the package from an ES module fail (plain Node: `ERR_MODULE_NOT_FOUND` inside `dist/esm`). Use CommonJS instead: a `.cts` file with `tsx`, `tsc` with `"module": "commonjs"`, or an esbuild bundle with `--format=cjs`. CommonJS has no top-level `await`, so put the code in an `async` function.
