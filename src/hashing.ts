@@ -5,11 +5,12 @@
  */
 
 import { createHash, getHashes } from 'crypto'
-import * as constants from './constants'
-import { assetIdToBoxName } from './codec'
-import { InvalidPageIndexError } from './errors'
-import { concatBytes } from './internal/bytes'
-import { MAX_UINT8, MAX_UINT16 } from './internal/numbers'
+import * as constants from './constants.js'
+import { InvalidPageIndexError } from './errors.js'
+import { b64DecodeStrict } from './internal/base64.js'
+import { concatBytes } from './internal/bytes.js'
+import { parseJsonAllowNonFinite } from './internal/json.js'
+import { MAX_UINT8, MAX_UINT16 } from './internal/numbers.js'
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -28,8 +29,11 @@ const uint8ToByte = (n: number, name: string): Uint8Array => {
 /** Cached set of available hash algorithms for O(1) lookup */
 const availableHashes = new Set(getHashes())
 
-/** Reusable UTF-8 decoder with fatal error handling */
-const utf8Decoder = new TextDecoder('utf-8', { fatal: true })
+/**
+ * Reusable UTF-8 decoder with fatal error handling. A leading BOM is kept (and then rejected
+ * as invalid JSON), as Python's `bytes.decode('utf-8')` + `json.loads` do.
+ */
+const utf8Decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 
 const sha = (algo: string, data: Uint8Array): Uint8Array => {
   // Ensure algorithm exists (for clearer errors, and parity with Python's explicit check).
@@ -39,15 +43,6 @@ const sha = (algo: string, data: Uint8Array): Uint8Array => {
   const h = createHash(algo)
   h.update(Buffer.from(data))
   return new Uint8Array(h.digest())
-}
-
-const base64DecodeStrict = (s: string): Uint8Array => {
-  // Mimic Python's base64.b64decode(..., validate=True)
-  // - only base64 alphabet characters
-  // - proper padding
-  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(s)) throw new Error('Could not base64-decode "extra_metadata".')
-  if (s.length % 4 !== 0) throw new Error('Could not base64-decode "extra_metadata".')
-  return new Uint8Array(Buffer.from(s, 'base64'))
 }
 
 // ---------------------------------------------------------------------------
@@ -61,20 +56,18 @@ export const sha512_256 = (data: Uint8Array): Uint8Array => sha('sha512-256', da
 export const sha256 = (data: Uint8Array): Uint8Array => sha('sha256', data)
 
 /**
- * Compute hh = SHA-512/256("arc0089/header" || assetId || identifiers || revFlags || irrFlags || metadataSize)
+ * Compute hh = SHA-512/256("arc0089/header" || identifiers || revFlags || irrFlags || metadataSize)
  */
 export const computeHeaderHash = (args: {
-  assetId: bigint | number
   metadataIdentifiers: number
   reversibleFlags: number
   irreversibleFlags: number
   metadataSize: number
 }): Uint8Array => {
-  const { assetId, metadataIdentifiers, reversibleFlags, irreversibleFlags, metadataSize } = args
+  const { metadataIdentifiers, reversibleFlags, irreversibleFlags, metadataSize } = args
 
   const data = concatBytes([
     constants.HASH_DOMAIN_HEADER,
-    assetIdToBoxName(assetId),
     uint8ToByte(metadataIdentifiers, 'metadataIdentifiers'),
     uint8ToByte(reversibleFlags, 'reversibleFlags'),
     uint8ToByte(irreversibleFlags, 'irreversibleFlags'),
@@ -96,14 +89,10 @@ export const paginate = (metadata: Uint8Array, pageSize: number): Uint8Array[] =
 }
 
 /**
- * Compute ph[i] = SHA-512/256("arc0089/page" || assetId || pageIndex || pageSize || pageContent)
+ * Compute ph[i] = SHA-512/256("arc0089/page" || pageIndex || pageSize || pageContent)
  */
-export const computePageHash = (args: {
-  assetId: bigint | number
-  pageIndex: number
-  pageContent: Uint8Array
-}): Uint8Array => {
-  const { assetId, pageIndex, pageContent } = args
+export const computePageHash = (args: { pageIndex: number; pageContent: Uint8Array }): Uint8Array => {
+  const { pageIndex, pageContent } = args
 
   if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex > MAX_UINT8) {
     throw new InvalidPageIndexError('pageIndex must fit in uint8')
@@ -111,7 +100,6 @@ export const computePageHash = (args: {
 
   const data = concatBytes([
     constants.HASH_DOMAIN_PAGE,
-    assetIdToBoxName(assetId),
     new Uint8Array([pageIndex]),
     uint16ToBytesBE(pageContent.length, 'pageContent length'),
     pageContent,
@@ -123,19 +111,20 @@ export const computePageHash = (args: {
 /**
  * Compute the ARC-89 Metadata Hash:
  *   am = SHA-512/256("arc0089/am" || hh || ph[0] || ...)
+ *
+ * If metadata is empty, there are no pages and:
+ *   am = SHA-512/256("arc0089/am" || hh)
  */
 export const computeMetadataHash = (args: {
-  assetId: bigint | number
   metadataIdentifiers: number
   reversibleFlags: number
   irreversibleFlags: number
   metadata: Uint8Array
   pageSize: number
 }): Uint8Array => {
-  const { assetId, metadataIdentifiers, reversibleFlags, irreversibleFlags, metadata, pageSize } = args
+  const { metadataIdentifiers, reversibleFlags, irreversibleFlags, metadata, pageSize } = args
 
   const hh = computeHeaderHash({
-    assetId,
     metadataIdentifiers,
     reversibleFlags,
     irreversibleFlags,
@@ -145,7 +134,7 @@ export const computeMetadataHash = (args: {
   const pages = paginate(metadata, pageSize)
   const pageHashes: Uint8Array[] = new Array(pages.length)
   for (let i = 0; i < pages.length; i++) {
-    pageHashes[i] = computePageHash({ assetId, pageIndex: i, pageContent: pages[i] })
+    pageHashes[i] = computePageHash({ pageIndex: i, pageContent: pages[i] })
   }
   const data = concatBytes([constants.HASH_DOMAIN_METADATA, hh, ...pageHashes])
 
@@ -168,18 +157,29 @@ export const computeArc3MetadataHash = (jsonBytes: Uint8Array): Uint8Array => {
 
   let obj: unknown
   try {
-    obj = JSON.parse(jsonText)
+    // Lenient like Python's default `json.loads`: `NaN` / `Infinity` literals are accepted.
+    obj = parseJsonAllowNonFinite(jsonText)
   } catch {
     throw new Error('Invalid JSON metadata file.')
   }
 
-  if (obj && typeof obj === 'object' && !Array.isArray(obj) && 'extra_metadata' in obj) {
+  if (
+    obj &&
+    typeof obj === 'object' &&
+    !Array.isArray(obj) &&
+    Object.prototype.hasOwnProperty.call(obj, 'extra_metadata')
+  ) {
     const extraB64 = (obj as Record<string, unknown>)['extra_metadata']
     if (typeof extraB64 !== 'string') {
       throw new Error('"extra_metadata" must be a base64 string when present.')
     }
 
-    const extra = base64DecodeStrict(extraB64)
+    let extra: Uint8Array
+    try {
+      extra = b64DecodeStrict(extraB64)
+    } catch (e) {
+      throw new Error('Could not base64-decode "extra_metadata".', { cause: e })
+    }
 
     const jsonH = sha512_256(concatBytes([constants.ARC3_HASH_AMJ_PREFIX, jsonBytes]))
     const am = sha512_256(concatBytes([constants.ARC3_HASH_AM_PREFIX, jsonH, extra]))

@@ -1,7 +1,10 @@
 /**
  * Integration tests for src/read/reader module with real smart contracts.
  *
- * Ported from Python `arc89/tests/sdk/test_reader_integration.py`.
+ * Ported from Python `arc89/tests/sdk/test_reader_integration.py` (v1.0.0).
+ *
+ * These tests use actual deployed contracts and verify the reader works
+ * end-to-end with both BOX and AVM sources.
  *
  * Tests cover:
  * - Reader with algod (BOX source) using uploaded metadata
@@ -22,14 +25,18 @@ import {
   AsaMetadataRegistryWrite,
   AssetMetadata,
   AlgodBoxReader,
+  MetadataBody,
   assetIdToBoxName,
   b64Decode,
   b64UrlEncode,
   B64_URL_ENCODING,
   B64_STD_ENCODING,
+  SHORT_METADATA_SIZE,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
 import { AsaMetadataRegistryClient, AsaMetadataRegistryFactory } from '@/generated'
 import {
+  ARC90_NETAUTH,
+  type AddressWithSigners,
   sampleJsonObj,
   deployRegistry,
   getDeployer,
@@ -41,7 +48,6 @@ import {
   buildMaxedMetadata,
   uploadMetadata,
 } from './helpers'
-import { AddressWithSigners } from '@algorandfoundation/algokit-utils/transact'
 
 // ================================================================
 // AsaMetadataRegistryRead (a.k.a. reader) Integration Tests
@@ -68,6 +74,7 @@ let readerFull: AsaMetadataRegistryRead
 
 // Uploaded metadata references
 let mutableShortMetadata: AssetMetadata
+let mutableMaxedShortMetadata: AssetMetadata
 let mutableMaxedMetadata: AssetMetadata
 let mutableEmptyMetadata: AssetMetadata
 let immutableShortMetadata: AssetMetadata
@@ -87,17 +94,33 @@ beforeAll(async () => {
   boxReader = new AlgodBoxReader(algorand.client.algod)
 
   const avmFactory = (appId: bigint): AsaMetadataRegistryAvmRead =>
-    new AsaMetadataRegistryAvmRead({ client: client.clone({ appId }) })
+    new AsaMetadataRegistryAvmRead({ client: factory.getAppClientById({ appId }) })
 
-  // Reader instances
-  readerWithAlgod = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader })
-  readerWithAvm = new AsaMetadataRegistryRead({ appId: client.appId, avmFactory })
-  readerFull = new AsaMetadataRegistryRead({ appId: client.appId, algod: boxReader, avmFactory })
+  // Reader instances (LocalNet is not a known deployment: pin the ARC-90 netauth the registry was deployed with)
+  readerWithAlgod = new AsaMetadataRegistryRead({ appId: client.appId, netauth: ARC90_NETAUTH, algod: boxReader })
+  readerWithAvm = new AsaMetadataRegistryRead({ appId: client.appId, netauth: ARC90_NETAUTH, avmFactory })
+  readerFull = new AsaMetadataRegistryRead({
+    appId: client.appId,
+    netauth: ARC90_NETAUTH,
+    algod: boxReader,
+    avmFactory,
+  })
 
   // Upload mutable short metadata
   const shortAsaId = await createArc89Asa({ assetManager, appClient: client })
   const shortMeta = buildShortMetadata(shortAsaId)
   mutableShortMetadata = await uploadMetadata({ writer, assetManager, appClient: client, metadata: shortMeta })
+
+  // Upload mutable maxed short metadata (SHORT_METADATA_SIZE)
+  const maxedShortAsaId = await createArc89Asa({ assetManager, appClient: client })
+  const padding = SHORT_METADATA_SIZE - MetadataBody.fromJson({ ...sampleJsonObj, pad: '' }).size
+  const maxedShortMeta = buildShortMetadata(maxedShortAsaId, { ...sampleJsonObj, pad: 'x'.repeat(padding) })
+  mutableMaxedShortMetadata = await uploadMetadata({
+    writer,
+    assetManager,
+    appClient: client,
+    metadata: maxedShortMeta,
+  })
 
   // Upload mutable maxed metadata
   const maxedAsaId = await createArc89Asa({ assetManager, appClient: client })
@@ -233,7 +256,7 @@ describe('reader with algod', () => {
       source: MetadataSource.BOX,
     })
 
-    expect(header.lastModifiedRound).toBeGreaterThan(0n)
+    expect(header.revision).toBeGreaterThan(0n)
     expect(header.metadataHash.length).toBe(32)
   })
 
@@ -257,51 +280,55 @@ describe('reader with algod', () => {
     })
 
     expect(page.pageContent.length).toBeGreaterThan(0)
-    expect(page.lastModifiedRound).toBeGreaterThan(0n)
+    expect(page.revision).toBeGreaterThan(0n)
   })
 
   test('get metadata slice', async () => {
     // Test getting a slice of metadata.
-    const sliceData = await readerWithAlgod.arc89GetMetadataSlice({
+    const metadataSlice = await readerWithAlgod.arc89GetMetadataSlice({
       assetId: mutableShortMetadata.assetId,
       offset: 0,
       size: 10,
       source: MetadataSource.BOX,
     })
 
-    expect(sliceData.length).toBeLessThanOrEqual(10)
-    expect(sliceData).toStrictEqual(mutableShortMetadata.body.rawBytes.slice(0, 10))
+    expect(metadataSlice.revision).toBeGreaterThan(0n)
+    expect(metadataSlice.content.length).toBeLessThanOrEqual(10)
+    expect(metadataSlice.content).toStrictEqual(mutableShortMetadata.body.rawBytes.slice(0, 10))
   })
 
   test('get metadata header hash', async () => {
     // Test getting metadata header hash.
-    const headerHash = await readerWithAlgod.arc89GetMetadataHeaderHash({
+    const [headerHash, revision] = await readerWithAlgod.arc89GetMetadataHeaderHash({
       assetId: mutableShortMetadata.assetId,
       source: MetadataSource.BOX,
     })
 
     expect(headerHash.length).toBe(32)
+    expect(revision).toBeGreaterThan(0n)
   })
 
   test('get metadata page hash', async () => {
     // Test getting metadata page hash.
-    const pageHash = await readerWithAlgod.arc89GetMetadataPageHash({
+    const [pageHash, revision] = await readerWithAlgod.arc89GetMetadataPageHash({
       assetId: mutableShortMetadata.assetId,
       page: 0,
       source: MetadataSource.BOX,
     })
 
     expect(pageHash.length).toBe(32)
+    expect(revision).toBeGreaterThan(0n)
   })
 
   test('get metadata hash', async () => {
     // Test getting full metadata hash.
-    const metadataHash = await readerWithAlgod.arc89GetMetadataHash({
+    const [metadataHash, revision] = await readerWithAlgod.arc89GetMetadataHash({
       assetId: mutableShortMetadata.assetId,
       source: MetadataSource.BOX,
     })
 
     expect(metadataHash.length).toBe(32)
+    expect(revision).toBeGreaterThan(0n)
   })
 })
 
@@ -362,7 +389,7 @@ describe('reader with avm', () => {
       source: MetadataSource.AVM,
     })
 
-    expect(header.lastModifiedRound).toBeGreaterThan(0n)
+    expect(header.revision).toBeGreaterThan(0n)
     expect(header.metadataHash.length).toBe(32)
   })
 
@@ -479,6 +506,8 @@ describe('reader full', () => {
     expect(boxPagination.metadataSize).toBe(avmPagination.metadataSize)
     expect(boxPagination.pageSize).toBe(avmPagination.pageSize)
     expect(boxPagination.totalPages).toBe(avmPagination.totalPages)
+    expect(boxPagination.revision).toBe(avmPagination.revision)
+    expect(boxPagination.deprecatedBy).toBe(avmPagination.deprecatedBy)
   })
 })
 
@@ -555,6 +584,31 @@ describe('reader JSON extraction', () => {
     expect(result.length).toBeGreaterThan(0)
     expect(result).toStrictEqual(expectedDecodedB64Bytes)
   })
+
+  test('get values by key avm (maxed short metadata)', async () => {
+    // Test extracting values via AVM when the getters parse SHORT_METADATA_SIZE bytes of JSON.
+    const assetId = mutableMaxedShortMetadata.assetId
+    expect(mutableMaxedShortMetadata.body.size).toBe(SHORT_METADATA_SIZE)
+
+    const name = await readerWithAvm.arc89GetMetadataStringByKey({ assetId, key: 'name', source: MetadataSource.AVM })
+    const answer = await readerWithAvm.arc89GetMetadataUint64ByKey({
+      assetId,
+      key: 'answer',
+      source: MetadataSource.AVM,
+    })
+    const date = await readerWithAvm.arc89GetMetadataObjectByKey({ assetId, key: 'date', source: MetadataSource.AVM })
+    const bytes = await readerWithAvm.arc89GetMetadataB64BytesByKey({
+      assetId,
+      key: 'gh_b64_std',
+      b64Encoding: B64_STD_ENCODING,
+      source: MetadataSource.AVM,
+    })
+
+    expect(name).toBe(sampleJsonObj.name)
+    expect(answer).toBe(BigInt(sampleJsonObj.answer))
+    expect(JSON.parse(date)).toStrictEqual(sampleJsonObj.date)
+    expect(bytes).toStrictEqual(expectedDecodedB64Bytes)
+  })
 })
 
 // ================================================================
@@ -563,18 +617,33 @@ describe('reader JSON extraction', () => {
 
 describe('reader ARC-90 URI', () => {
   test('resolve from asset url', async () => {
-    // Test resolving URI from ASA's url field.
+    // Test the canonical look-up by asset id (the Asset URL is not read).
     const uri = await readerWithAlgod.resolveArc90Uri({ assetId: arc89Asa })
 
     expect(uri.assetId).toBe(arc89Asa)
     expect(uri.appId).not.toBeNull()
     expect(uri.appId).toBe(client.appId)
+    expect(uri.netauth).toBe(ARC90_NETAUTH)
+  })
+
+  test('held asset url matches canonical look up', async () => {
+    // The URL helper and the canonical look-up name the same box.
+    expect(readerWithAlgod.algod).not.toBeNull()
+    const assetUrl = await readerWithAlgod.algod!.getAssetUrl(arc89Asa)
+    expect(assetUrl).toBeTruthy()
+
+    const fromUrl = await readerWithAlgod.resolveArc90UriFromAssetUrl({ assetId: arc89Asa, assetUrl: assetUrl! })
+    const canonical = await readerWithAlgod.resolveArc90Uri({ assetId: arc89Asa })
+
+    expect(fromUrl).not.toBeNull()
+    expect([fromUrl!.appId, fromUrl!.assetId]).toStrictEqual([canonical.appId, canonical.assetId])
   })
 
   test('resolve from explicit uri', async () => {
     // Test resolving from explicit metadata URI.
+    // Encode the asset ID as base64url for the box parameter
     const boxEncoded = b64UrlEncode(assetIdToBoxName(arc89Asa))
-    const uriString = `algorand://net:localnet/app/${client.appId}?box=${boxEncoded}`
+    const uriString = `algorand://${ARC90_NETAUTH}/app/${client.appId}?box=${boxEncoded}`
 
     const uri = await readerWithAlgod.resolveArc90Uri({ metadataUri: uriString })
 

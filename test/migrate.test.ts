@@ -1,41 +1,65 @@
-import { describe, expect, test, beforeAll } from 'vitest'
+import { beforeAll, describe, expect, test } from 'vitest'
 import { algo, Config } from '@algorandfoundation/algokit-utils'
-import { nullLogger } from '@algorandfoundation/algokit-utils/logging'
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
-import { AddressWithSigners } from '@algorandfoundation/algokit-utils/transact'
+import { nullLogger } from '@algorandfoundation/algokit-utils/types/logging'
+import { LogicError } from '@algorandfoundation/algokit-utils/types/logic-error'
+import { generateAccount, getApplicationAddress, makeBasicAccountTransactionSigner, TransactionType } from 'algosdk'
+import type { Address, modelsv2 } from 'algosdk'
 import {
+  ARC3_NAME_SUFFIX,
+  Arc90Compliance,
   Arc90Uri,
   AsaMetadataRegistry,
   AssetMetadata,
   IrreversibleFlags,
   MAX_METADATA_SIZE,
   MetadataFlags,
+  MetadataHashMismatchError,
   ReversibleFlags,
   SHORT_METADATA_SIZE,
-  encodeArc2MigrationMessage,
   buildArc2MigrationMessageTxn,
+  computeArc3MetadataHash,
   deriveMigrationUri,
+  encodeArc2MigrationMessage,
+  encodeMetadataJson,
   migrateLegacyMetadataToRegistry,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
-import { AsaMetadataRegistryClient, AsaMetadataRegistryFactory } from '@/generated'
+import type { AsaMetadataRegistryClient } from '@/generated'
 import {
-  deployRegistry,
-  getDeployer,
+  ARC90_NETAUTH,
+  createArc3Payload,
+  createArc69Asa,
   createFactory,
   createFundedAccount,
-  createArc3Asa,
-  createArc69Asa,
-  createArc3Payload,
+  deployRegistry,
+  getDeployer,
 } from './helpers'
+import type { AddressWithSigners } from './helpers'
 
-const ARC90_NETAUTH = process.env.ARC90_NETAUTH ?? 'net:localnet'
+const textEncoder = new TextEncoder()
+const textDecoder = new TextDecoder()
 
+const ARC2_PREFIX = 'arc89:j'
+
+/** Split an ARC-2 migration message into its `arc89:j` prefix and its JSON payload text. */
+const splitArc2Message = (message: Uint8Array): readonly [string, string] => [
+  textDecoder.decode(message.slice(0, ARC2_PREFIX.length)),
+  textDecoder.decode(message.slice(ARC2_PREFIX.length)),
+]
+
+/** The ARC-3 `am` of the bytes the SDK stores when migrating an object. */
+const arc3Am = (obj: Record<string, unknown>): Uint8Array => computeArc3MetadataHash(encodeMetadataJson(obj))
+
+const parseJsonBytes = (bytes: Uint8Array) => JSON.parse(textDecoder.decode(bytes))
+
+/** Minimal valid ARC-3/ARC-69 metadata JSON. */
 const minimalMetadata: Record<string, unknown> = {
   name: 'Test Asset',
   description: 'A test asset for migration',
 }
 
+/** ARC-3 compliant metadata with standard properties. */
 const arc3Metadata: Record<string, unknown> = createArc3Payload({
   name: 'ARC-3 Token',
   description: 'ARC-3 compliant token',
@@ -55,156 +79,194 @@ const arc3Metadata: Record<string, unknown> = createArc3Payload({
   },
 })
 
-describe('arc-2 message encoding', () => {
-  test('encode basic uri', () => {
-    const uri = 'arc90://net:testnet/42?box=AAAAAAAAAAM'
-    const message = encodeArc2MigrationMessage(uri)
-
-    // Should start with arc89:j prefix
-    const prefix = new TextDecoder().decode(message.slice(0, 7))
-    expect(prefix).toBe('arc89:j')
-
-    // Extract and decode JSON payload
-    const payload = new TextDecoder().decode(message.slice(7))
-    const decoded = JSON.parse(payload)
-    expect(decoded.uri).toBe(uri)
-  })
-
-  test('encode with compliance fragment', () => {
-    const uri = 'arc90://net:testnet/42?box=AAAAAAAAAAM#arc3'
-    const message = encodeArc2MigrationMessage(uri)
-
-    const prefix = new TextDecoder().decode(message.slice(0, 7))
-    expect(prefix).toBe('arc89:j')
-
-    const payload = new TextDecoder().decode(message.slice(7))
-    const decoded = JSON.parse(payload)
-    expect(decoded.uri).toBe(uri)
-  })
-
-  test('encode compact json', () => {
-    const uri = 'arc90://net:testnet/42?box=AAAAAAAAAAM'
-    const message = encodeArc2MigrationMessage(uri)
-
-    const payloadStr = new TextDecoder().decode(message.slice(7))
-
-    // Should have compact separators (no extra whitespace)
-    expect(payloadStr).toBe(JSON.stringify({ uri }))
-    expect(payloadStr).not.toContain(' ')
-  })
-
-  test('encode unicode uri', () => {
-    const uri = 'arc90://net:testnet/42?box=AAAAAAAAAAM&tag=测试'
-    const message = encodeArc2MigrationMessage(uri)
-
-    const payload = new TextDecoder().decode(message.slice(7))
-    const decoded = JSON.parse(payload)
-    expect(decoded.uri).toBe(uri)
-  })
-})
+// ================================================================
+// Fixtures
+// ================================================================
 
 const fixture = algorandFixture()
 let algorand: AlgorandClient
 let client: AsaMetadataRegistryClient
-let factory: AsaMetadataRegistryFactory
-let deployer: AddressWithSigners
 let assetManager: AddressWithSigners
 let registry: AsaMetadataRegistry
 
 beforeAll(async () => {
   await fixture.newScope()
   algorand = fixture.algorand
-  deployer = getDeployer(fixture)
+  const deployer = getDeployer(fixture)
   assetManager = await createFundedAccount(fixture)
 
-  factory = createFactory({ algorand, deployer })
-  client = await deployRegistry({ factory, deployer })
+  client = await deployRegistry({ factory: createFactory({ algorand, deployer }), deployer })
 
-  registry = AsaMetadataRegistry.fromAppClient(client, { netauth: ARC90_NETAUTH })
+  // Registry configured for write operations
+  registry = AsaMetadataRegistry.fromAppClient(client, { algod: algorand.client.algod, netauth: ARC90_NETAUTH })
 })
+
+/** Create a legacy ARC-69 ASA with `minimalMetadata` in the note field. */
+const createLegacyArc69Asa = (): Promise<bigint> =>
+  createArc69Asa({ assetManager, appClient: client, metadata: minimalMetadata })
+
+/**
+ * Create a legacy ARC-3 ASA.
+ *
+ * Pass `withMetadataHash: true` to include a non-zero metadata hash (32 bytes of 0xAB, which is not an
+ * ARC-3 hash), or `metadataHash` to set a specific `am` (e.g. the ARC-3 hash of the metadata to migrate).
+ */
+const createLegacyArc3Asa = async (args?: {
+  withMetadataHash?: boolean
+  defaultFrozen?: boolean
+  clawback?: string | Address
+  metadataHash?: Uint8Array
+}): Promise<bigint> => {
+  const result = await algorand.send.assetCreate({
+    sender: assetManager.addr,
+    total: 1000n,
+    assetName: `Legacy NFT${textDecoder.decode(ARC3_NAME_SUFFIX)}`,
+    unitName: 'LNFT',
+    url: 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi',
+    decimals: 0,
+    defaultFrozen: args?.defaultFrozen ?? false,
+    manager: assetManager.addr,
+    reserve: assetManager.addr,
+    freeze: assetManager.addr,
+    clawback: args?.clawback ?? assetManager.addr,
+    metadataHash: args?.metadataHash ?? (args?.withMetadataHash ? new Uint8Array(32).fill(0xab) : undefined),
+  })
+  return result.assetId
+}
+
+/** Run `fn` and return the confirmed transactions it sent through the fixture's algod. */
+const sentTransactions = async (fn: () => Promise<unknown>): Promise<modelsv2.PendingTransactionResponse[]> => {
+  const { transactionLogger } = fixture.context
+  const start = transactionLogger.sentTransactionIds.length
+  await fn()
+  const txIds = transactionLogger.sentTransactionIds.slice(start)
+  return await Promise.all(txIds.map((txId) => algorand.client.algod.pendingTransactionInformation(txId).do()))
+}
+
+// ================================================================
+// ARC-2 Message Encoding Tests
+// ================================================================
+
+describe('arc-2 message encoding', () => {
+  test('encode basic uri', () => {
+    const uri = 'arc90://net:testnet/42?box=AAAAAAAAAAM'
+    const [prefix, payload] = splitArc2Message(encodeArc2MigrationMessage(uri))
+
+    // Should start with arc89:j prefix
+    expect(prefix).toBe(ARC2_PREFIX)
+
+    // Extract and decode JSON payload
+    expect(JSON.parse(payload)).toEqual({ uri })
+  })
+
+  test('encode with compliance fragment', () => {
+    const uri = 'arc90://net:testnet/42?box=AAAAAAAAAAM#arc3'
+    const [prefix, payload] = splitArc2Message(encodeArc2MigrationMessage(uri))
+
+    expect(prefix).toBe(ARC2_PREFIX)
+    expect(JSON.parse(payload).uri).toBe(uri)
+  })
+
+  test('encode compact json', () => {
+    const uri = 'arc90://net:testnet/42?box=AAAAAAAAAAM'
+    const [, payload] = splitArc2Message(encodeArc2MigrationMessage(uri))
+
+    // Should have compact separators (no extra whitespace)
+    expect(payload).toBe(JSON.stringify({ uri }))
+    expect(payload).not.toContain(' ')
+  })
+
+  test('encode unicode uri', () => {
+    const uri = 'arc90://net:testnet/42?box=AAAAAAAAAAM&tag=测试'
+    const [, payload] = splitArc2Message(encodeArc2MigrationMessage(uri))
+
+    expect(JSON.parse(payload).uri).toBe(uri)
+    // Non-ASCII characters are UTF-8 encoded, not escaped
+    expect(payload).toContain('测试')
+  })
+})
+
+// ================================================================
+// Migration URI Derivation Tests
+// ================================================================
 
 describe('migration uri derivation', () => {
   test('derive basic uri without compliance fragments', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
+    const assetId = await createLegacyArc69Asa()
 
     const uri = deriveMigrationUri({ registry, assetId, arc3: false })
     const parsed = Arc90Uri.parse(uri)
 
     expect(parsed.netauth).toBe(ARC90_NETAUTH)
-    expect(parsed.appId).toBe(client.appId)
+    expect(parsed.appId).toBe(registry.config.appId)
     expect(parsed.boxName).not.toBeNull()
-    expect(parsed.compliance.arcs).toEqual([])
+    expect(parsed.assetId).toBe(assetId)
+    expect(parsed.compliance).toEqual(new Arc90Compliance([]))
   })
 
   test('derive uri with arc3 flag', async () => {
-    const assetId = await createArc3Asa({ assetManager, appClient: client, preRegistry: true })
+    const assetId = await createLegacyArc3Asa()
 
     const uri = deriveMigrationUri({ registry, assetId, arc3: true })
     const parsed = Arc90Uri.parse(uri)
 
-    expect(parsed.compliance.arcs).toEqual([3])
+    expect(parsed.compliance).toEqual(new Arc90Compliance([3]))
   })
 })
 
+// ================================================================
+// Transaction Building Tests
+// ================================================================
+
 describe('build arc2 migration message txn', () => {
+  const metadataUri = 'arc90://net:testnet/123?box=AAAAAAAAAAM'
+
   test('build txn basic', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
-    const metadataUri = 'arc90://net:testnet/123?box=AAAAAAAAAAM'
+    const assetId = await createLegacyArc69Asa()
 
-    const txn = await buildArc2MigrationMessageTxn({
-      registry,
-      assetId,
-      assetManager,
-      metadataUri,
-    })
+    const txn = await buildArc2MigrationMessageTxn({ registry, assetId, assetManager, metadataUri })
 
-    // Verify transaction type
-    expect(txn.type).toBe('acfg')
+    // Verify transaction type and basic fields
+    expect(txn.type).toBe(TransactionType.acfg)
+    expect(txn.sender.toString()).toBe(assetManager.addr.toString())
+    // Verify it's an asset config transaction for the right asset
+    expect(txn.assetConfig?.assetIndex).toBe(assetId)
 
     // Verify note contains the ARC-2 message
-    expect(txn.note).toBeDefined()
-    const notePrefix = new TextDecoder().decode(txn.note!.slice(0, 7))
-    expect(notePrefix).toBe('arc89:j')
+    const [prefix, payload] = splitArc2Message(txn.note)
+    expect(prefix).toBe(ARC2_PREFIX)
 
     // Decode and verify the message
-    const payload = new TextDecoder().decode(txn.note!.slice(7))
-    const decoded = JSON.parse(payload)
-    expect(decoded.uri).toBe(metadataUri)
+    expect(JSON.parse(payload).uri).toBe(metadataUri)
   })
 
   test('build txn preserves manager', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
-    const metadataUri = 'arc90://net:testnet/123?box=AAAAAAAAAAM'
+    const assetId = await createLegacyArc69Asa()
 
-    const txn = await buildArc2MigrationMessageTxn({
-      registry,
-      assetId,
-      assetManager,
-      metadataUri,
-    })
+    const txn = await buildArc2MigrationMessageTxn({ registry, assetId, assetManager, metadataUri })
 
-    expect(txn.note).toBeDefined()
-    expect(new TextDecoder().decode(txn.note!.slice(0, 7))).toBe('arc89:j')
+    // Verify transaction was built with the migration message
+    expect(splitArc2Message(txn.note)[0]).toBe(ARC2_PREFIX)
+    expect(txn.assetConfig?.manager?.toString()).toBe(assetManager.addr.toString())
   })
 
   test('build txn preserves all roles', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
-    const metadataUri = 'arc90://net:testnet/123?box=AAAAAAAAAAM'
+    const assetId = await createLegacyArc69Asa()
+    const info = await algorand.asset.getById(assetId)
 
-    const txn = await buildArc2MigrationMessageTxn({
-      registry,
-      assetId,
-      assetManager,
-      metadataUri,
-    })
+    const txn = await buildArc2MigrationMessageTxn({ registry, assetId, assetManager, metadataUri })
 
-    expect(txn.type).toBe('acfg')
-    expect(txn.note).toBeDefined()
-    expect(new TextDecoder().decode(txn.note!.slice(0, 7))).toBe('arc89:j')
+    expect(txn.type).toBe(TransactionType.acfg)
+    expect(txn.sender.toString()).toBe(assetManager.addr.toString())
+    expect(txn.note.length).toBeGreaterThan(0)
+    expect(txn.assetConfig?.manager?.toString()).toBe(info.manager)
+    expect(txn.assetConfig?.reserve?.toString()).toBe(info.reserve)
+    expect(txn.assetConfig?.freeze?.toString()).toBe(info.freeze)
+    expect(txn.assetConfig?.clawback?.toString()).toBe(info.clawback)
   })
 
   test('build txn without write capability error', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
+    const assetId = await createLegacyArc69Asa()
 
     // Create read-only registry (no appClient)
     const readOnlyRegistry = AsaMetadataRegistry.fromAlgod({
@@ -213,26 +275,38 @@ describe('build arc2 migration message txn', () => {
     })
 
     await expect(
-      buildArc2MigrationMessageTxn({
-        registry: readOnlyRegistry,
-        assetId,
-        assetManager,
-        metadataUri: 'arc90://net:testnet/123?box=AAAAAAAAAAM',
-      }),
+      buildArc2MigrationMessageTxn({ registry: readOnlyRegistry, assetId, assetManager, metadataUri }),
     ).rejects.toThrow('write capabilities')
   })
 })
 
+// ================================================================
+// Migration Pre-flight Checks Tests
+// ================================================================
+
 describe('pre-flight checks', () => {
+  test('asset not existing throws', async () => {
+    await expect(
+      migrateLegacyMetadataToRegistry({
+        registry,
+        assetManager,
+        assetId: 2n ** 63n - 1n,
+        metadata: minimalMetadata,
+        arc3Compliant: false,
+      }),
+    ).rejects.toThrow('does not exist')
+  })
+
   test('asset without metadata passes', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
+    const assetId = await createLegacyArc69Asa()
 
     const existence = await registry.read.arc89CheckMetadataExists({ assetId })
+    expect(existence.asaExists).toBe(true)
     expect(existence.metadataExists).toBe(false)
   })
 
   test('asset with existing metadata throws', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
+    const assetId = await createLegacyArc69Asa()
 
     // Create metadata first
     const metadata = AssetMetadata.fromJson({
@@ -254,9 +328,13 @@ describe('pre-flight checks', () => {
   })
 })
 
+// ================================================================
+// Full Migration Flow Tests (LocalNet Integration)
+// ================================================================
+
 describe('migrate legacy metadata', () => {
   test('migrate minimal metadata', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
+    const assetId = await createLegacyArc69Asa()
 
     await migrateLegacyMetadataToRegistry({
       registry,
@@ -272,12 +350,11 @@ describe('migrate legacy metadata', () => {
 
     // Verify metadata content
     const stored = await registry.read.getAssetMetadata({ assetId })
-    const storedJson = JSON.parse(new TextDecoder().decode(stored.body.rawBytes))
-    expect(storedJson).toEqual(minimalMetadata)
+    expect(parseJsonBytes(stored.body.rawBytes)).toEqual(minimalMetadata)
   })
 
   test('migrate arc3 metadata', async () => {
-    const assetId = await createArc3Asa({ assetManager, appClient: client, preRegistry: true })
+    const assetId = await createLegacyArc3Asa()
 
     await migrateLegacyMetadataToRegistry({
       registry,
@@ -297,9 +374,9 @@ describe('migrate legacy metadata', () => {
   })
 
   test('migrate arc3 asa with metadataHash auto-sets immutable', async () => {
-    const assetId = await createArc3Asa({ assetManager, appClient: client, preRegistry: true, withMetadataHash: true })
+    const assetId = await createLegacyArc3Asa({ metadataHash: arc3Am(arc3Metadata) })
 
-    // No flags provided - SDK should auto-set immutable
+    // No flags provided - SDK should auto-set immutable and arc3
     await migrateLegacyMetadataToRegistry({
       registry,
       assetManager,
@@ -314,7 +391,7 @@ describe('migrate legacy metadata', () => {
   })
 
   test('migrate arc3 asa with metadataHash and explicit immutable=false throws readable error', async () => {
-    const assetId = await createArc3Asa({ assetManager, appClient: client, preRegistry: true, withMetadataHash: true })
+    const assetId = await createLegacyArc3Asa({ metadataHash: arc3Am(arc3Metadata) })
 
     const flags = new MetadataFlags({
       reversible: ReversibleFlags.empty(),
@@ -334,12 +411,16 @@ describe('migrate legacy metadata', () => {
   })
 
   test('migrate arc3 asa with metadataHash and arc20 properties preserves arc20 flag', async () => {
-    const assetId = await createArc3Asa({ assetManager, appClient: client, preRegistry: true, withMetadataHash: true })
-
+    // ARC-20 requires DefaultFrozen and the controlling App account as Clawback
     const arc3WithArc20: Record<string, unknown> = {
       name: 'ARC-20 Token',
       properties: { 'arc-20': { 'application-id': 999 } },
     }
+    const assetId = await createLegacyArc3Asa({
+      metadataHash: arc3Am(arc3WithArc20),
+      defaultFrozen: true,
+      clawback: getApplicationAddress(999),
+    })
 
     await migrateLegacyMetadataToRegistry({
       registry,
@@ -356,6 +437,7 @@ describe('migrate legacy metadata', () => {
   })
 
   test('migrate arc69 preserves exact metadata', async () => {
+    // Create original ARC-69 metadata with various data types
     const originalMetadata: Record<string, unknown> = {
       standard: 'arc69',
       name: 'Test Token',
@@ -378,12 +460,10 @@ describe('migrate legacy metadata', () => {
       ],
     }
 
-    const assetId = await createArc69Asa({
-      assetManager,
-      appClient: client,
-      metadata: originalMetadata,
-    })
+    // Create ARC-69 ASA with metadata in note field
+    const assetId = await createArc69Asa({ assetManager, appClient: client, metadata: originalMetadata })
 
+    // Migrate using the original metadata
     await migrateLegacyMetadataToRegistry({
       registry,
       assetManager,
@@ -398,7 +478,7 @@ describe('migrate legacy metadata', () => {
 
     // Verify stored metadata exactly matches original
     const stored = await registry.read.getAssetMetadata({ assetId })
-    const storedJson = JSON.parse(new TextDecoder().decode(stored.body.rawBytes))
+    const storedJson = parseJsonBytes(stored.body.rawBytes)
     expect(storedJson).toEqual(originalMetadata)
 
     // Verify specific fields to ensure data types are preserved
@@ -420,8 +500,9 @@ describe('migrate legacy metadata', () => {
   })
 
   test('migrate with custom flags', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
+    const assetId = await createLegacyArc69Asa()
 
+    // Note: arc89Native=false is appropriate for migrated metadata
     const flags = new MetadataFlags({
       reversible: new ReversibleFlags({ reserved3: true }),
       irreversible: new IrreversibleFlags({ arc89Native: false }),
@@ -436,13 +517,14 @@ describe('migrate legacy metadata', () => {
       flags,
     })
 
-    // Verify flags were applied
+    // Verify flags were applied (arc89Native should be false for migrated metadata)
     const header = await registry.read.arc89GetMetadataHeader({ assetId })
     expect(header.flags.irreversible.arc89Native).toBe(false)
+    expect(header.flags.reversible.reserved3).toBe(true)
   })
 
   test('migrate with arc89 native flag throws', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
+    const assetId = await createLegacyArc69Asa()
 
     const flags = new MetadataFlags({
       reversible: ReversibleFlags.empty(),
@@ -462,7 +544,7 @@ describe('migrate legacy metadata', () => {
   })
 
   test('migrate already migrated throws', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
+    const assetId = await createLegacyArc69Asa()
 
     // First migration
     await migrateLegacyMetadataToRegistry({
@@ -486,8 +568,9 @@ describe('migrate legacy metadata', () => {
   })
 
   test('migrate oversized metadata throws', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
+    const assetId = await createLegacyArc69Asa()
 
+    // Exceeds MAX_METADATA_SIZE once JSON encoded
     const oversizedMetadata = {
       name: 'Oversized Asset',
       description: 'x'.repeat(MAX_METADATA_SIZE),
@@ -505,7 +588,7 @@ describe('migrate legacy metadata', () => {
   })
 
   test('migrate max size metadata', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
+    const assetId = await createLegacyArc69Asa()
 
     // Create metadata that fits within MAX_METADATA_SIZE
     const contentSize = MAX_METADATA_SIZE - 20 // Leave room for JSON structure
@@ -524,9 +607,13 @@ describe('migrate legacy metadata', () => {
   })
 })
 
+// ================================================================
+// RBAC Preservation Tests
+// ================================================================
+
 describe('rbac preservation', () => {
   test('preserve all roles after migration', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
+    const assetId = await createLegacyArc69Asa()
 
     // Get original asset info
     const originalInfo = await algorand.asset.getById(assetId)
@@ -537,6 +624,7 @@ describe('rbac preservation', () => {
       assetId,
       metadata: minimalMetadata,
       arc3Compliant: false,
+      publishArc2Message: true,
     })
 
     // Get updated asset info
@@ -550,12 +638,11 @@ describe('rbac preservation', () => {
   })
 
   test('preserve roles with different addresses', async () => {
-    // Create accounts with different roles
-    const reserveAccount = await createFundedAccount(fixture, algo(10))
-    const freezeAccount = await createFundedAccount(fixture, algo(10))
-    const clawbackAccount = await createFundedAccount(fixture, algo(10))
-
     // Create ASA with distinct role addresses
+    const reserveAccount = await createFundedAccount(fixture, algo(1))
+    const freezeAccount = algorand.account.random()
+    const untrustedAccount = await createFundedAccount(fixture, algo(10))
+
     const result = await algorand.send.assetCreate({
       sender: assetManager.addr,
       total: 1000n,
@@ -563,7 +650,7 @@ describe('rbac preservation', () => {
       manager: assetManager.addr,
       reserve: reserveAccount.addr,
       freeze: freezeAccount.addr,
-      clawback: clawbackAccount.addr,
+      clawback: untrustedAccount.addr,
     })
     const assetId = result.assetId
 
@@ -576,6 +663,7 @@ describe('rbac preservation', () => {
       assetId,
       metadata: minimalMetadata,
       arc3Compliant: false,
+      publishArc2Message: true,
     })
 
     // Get updated info
@@ -583,13 +671,17 @@ describe('rbac preservation', () => {
 
     // Verify all distinct roles are preserved
     expect(updatedInfo.manager).toBe(originalInfo.manager)
+    expect(updatedInfo.manager).toBe(assetManager.addr.toString())
     expect(updatedInfo.reserve).toBe(originalInfo.reserve)
+    expect(updatedInfo.reserve).toBe(reserveAccount.addr.toString())
     expect(updatedInfo.freeze).toBe(originalInfo.freeze)
+    expect(updatedInfo.freeze).toBe(freezeAccount.addr.toString())
     expect(updatedInfo.clawback).toBe(originalInfo.clawback)
+    expect(updatedInfo.clawback).toBe(untrustedAccount.addr.toString())
   })
 
   test('preserve empty/disabled roles', async () => {
-    // Create ASA with only manager set, no reserve/freeze/clawback
+    // Create ASA with only manager set, no reserve/freeze/clawback (disabled)
     const result = await algorand.send.assetCreate({
       sender: assetManager.addr,
       total: 1000n,
@@ -607,6 +699,7 @@ describe('rbac preservation', () => {
       assetId,
       metadata: minimalMetadata,
       arc3Compliant: false,
+      publishArc2Message: true,
     })
 
     // Get updated info
@@ -617,12 +710,19 @@ describe('rbac preservation', () => {
     expect(updatedInfo.reserve).toBe(originalInfo.reserve)
     expect(updatedInfo.freeze).toBe(originalInfo.freeze)
     expect(updatedInfo.clawback).toBe(originalInfo.clawback)
+    expect(updatedInfo.reserve).toBeUndefined()
+    expect(updatedInfo.freeze).toBeUndefined()
+    expect(updatedInfo.clawback).toBeUndefined()
   })
 })
 
+// ================================================================
+// Error Handling Tests
+// ================================================================
+
 describe('migration error handling', () => {
   test('migrate empty metadata', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
+    const assetId = await createLegacyArc69Asa()
 
     await migrateLegacyMetadataToRegistry({
       registry,
@@ -632,34 +732,41 @@ describe('migration error handling', () => {
       arc3Compliant: false,
     })
 
+    // Should succeed - empty metadata is valid
     const existence = await registry.read.arc89CheckMetadataExists({ assetId })
     expect(existence.metadataExists).toBe(true)
   })
 
   test('migrate without manager throws', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
+    const assetId = await createLegacyArc69Asa()
     const untrustedAccount = await createFundedAccount(fixture, algo(10))
     const prevLogger = Config.logger
     Config.configure({ logger: nullLogger })
     try {
-      await expect(
-        migrateLegacyMetadataToRegistry({
-          registry,
-          assetManager: untrustedAccount,
-          assetId,
-          metadata: minimalMetadata,
-          arc3Compliant: false,
-        }),
-      ).rejects.toThrow()
+      const error = await migrateLegacyMetadataToRegistry({
+        registry,
+        assetManager: untrustedAccount,
+        assetId,
+        metadata: minimalMetadata,
+        arc3Compliant: false,
+      }).catch((e: unknown) => e)
+
+      // Rejected by the registry: only the ASA Manager can create the Asset Metadata
+      expect(error).toBeInstanceOf(LogicError)
+      expect((error as LogicError).message).toContain('ERR:unauthorized')
     } finally {
       Config.configure({ logger: prevLogger })
     }
   })
 })
 
+// ================================================================
+// Integration Tests
+// ================================================================
+
 describe('migration integration', () => {
   test('full migration workflow', async () => {
-    const assetId = await createArc3Asa({ assetManager, appClient: client, preRegistry: true })
+    const assetId = await createLegacyArc3Asa()
 
     // 1. Verify asset has no metadata initially
     const existenceBefore = await registry.read.arc89CheckMetadataExists({ assetId })
@@ -680,8 +787,7 @@ describe('migration integration', () => {
 
     // 4. Verify metadata content
     const stored = await registry.read.getAssetMetadata({ assetId })
-    const storedJson = JSON.parse(new TextDecoder().decode(stored.body.rawBytes))
-    expect(storedJson).toEqual(arc3Metadata)
+    expect(parseJsonBytes(stored.body.rawBytes)).toEqual(arc3Metadata)
 
     // 5. Verify ARC-3 flag
     const header = await registry.read.arc89GetMetadataHeader({ assetId })
@@ -689,15 +795,15 @@ describe('migration integration', () => {
 
     // 6. Verify RBAC unchanged
     const assetInfo = await algorand.asset.getById(assetId)
-    expect(assetInfo.manager).toBeDefined()
+    expect(assetInfo.manager).toBe(assetManager.addr.toString())
 
     // 7. Verify we can read the metadata hash
-    const hashResult = await registry.read.arc89GetMetadataHash({ assetId })
-    expect(hashResult.length).toBe(32)
+    const [metadataHash] = await registry.read.arc89GetMetadataHash({ assetId })
+    expect(metadataHash.length).toBe(32)
   })
 
   test('migration with subsequent updates', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
+    const assetId = await createLegacyArc69Asa()
 
     // 1. Migrate
     await migrateLegacyMetadataToRegistry({
@@ -721,13 +827,13 @@ describe('migration integration', () => {
 
     // 3. Verify the update
     const stored = await registry.read.getAssetMetadata({ assetId })
-    const storedJson = JSON.parse(new TextDecoder().decode(stored.body.rawBytes))
+    const storedJson = parseJsonBytes(stored.body.rawBytes)
     expect(storedJson.name).toBe('Updated Asset')
     expect(storedJson.version).toBe(2)
   })
 
   test('migration metadata size boundary', async () => {
-    const assetId = await createArc69Asa({ assetManager, appClient: client })
+    const assetId = await createLegacyArc69Asa()
 
     // Test short metadata
     const shortMeta = { x: 'a'.repeat(100) }
@@ -742,5 +848,168 @@ describe('migration integration', () => {
     const pagination = await registry.read.arc89GetMetadataPagination({ assetId })
     expect(pagination.metadataSize).toBeGreaterThan(0)
     expect(pagination.metadataSize).toBeLessThanOrEqual(SHORT_METADATA_SIZE)
+  })
+})
+
+// ================================================================
+// ASA Metadata Hash (am) Verification Tests
+// ================================================================
+
+describe('migrate am verification', () => {
+  test('mismatching am throws', async () => {
+    const assetId = await createLegacyArc3Asa({ withMetadataHash: true }) // 0xAB.. is not the ARC-3 hash
+
+    await expect(
+      migrateLegacyMetadataToRegistry({
+        registry,
+        assetManager,
+        assetId,
+        metadata: arc3Metadata,
+        arc3Compliant: true,
+      }),
+    ).rejects.toThrow(MetadataHashMismatchError)
+  })
+
+  test('raw bytes are stored verbatim', async () => {
+    const raw = textEncoder.encode(JSON.stringify(arc3Metadata, null, 2)) // pretty-printed legacy file
+    const assetId = await createLegacyArc3Asa({ metadataHash: computeArc3MetadataHash(raw) })
+
+    await migrateLegacyMetadataToRegistry({
+      registry,
+      assetManager,
+      assetId,
+      metadata: raw,
+      arc3Compliant: true,
+    })
+
+    const record = await registry.read.getAssetMetadata({ assetId })
+    expect(record.body.rawBytes).toEqual(raw)
+    expect(record.header.metadataHash).toEqual(computeArc3MetadataHash(raw))
+  })
+
+  test('verifyAm false skips the am check', async () => {
+    const am = new Uint8Array(32).fill(0xab) // not the ARC-3 hash
+    const assetId = await createLegacyArc3Asa({ metadataHash: am })
+
+    await migrateLegacyMetadataToRegistry({
+      registry,
+      assetManager,
+      assetId,
+      metadata: arc3Metadata,
+      arc3Compliant: true,
+      verifyAm: false,
+    })
+
+    const header = await registry.read.arc89GetMetadataHeader({ assetId })
+    expect(header.flags.irreversible.immutable).toBe(true)
+    expect(header.flags.irreversible.arc3).toBe(true)
+    // The registry adopts the ASA `am` as Metadata Hash
+    expect(header.metadataHash).toEqual(am)
+  })
+
+  test('migrate oversized raw bytes throws', async () => {
+    const assetId = await createLegacyArc69Asa()
+
+    // The compact re-encoding fits, but the raw bytes (stored verbatim) exceed MAX_METADATA_SIZE
+    const data = 'x'.repeat(MAX_METADATA_SIZE - 50)
+    const raw = textEncoder.encode(`{${' '.repeat(100)}"data":"${data}"}`)
+    expect(encodeMetadataJson({ data }).length).toBeLessThanOrEqual(MAX_METADATA_SIZE)
+    expect(raw.length).toBeGreaterThan(MAX_METADATA_SIZE)
+
+    await expect(
+      migrateLegacyMetadataToRegistry({
+        registry,
+        assetManager,
+        assetId,
+        metadata: raw,
+        arc3Compliant: false,
+      }),
+    ).rejects.toThrow('too large to migrate')
+  })
+})
+
+// ================================================================
+// ARC-2 Message Publishing Tests
+// ================================================================
+
+describe('arc-2 message publishing', () => {
+  test('publishArc2Message defaults to false', async () => {
+    const assetId = await createLegacyArc69Asa()
+
+    const sent = await sentTransactions(() =>
+      migrateLegacyMetadataToRegistry({
+        registry,
+        assetManager,
+        assetId,
+        metadata: minimalMetadata,
+        arc3Compliant: false,
+      }),
+    )
+
+    // Only the migration group is sent: no ARC-2 AssetConfig
+    expect(sent.some((p) => p.txn.txn.type === TransactionType.appl)).toBe(true)
+    expect(sent.filter((p) => p.txn.txn.type === TransactionType.acfg)).toHaveLength(0)
+    expect((await registry.read.arc89CheckMetadataExists({ assetId })).metadataExists).toBe(true)
+  })
+
+  test('publishArc2Message true publishes the message atomically with the migration', async () => {
+    const assetId = await createLegacyArc3Asa()
+
+    const sent = await sentTransactions(() =>
+      migrateLegacyMetadataToRegistry({
+        registry,
+        assetManager,
+        assetId,
+        metadata: arc3Metadata,
+        arc3Compliant: true,
+        publishArc2Message: true,
+      }),
+    )
+
+    const arc2Txns = sent.filter((p) => p.txn.txn.type === TransactionType.acfg)
+    expect(arc2Txns).toHaveLength(1)
+    const arc2Txn = arc2Txns[0]!.txn.txn
+    expect(arc2Txn.sender.toString()).toBe(assetManager.addr.toString())
+    expect(arc2Txn.assetConfig?.assetIndex).toBe(assetId)
+    expect(arc2Txn.note).toEqual(encodeArc2MigrationMessage(deriveMigrationUri({ registry, assetId, arc3: true })))
+
+    // Confirmed in the same group as the metadata creation
+    expect(sent.some((p) => p.txn.txn.type === TransactionType.appl)).toBe(true)
+    expect(sent.every((p) => p.txn.txn.group !== undefined && (p.confirmedRound ?? 0n) > 0n)).toBe(true)
+    const groups = new Set(sent.map((p) => Buffer.from(p.txn.txn.group!).toString('base64')))
+    expect(groups.size).toBe(1)
+    expect((await registry.read.arc89CheckMetadataExists({ assetId })).metadataExists).toBe(true)
+  })
+
+  test('publishArc2Message true signs with an asset manager signer unknown to the algorand client', async () => {
+    const account = generateAccount()
+    const manager = { addr: account.addr, signer: makeBasicAccountTransactionSigner(account) }
+    await algorand.send.payment({ sender: assetManager.addr, receiver: manager.addr, amount: algo(10) })
+    const { assetId } = await algorand.send.assetCreate({
+      sender: manager.addr,
+      signer: manager.signer,
+      total: 1n,
+      assetName: 'Legacy Token',
+      manager: manager.addr,
+      reserve: manager.addr,
+      freeze: manager.addr,
+      clawback: manager.addr,
+    })
+
+    const sent = await sentTransactions(() =>
+      migrateLegacyMetadataToRegistry({
+        registry,
+        assetManager: manager,
+        assetId,
+        metadata: minimalMetadata,
+        arc3Compliant: false,
+        publishArc2Message: true,
+      }),
+    )
+
+    const arc2Txns = sent.filter((p) => p.txn.txn.type === TransactionType.acfg)
+    expect(arc2Txns).toHaveLength(1)
+    expect(arc2Txns[0]!.txn.txn.sender.toString()).toBe(manager.addr.toString())
+    expect((await registry.read.arc89CheckMetadataExists({ assetId })).metadataExists).toBe(true)
   })
 })

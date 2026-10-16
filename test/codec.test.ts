@@ -1,6 +1,8 @@
 /**
  * Unit tests for src/codec module.
  *
+ * Ported from Python `tests/sdk/test_codec.py`.
+ *
  * Tests cover:
  * - assetIdToBoxName and boxNameToAssetId
  * - b64Encode and b64Decode
@@ -59,13 +61,23 @@ describe('asset id / box name conversion', () => {
   })
 
   test('asset ID to box name negative throws', () => {
-    // Test that negative asset IDs raise ValueError.
+    // Test that negative asset IDs raise ValueError (TS: RangeError).
+    expect(() => assetIdToBoxName(-1)).toThrow(RangeError)
     expect(() => assetIdToBoxName(-1)).toThrow(/must fit in uint64/)
   })
 
   test('asset ID to box name overflow throws', () => {
-    // Test that asset IDs larger than uint64 raise ValueError.
+    // Test that asset IDs larger than uint64 raise ValueError (TS: RangeError).
+    expect(() => assetIdToBoxName(2n ** 64n)).toThrow(RangeError)
     expect(() => assetIdToBoxName(2n ** 64n)).toThrow(/must fit in uint64/)
+  })
+
+  test('asset ID to box name accepts number and bigint (TS-only)', () => {
+    // `number` asset IDs are accepted when they are safe integers; use `bigint` beyond 2^53 - 1.
+    expect(assetIdToBoxName(123456)).toEqual(assetIdToBoxName(123456n))
+    expect(assetIdToBoxName(Number.MAX_SAFE_INTEGER)).toEqual(assetIdToBoxName(BigInt(Number.MAX_SAFE_INTEGER)))
+    expect(() => assetIdToBoxName(1.5)).toThrow(TypeError)
+    expect(() => assetIdToBoxName(Number.MAX_SAFE_INTEGER + 1)).toThrow(RangeError)
   })
 
   test('box name to asset ID zero', () => {
@@ -98,7 +110,8 @@ describe('asset id / box name conversion', () => {
   })
 
   test('box name to asset ID invalid length throws', () => {
-    // Test that box names with invalid length raise ValueError.
+    // Test that box names with invalid length raise ValueError (TS: RangeError).
+    expect(() => boxNameToAssetId(new Uint8Array([0x00, 0x00, 0x00]))).toThrow(RangeError)
     expect(() => boxNameToAssetId(new Uint8Array([0x00, 0x00, 0x00]))).toThrow(/must be 8 bytes/)
     expect(() => boxNameToAssetId(new Uint8Array(10).fill(0x00))).toThrow(/must be 8 bytes/)
   })
@@ -115,7 +128,18 @@ describe('asset id / box name conversion', () => {
 })
 
 describe('base64 encoding', () => {
-  // Tests for b64Encode and b64Decode.
+  // Tests for base64 encoding/decoding functions.
+  test.each([
+    [0n, 'AAAAAAAAAAA'],
+    [1n, 'AAAAAAAAAAE'],
+    [12345n, 'AAAAAAAAMDk'],
+    [2n ** 63n - 1n, 'f_________8'],
+  ])('arc89 box name vectors (%s => %s)', (assetId, encoded) => {
+    const boxName = assetIdToBoxName(assetId)
+    expect(b64UrlEncode(boxName)).toBe(encoded)
+    expect(boxNameToAssetId(b64UrlDecode(encoded))).toBe(assetId)
+  })
+
   test('b64 encode empty', () => {
     // Test encoding empty bytes.
     const result = b64Encode(new Uint8Array())
@@ -167,9 +191,9 @@ describe('base64 encoding', () => {
   })
 
   test('b64url encode simple', () => {
-    // Test URL-safe encoding.
+    // Test URL-safe encoding (canonical: unpadded).
     const result = b64UrlEncode(new TextEncoder().encode('hello'))
-    expect(result).toBe('aGVsbG8=')
+    expect(result).toBe('aGVsbG8')
   })
 
   test('b64url encode with special chars', () => {
@@ -177,6 +201,7 @@ describe('base64 encoding', () => {
     // Standard base64 uses + and /, URL-safe uses - and _
     const result = b64UrlEncode(new Uint8Array([0xfb, 0xff, 0xfe]))
     expect(result).toBe('-__-')
+    // Standard base64 would be: +//+
   })
 
   test('b64url decode empty', () => {
@@ -187,7 +212,7 @@ describe('base64 encoding', () => {
 
   test('b64url decode simple', () => {
     // Test URL-safe decoding.
-    const result = b64UrlDecode('aGVsbG8=')
+    const result = b64UrlDecode('aGVsbG8')
     expect(result).toEqual(new TextEncoder().encode('hello'))
   })
 
@@ -203,6 +228,17 @@ describe('base64 encoding', () => {
     const encoded = b64UrlEncode(original)
     const decoded = b64UrlDecode(encoded)
     expect(decoded).toEqual(original)
+  })
+
+  test.each([
+    'aGVsbG8=', // padded
+    'aGVsbG9', // non-zero trailing bits (alias of 'aGVsbG8')
+    '+/+/', // standard (non URL-safe) alphabet
+    'aGVs bG8', // character outside the alphabet
+    'a', // impossible length
+  ])('b64url decode rejects non-canonical input %j (TS-only)', (encoded) => {
+    // Only the canonical unpadded base64url encoding is accepted (Python raises binascii.Error).
+    expect(() => b64UrlDecode(encoded)).toThrow(/base64url/)
   })
 })
 
@@ -245,10 +281,10 @@ describe('arc90 compliance', () => {
   test('parse leading zeros invalid', () => {
     // Test parsing with leading zeros (invalid).
     const result1 = Arc90Compliance.parse('#arc089')
-    expect(result1).toEqual(new Arc90Compliance([]))
+    expect(result1).toEqual(new Arc90Compliance([])) // invalid
 
     const result2 = Arc90Compliance.parse('#arc89+090')
-    expect(result2).toEqual(new Arc90Compliance([]))
+    expect(result2).toEqual(new Arc90Compliance([])) // invalid
   })
 
   test('parse single digit zero valid', () => {
@@ -326,10 +362,10 @@ describe('arc90 compliance', () => {
 })
 
 describe('arc90 uri', () => {
-  // Tests for ARC90Uri parsing and serialization.
+  // Tests for Arc90Uri parsing and serialization.
   test('parse testnet uri', () => {
     // Test parsing testnet URI.
-    const uri = 'algorand://net:testnet/app/752790676?box=AAAAAAAAAAE%3D#arc89'
+    const uri = 'algorand://net:testnet/app/752790676?box=AAAAAAAAAAE#arc89'
     const parsed = Arc90Uri.parse(uri)
 
     expect(parsed.netauth).toBe('net:testnet')
@@ -342,7 +378,7 @@ describe('arc90 uri', () => {
 
   test('parse mainnet uri', () => {
     // Test parsing mainnet URI.
-    const uri = 'algorand://app/123456789?box=AAAAAAAAAAE%3D#arc89'
+    const uri = 'algorand://app/123456789?box=AAAAAAAAAAE#arc89'
     const parsed = Arc90Uri.parse(uri)
 
     expect(parsed.netauth).toBeNull()
@@ -355,7 +391,7 @@ describe('arc90 uri', () => {
 
   test('parse localnet uri', () => {
     // Test parsing localnet URI.
-    const uri = 'algorand://net:localnet/app/1001?box=AAAAAAAAAAE%3D#arc3'
+    const uri = 'algorand://net:localnet/app/1001?box=AAAAAAAAAAE#arc3'
     const parsed = Arc90Uri.parse(uri)
 
     expect(parsed.netauth).toBe('net:localnet')
@@ -381,7 +417,7 @@ describe('arc90 uri', () => {
 
   test('parse uri without fragment', () => {
     // Test parsing URI without compliance fragment.
-    const uri = 'algorand://net:testnet/app/752790676?box=AAAAAAAAAAE%3D'
+    const uri = 'algorand://net:testnet/app/752790676?box=AAAAAAAAAAE'
     const parsed = Arc90Uri.parse(uri)
 
     expect(parsed.netauth).toBe('net:testnet')
@@ -392,7 +428,7 @@ describe('arc90 uri', () => {
 
   test('parse uri multiple compliance', () => {
     // Test parsing URI with multiple compliance ARCs.
-    const uri = 'algorand://net:testnet/app/752790676?box=AAAAAAAAAAE%3D#arc89+90'
+    const uri = 'algorand://net:testnet/app/752790676?box=AAAAAAAAAAE#arc89+90'
     const parsed = Arc90Uri.parse(uri)
 
     expect(parsed.compliance).toEqual(new Arc90Compliance([89, 90]))
@@ -428,13 +464,15 @@ describe('arc90 uri', () => {
     expect(() => Arc90Uri.parse('algorand://app/notanumber?box=')).toThrow(/Invalid app id/)
   })
 
-  test('parse invalid box name base64 throws', () => {
-    // Test parsing with invalid base64 box name raises error.
-    expect(() => Arc90Uri.parse('algorand://net:testnet/app/123?box=!!!invalid!!!')).toThrow(InvalidArc90UriError)
-    expect(() => Arc90Uri.parse('algorand://net:testnet/app/123?box=!!!invalid!!!')).toThrow(
-      /Invalid base64url box name/,
-    )
-  })
+  test.each(['!!!invalid!!!', 'AAAAAAAAAAE=', 'AAAAAAAAAAE%3D', 'f_________9'])(
+    'parse noncanonical box name throws (%s)',
+    (boxName) => {
+      // Test that aliases and invalid base64url box names are rejected.
+      const uri = `algorand://net:testnet/app/123?box=${boxName}`
+      expect(() => Arc90Uri.parse(uri)).toThrow(InvalidArc90UriError)
+      expect(() => Arc90Uri.parse(uri)).toThrow(/Invalid base64url box name/)
+    },
+  )
 
   test('parse invalid box name length throws', () => {
     // Test parsing with wrong box name length raises error.
@@ -461,9 +499,7 @@ describe('arc90 uri', () => {
     })
     const result = uriObj.toUri()
 
-    expect(result).toContain('algorand://net:testnet/app/752790676')
-    expect(result).toContain('box=')
-    expect(result).toContain('arc89')
+    expect(result).toBe('algorand://net:testnet/app/752790676?box=AAAAAAAAAAE#arc89')
   })
 
   test('to uri mainnet', () => {
@@ -476,9 +512,7 @@ describe('arc90 uri', () => {
     })
     const result = uriObj.toUri()
 
-    expect(result).toContain('algorand://app/123456789')
-    expect(result).toContain('box=')
-    expect(result).toContain('arc89')
+    expect(result).toBe('algorand://app/123456789?box=AAAAAAAAAAE#arc89')
   })
 
   test('to uri partial', () => {
@@ -560,7 +594,7 @@ describe('arc90 uri', () => {
 
   test('roundtrip testnet', () => {
     // Test round-trip for testnet URI.
-    const originalUri = 'algorand://net:testnet/app/752790676?box=AAAAAAAAAAE%3D#arc89'
+    const originalUri = 'algorand://net:testnet/app/752790676?box=AAAAAAAAAAE#arc89'
     const parsed = Arc90Uri.parse(originalUri)
     const serialized = parsed.toUri()
     const reparsed = Arc90Uri.parse(serialized)
@@ -573,7 +607,7 @@ describe('arc90 uri', () => {
 
   test('roundtrip mainnet', () => {
     // Test round-trip for mainnet URI.
-    const originalUri = 'algorand://app/123456789?box=AAAAAAAAAAE%3D#arc89'
+    const originalUri = 'algorand://app/123456789?box=AAAAAAAAAAE#arc89'
     const parsed = Arc90Uri.parse(originalUri)
     const serialized = parsed.toUri()
     const reparsed = Arc90Uri.parse(serialized)
@@ -594,6 +628,7 @@ describe('complete partial asset url', () => {
 
     const result = completePartialAssetUrl(partialUrl, assetId)
 
+    // Parse to verify
     const parsed = Arc90Uri.parse(result)
     expect(parsed.assetId).toBe(assetId)
     expect(parsed.isPartial).toBe(false)
@@ -601,30 +636,49 @@ describe('complete partial asset url', () => {
     expect(parsed.netauth).toBe('net:testnet')
   })
 
-  test('complete already complete url', () => {
-    // Test that completing an already complete URL returns equivalent URI.
-    const completeUrl = 'algorand://net:testnet/app/752790676?box=AAAAAAAAAAE%3D#arc89'
-    const assetId = 1n
-
-    const result = completePartialAssetUrl(completeUrl, assetId)
-
-    const parsedOriginal = Arc90Uri.parse(completeUrl)
-    const parsedResult = Arc90Uri.parse(result)
-
-    expect(parsedResult.assetId).toBe(parsedOriginal.assetId)
-    expect(parsedResult.appId).toBe(parsedOriginal.appId)
-    expect(parsedResult.netauth).toBe(parsedOriginal.netauth)
+  test('complete prefilled box throws', () => {
+    // An Asset URL MUST have an empty box value; a pre-filled one is rejected.
+    const completeUrl = 'algorand://net:testnet/app/752790676?box=AAAAAAAAAAE#arc89'
+    expect(() => completePartialAssetUrl(completeUrl, 1n)).toThrow(InvalidArc90UriError)
+    expect(() => completePartialAssetUrl(completeUrl, 1n)).toThrow(/empty box value/)
+    expect(() => completePartialAssetUrl(completeUrl, 999n)).toThrow(InvalidArc90UriError)
+    expect(() => completePartialAssetUrl(completeUrl, 999n)).toThrow(/empty box value/)
   })
 
-  test('complete different asset id', () => {
-    // Test completing URL with different asset ID preserves the original if already complete.
-    const completeUrl = 'algorand://net:testnet/app/752790676?box=AAAAAAAAAAE%3D#arc89'
-    const newAssetId = 999n
+  test('parse rejects extra query parameter', () => {
+    expect(() => Arc90Uri.parse('algorand://app/1?box=&foo=bar')).toThrow(InvalidArc90UriError)
+    expect(() => Arc90Uri.parse('algorand://app/1?box=&foo=bar')).toThrow(/Unexpected query parameter/)
+  })
 
-    const result = completePartialAssetUrl(completeUrl, newAssetId)
+  test.each(['algorand://app/01?box=', 'algorand://app/-1?box=', 'algorand://app/1_000?box='])(
+    'parse rejects non canonical app id (%s)',
+    (uri) => {
+      expect(() => Arc90Uri.parse(uri)).toThrow(InvalidArc90UriError)
+      expect(() => Arc90Uri.parse(uri)).toThrow(/Invalid app id/)
+    },
+  )
 
-    const parsed = Arc90Uri.parse(result)
-    expect(parsed.assetId).toBe(1n)
+  test('parse rejects extra path segments', () => {
+    expect(() => Arc90Uri.parse('algorand://app/1/extra?box=')).toThrow(InvalidArc90UriError)
+    expect(() => Arc90Uri.parse('algorand://app/1/extra?box=')).toThrow(/Invalid app id/)
+  })
+
+  test('parse gh netauth', () => {
+    const uri = 'algorand://gh:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9_cOUJOiI/app/753324084?box=AAAAAAAAMDk#arc89'
+    const parsed = Arc90Uri.parse(uri)
+    expect(parsed.netauth).toBe('gh:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9_cOUJOiI')
+    expect(parsed.toUri()).toBe(uri)
+  })
+
+  test.each(['#arc89+-3', '#arc1_0', '#arc٣', '##arc89', '#arc90+89', '#arc89+89'])(
+    'parse rejects non grammar fragments (%s)',
+    (fragment) => {
+      expect(Arc90Compliance.parse(fragment)).toEqual(new Arc90Compliance([]))
+    },
+  )
+
+  test('to fragment sorts and dedups', () => {
+    expect(new Arc90Compliance([89, 20, 20]).toFragment()).toBe('#arc20+89')
   })
 
   test('complete mainnet url', () => {
@@ -684,4 +738,11 @@ describe('complete partial asset url', () => {
     const parsed = Arc90Uri.parse(result)
     expect(parsed.assetId).toBe(assetId)
   })
+})
+
+test('parse rejects app id above uint64', () => {
+  expect(() => Arc90Uri.parse(`algorand://app/${2n ** 64n}?box=AAAAAAAAAAE`)).toThrow(InvalidArc90UriError)
+  expect(() => Arc90Uri.parse(`algorand://app/${2n ** 64n}?box=AAAAAAAAAAE`)).toThrow(/Invalid app id/)
+  const uri = Arc90Uri.parse(`algorand://app/${2n ** 64n - 1n}?box=AAAAAAAAAAE`)
+  expect(uri.appId).toBe(2n ** 64n - 1n)
 })

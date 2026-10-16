@@ -13,5 +13,5 @@
     "skipLibCheck": true
   },
   "include": ["src"],
-  "exclude": ["**/@types/service-worker-mock/**"]
+  "exclude": ["**/@types/service-worker-mock/**", "src/generated/avm"]
 }

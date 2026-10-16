@@ -40,6 +40,12 @@ export class BoxParseError extends AsaMetadataRegistryError {}
 /** Raised when a flag index (reversible/irreversible) is out of bounds. */
 export class InvalidFlagIndexError extends AsaMetadataRegistryError {}
 
+/** Raised when a slice offset/size is out of the Metadata bounds or exceeds PAGE_SIZE. */
+export class InvalidSliceError extends AsaMetadataRegistryError {}
+
+/** Raised when a JSON key is missing or its value has an unexpected JSON type. */
+export class MetadataKeyError extends AsaMetadataRegistryError {}
+
 /** Raised when a page index is out of bounds. */
 export class InvalidPageIndexError extends AsaMetadataRegistryError {}
 
@@ -54,7 +60,7 @@ export class MetadataArc3Error extends AsaMetadataRegistryError {}
 
 /**
  * Raised when paginated metadata reads detect that metadata changed between pages
- * (last_modified_round mismatch).
+ * (revision mismatch).
  */
 export class MetadataDriftError extends AsaMetadataRegistryError {}
 

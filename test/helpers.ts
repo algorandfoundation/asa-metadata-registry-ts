@@ -1,7 +1,9 @@
 import { expect } from 'vitest'
 import { algo, microAlgo } from '@algorandfoundation/algokit-utils'
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
-import type { AlgorandFixture } from '@algorandfoundation/algokit-utils/testing'
+import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
+import type { AlgorandFixture } from '@algorandfoundation/algokit-utils/types/testing'
+import type { Address } from 'algosdk'
 import { AsaMetadataRegistryFactory, AsaMetadataRegistryClient } from '@/generated'
 import {
   ACCOUNT_MBR,
@@ -17,9 +19,11 @@ import {
   MAX_METADATA_SIZE,
   SHORT_METADATA_SIZE,
 } from '@algorandfoundation/asa-metadata-registry-sdk'
-import { AddressWithSigners } from '@algorandfoundation/algokit-utils/transact'
 
-const ARC90_NETAUTH = process.env.ARC90_NETAUTH ?? 'net:localnet'
+/** A test account: an address with a transaction signer (as returned by the AlgoKit fixture). */
+export type AddressWithSigners = Address & TransactionSignerAccount
+
+export const ARC90_NETAUTH = process.env.ARC90_NETAUTH ?? 'net:localnet'
 const textEncoder = new TextEncoder()
 
 export const sampleJsonObj = {

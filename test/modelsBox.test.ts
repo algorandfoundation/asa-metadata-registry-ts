@@ -11,6 +11,7 @@ import {
   models,
   bitmasks,
   constants,
+  computeArc3MetadataHash,
   computeMetadataHash,
   validation,
   BoxParseError,
@@ -27,7 +28,7 @@ const createMinimalBoxValue = (args?: {
   revFlags?: number
   irrFlags?: number
   metadataHash?: Uint8Array
-  lastModifiedRound?: number | bigint
+  revision?: number | bigint
   deprecatedBy?: number | bigint
   metadata?: Uint8Array
 }): Uint8Array => {
@@ -35,7 +36,7 @@ const createMinimalBoxValue = (args?: {
   const revFlags = args?.revFlags ?? 0
   const irrFlags = args?.irrFlags ?? 0
   const metadataHash = args?.metadataHash ?? new Uint8Array(32)
-  const lastModifiedRound = BigInt(args?.lastModifiedRound ?? 0)
+  const revision = BigInt(args?.revision ?? 0)
   const deprecatedBy = BigInt(args?.deprecatedBy ?? 0)
   const metadata = args?.metadata ?? new Uint8Array()
 
@@ -46,8 +47,8 @@ const createMinimalBoxValue = (args?: {
   result.set(metadataHash, 3)
 
   // Write uint64 big-endian
-  const lmrView = new DataView(result.buffer, result.byteOffset + 35, 8)
-  lmrView.setBigUint64(0, lastModifiedRound, false)
+  const revisionView = new DataView(result.buffer, result.byteOffset + 35, 8)
+  revisionView.setBigUint64(0, revision, false)
 
   const dbView = new DataView(result.buffer, result.byteOffset + 43, 8)
   dbView.setBigUint64(0, deprecatedBy, false)
@@ -68,7 +69,7 @@ describe('asset metadata box parse', () => {
     expect(box.header.flags.reversibleByte).toBe(0)
     expect(box.header.flags.irreversibleByte).toBe(0)
     expect(box.header.metadataHash).toEqual(new Uint8Array(32))
-    expect(box.header.lastModifiedRound).toBe(0n)
+    expect(box.header.revision).toBe(0n)
     expect(box.header.deprecatedBy).toBe(0n)
     expect(box.body.rawBytes).toEqual(new Uint8Array())
     expect(box.body.isEmpty).toBe(true)
@@ -114,12 +115,12 @@ describe('asset metadata box parse', () => {
   test('parse box with rounds', () => {
     // Test parsing box with round values.
     const boxValue = createMinimalBoxValue({
-      lastModifiedRound: 12345,
+      revision: 12345,
       deprecatedBy: 67890,
     })
     const box = AssetMetadataBox.parse({ assetId: 222n, value: boxValue })
 
-    expect(box.header.lastModifiedRound).toBe(12345n)
+    expect(box.header.revision).toBe(12345n)
     expect(box.header.deprecatedBy).toBe(67890n)
   })
 
@@ -129,14 +130,14 @@ describe('asset metadata box parse', () => {
     // instead of value[43:51], which would include metadata bytes when present.
     const metadata = new TextEncoder().encode('{"name":"Test Asset"}')
     const boxValue = createMinimalBoxValue({
-      lastModifiedRound: 12345,
+      revision: 12345,
       deprecatedBy: 67890,
       metadata,
     })
     const box = AssetMetadataBox.parse({ assetId: 222n, value: boxValue })
 
     // These would fail with the buggy implementation that used value[43:]
-    expect(box.header.lastModifiedRound).toBe(12345n)
+    expect(box.header.revision).toBe(12345n)
     expect(box.header.deprecatedBy).toBe(67890n)
     expect(box.body.rawBytes).toEqual(metadata)
   })
@@ -185,6 +186,7 @@ describe('asset metadata box parse', () => {
     boxValue[1] = 0 // rev_flags
     boxValue[2] = 0 // irr_flags
     // Only 31 bytes for hash (wrong)
+    expect(() => AssetMetadataBox.parse({ assetId: 777n, value: boxValue })).toThrow(BoxParseError)
     expect(() => AssetMetadataBox.parse({ assetId: 777n, value: boxValue })).toThrow(/Box value too small/)
   })
 
@@ -223,25 +225,26 @@ describe('asset metadata box parse', () => {
     const boxValue = createMinimalBoxValue({ metadata })
 
     // Set max to less than metadata size - should raise
-    expect(() =>
+    const parse = () =>
       AssetMetadataBox.parse({
         assetId: 1111n,
         value: boxValue,
         maxMetadataSize: 50,
-      }),
-    ).toThrow(/exceeds maxMetadataSize/)
+      })
+    expect(parse).toThrow(BoxParseError)
+    expect(parse).toThrow(/exceeds maxMetadataSize/)
   })
 
   test('parse box max uint64 rounds', () => {
     // Test parsing box with maximum uint64 round values.
     const maxUint64 = 2n ** 64n - 1n
     const boxValue = createMinimalBoxValue({
-      lastModifiedRound: maxUint64,
+      revision: maxUint64,
       deprecatedBy: maxUint64,
     })
     const box = AssetMetadataBox.parse({ assetId: 2222n, value: boxValue })
 
-    expect(box.header.lastModifiedRound).toBe(maxUint64)
+    expect(box.header.revision).toBe(maxUint64)
     expect(box.header.deprecatedBy).toBe(maxUint64)
   })
 
@@ -401,7 +404,6 @@ describe('asset metadata box advanced', () => {
 
     // Compute correct hash
     const correctHash = computeMetadataHash({
-      assetId: 123n,
       metadataIdentifiers: bitmasks.MASK_ID_SHORT,
       reversibleFlags: 0,
       irreversibleFlags: 0,
@@ -448,6 +450,25 @@ describe('asset metadata box advanced', () => {
 
     // With skip_validation=True and non-zero asa_am, should return True
     expect(box.hashMatches({ asaAm, skipValidationOnOverride: true })).toBe(true)
+    // skipValidationOnOverride defaults to false: the override is validated (immutable metadata required)
+    expect(() => box.hashMatches({ asaAm })).toThrow(/ASA `am` override requires immutable/)
+  })
+
+  test('hash matches verifies arc3 body against asa am', () => {
+    // The registry copies `am` verbatim: an ARC-3 body must hash to it under ARC-3.
+    const genuine = new TextEncoder().encode('{"name":"Test"}')
+    const asaAm = computeArc3MetadataHash(genuine)
+    const irrFlags = bitmasks.MASK_IRR_ARC3 | bitmasks.MASK_IRR_IMMUTABLE
+
+    const boxWith = (body: Uint8Array) =>
+      AssetMetadataBox.parse({
+        assetId: 123n,
+        value: createMinimalBoxValue({ irrFlags, metadataHash: asaAm, metadata: body }),
+      })
+
+    expect(boxWith(genuine).hashMatches({ asaAm })).toBe(true)
+    expect(boxWith(new TextEncoder().encode('{"name":"Fake"}')).hashMatches({ asaAm })).toBe(false)
+    expect(boxWith(new TextEncoder().encode('not json')).hashMatches({ asaAm })).toBe(false)
   })
 
   test('json property', () => {
@@ -534,9 +555,9 @@ describe('asset metadata box advanced', () => {
     const boxValue = createMinimalBoxValue({ metadata })
 
     // Should raise because metadata exceeds custom max_metadata_size
-    expect(() => AssetMetadataBox.parse({ assetId: 123n, value: boxValue, params: customParams })).toThrow(
-      /exceeds maxMetadataSize/,
-    )
+    const parse = () => AssetMetadataBox.parse({ assetId: 123n, value: boxValue, params: customParams })
+    expect(parse).toThrow(BoxParseError)
+    expect(parse).toThrow(/exceeds maxMetadataSize/)
   })
 
   test('parse known header validation edge case', () => {
@@ -565,6 +586,7 @@ describe('asset metadata box advanced', () => {
     // e.g., not enough bytes for uint64 fields
     const malformedValue = new Uint8Array(50) // 50 bytes, just short of full header
 
+    expect(() => AssetMetadataBox.parse({ assetId: 123n, value: malformedValue })).toThrow(BoxParseError)
     expect(() => AssetMetadataBox.parse({ assetId: 123n, value: malformedValue })).toThrow(/Box value too small/)
   })
 
@@ -578,12 +600,13 @@ describe('asset metadata box advanced', () => {
     // This should trigger the "Box value too small for known header" error
     const shortValue = new Uint8Array(48) // Less than min_known_header
 
-    expect(() =>
+    const parse = () =>
       AssetMetadataBox.parse({
         assetId: 123n,
         value: shortValue,
         headerSize: customHeaderSize,
-      }),
-    ).toThrow(/Box value too small/)
+      })
+    expect(parse).toThrow(BoxParseError)
+    expect(parse).toThrow(/Box value too small/)
   })
 })

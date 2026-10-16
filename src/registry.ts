@@ -4,14 +4,15 @@
  * Ported from Python `asa_metadata_registry/registry.py`.
  */
 
-import { AlgodBoxReader, AlgodClientSubset } from './algod'
-import { Arc90Uri } from './codec'
-import { MissingAppClientError, RegistryResolutionError } from './errors'
-import { AsaMetadataRegistryAvmRead } from './read/avm'
-import { AsaMetadataRegistryRead } from './read/reader'
-import { AsaMetadataRegistryWrite } from './write/writer'
-import { AsaMetadataRegistryClient } from './generated'
-import { asUint64BigInt } from './internal/numbers'
+import { AlgodBoxReader, AlgodClientSubset } from './algod.js'
+import { Arc90Uri } from './codec.js'
+import { DEFAULT_DEPLOYMENTS } from './deployments.js'
+import { MissingAppClientError, RegistryResolutionError } from './errors.js'
+import { AsaMetadataRegistryAvmRead } from './read/avm.js'
+import { AsaMetadataRegistryRead } from './read/reader.js'
+import { AsaMetadataRegistryWrite } from './write/writer.js'
+import { AsaMetadataRegistryClient } from './generated/index.js'
+import { asUint64BigInt } from './internal/numbers.js'
 
 const asUint64BigIntOrNull = (v: bigint | number | null | undefined, name: string): bigint | null => {
   if (v === null || v === undefined) return null
@@ -41,6 +42,7 @@ export class RegistryConfig {
  *
  * Construct using one of:
  * - `AsaMetadataRegistry.fromAlgod(...)` (read-only, fast box reads)
+ * - `AsaMetadataRegistry.forNetwork(...)` (pinned to a trusted deployment)
  * - `AsaMetadataRegistry.fromAppClient(...)` (simulate + writes, optionally with algod for box reads)
  */
 export class AsaMetadataRegistry {
@@ -54,6 +56,9 @@ export class AsaMetadataRegistry {
 
   public readonly read: AsaMetadataRegistryRead
 
+  /**
+   * @throws {Error} If `appClient` is bound to an app id other than `config.appId`.
+   */
   constructor(args: {
     config: RegistryConfig
     algod?: AlgodClientSubset | null
@@ -64,20 +69,46 @@ export class AsaMetadataRegistry {
     this.algodReader = args.algod ? new AlgodBoxReader(args.algod) : null
 
     this.baseGeneratedClient = args.appClient ?? null
-    this.generatedClientFactory = this.baseGeneratedClient
-      ? AsaMetadataRegistry.makeGeneratedClientFactory({ baseClient: this.baseGeneratedClient })
-      : null
 
-    this.avmReaderFactory = this.generatedClientFactory
-      ? (appId: bigint) => new AsaMetadataRegistryAvmRead({ client: this.generatedClientFactory!(appId) })
-      : null
+    let generatedClientFactory: ((appId: bigint) => AsaMetadataRegistryClient) | null = null
+    let avmReaderFactory: ((appId: bigint) => AsaMetadataRegistryAvmRead) | null = null
+    let write: AsaMetadataRegistryWrite | null = null
 
-    this._write = this.baseGeneratedClient ? new AsaMetadataRegistryWrite({ client: this.baseGeneratedClient }) : null
+    if (this.baseGeneratedClient) {
+      // Normalize appId from the provided generated client (0 => unbound).
+      const clientAppId = asUint64BigIntOrNull(this.baseGeneratedClient.appId, 'appId')
+
+      // Guard against accidental mismatches when callers construct the registry directly
+      // with a pinned appId. If callers want to retarget the registry, they can pass an
+      // unbound client (appId 0) or rely on the higher-level constructors.
+      if (this.config.appId !== null && clientAppId !== null && clientAppId !== this.config.appId) {
+        throw new Error(
+          `App ID mismatch: provided appClient has appId ${clientAppId}, but config specifies ${this.config.appId}`,
+        )
+      }
+
+      // Build a factory that can create a generated client for arbitrary registry appId,
+      // using the same AlgoKit Algorand client instance.
+      const factory = AsaMetadataRegistry.makeGeneratedClientFactory({ baseClient: this.baseGeneratedClient })
+      generatedClientFactory = factory
+      avmReaderFactory = (appId: bigint) => new AsaMetadataRegistryAvmRead({ client: factory(appId) })
+
+      let writeClient = this.baseGeneratedClient
+      if (clientAppId === null && this.config.appId !== null) {
+        writeClient = factory(this.config.appId)
+      }
+      write = new AsaMetadataRegistryWrite({ client: writeClient })
+    }
+
+    this.generatedClientFactory = generatedClientFactory
+    this.avmReaderFactory = avmReaderFactory
+    this._write = write
 
     this.read = new AsaMetadataRegistryRead({
       appId: this.config.appId,
       algod: this.algodReader,
       avmFactory: this.avmReaderFactory,
+      netauth: this.config.netauth,
     })
   }
 
@@ -95,11 +126,40 @@ export class AsaMetadataRegistry {
   /**
    * Create a registry facade using only Algod (box reads).
    */
-  static fromAlgod(args: { algod: AlgodClientSubset; appId: bigint | number | null }): AsaMetadataRegistry {
+  static fromAlgod(args: {
+    algod: AlgodClientSubset
+    appId: bigint | number | null
+    netauth?: string | null
+  }): AsaMetadataRegistry {
     return new AsaMetadataRegistry({
-      config: new RegistryConfig({ appId: args.appId }),
+      config: new RegistryConfig({ appId: args.appId, netauth: args.netauth ?? null }),
       algod: args.algod,
       appClient: null,
+    })
+  }
+
+  /**
+   * Pin the registry to a trusted deployment (`DEFAULT_DEPLOYMENTS`) by network name.
+   *
+   * @throws {RegistryResolutionError} If there is no trusted deployment for the network.
+   */
+  static forNetwork(
+    network: string,
+    args?: {
+      algod?: AlgodClientSubset | null
+      appClient?: AsaMetadataRegistryClient | null
+    },
+  ): AsaMetadataRegistry {
+    const deployment = Object.prototype.hasOwnProperty.call(DEFAULT_DEPLOYMENTS, network)
+      ? DEFAULT_DEPLOYMENTS[network]
+      : undefined
+    if (deployment === undefined || deployment.appId === null) {
+      throw new RegistryResolutionError(`No trusted deployment for network ${JSON.stringify(network)}`)
+    }
+    return new AsaMetadataRegistry({
+      config: new RegistryConfig({ appId: deployment.appId, netauth: deployment.arc90UriNetauth }),
+      algod: args?.algod ?? null,
+      appClient: args?.appClient ?? null,
     })
   }
 
@@ -117,8 +177,8 @@ export class AsaMetadataRegistry {
   ): AsaMetadataRegistry {
     // If appId isn't provided, attempt to read it from the generated client's appId.
     let inferredAppId = asUint64BigIntOrNull(args?.appId, 'appId')
-    if (inferredAppId == null && appClient.appClient) {
-      inferredAppId = asUint64BigIntOrNull(appClient.appClient.appId, 'appId')
+    if (inferredAppId === null) {
+      inferredAppId = asUint64BigIntOrNull(appClient.appId, 'appId')
     }
 
     return new AsaMetadataRegistry({

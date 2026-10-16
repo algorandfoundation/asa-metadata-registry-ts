@@ -74,6 +74,22 @@ describe('metadata size helpers', () => {
     expect(hashValue).toEqual(maxedMetadata.computeMetadataHash())
   })
 
+  test('maxed metadata matches the v1.0.0 size limits', () => {
+    // TS-only: pin the fixture to the Python SDK v1.0.0 values (MAX_BOX_SIZE - HEADER_SIZE = 32717 bytes, 33 pages),
+    // uploaded as a head call plus 7 extra payload calls of at most 4094 bytes each.
+    const maxedMetadata = buildMaxedMetadata(ARC_89_ASA)
+
+    expect(maxedMetadata.size).toBe(32717)
+    expect(maxedMetadata.size).toBe(constants.MAX_BOX_SIZE - constants.HEADER_SIZE)
+    expect(maxedMetadata.body.totalPages()).toBe(33)
+    expect(maxedMetadata.body.totalPages()).toBe(constants.MAX_PAGES)
+
+    const chunkSizes = maxedMetadata.body.chunkedPayload().map((chunk) => chunk.length)
+    expect(chunkSizes).toEqual([...Array<number>(7).fill(4094), 4059])
+    expect(chunkSizes[0]).toBe(constants.FIRST_PAYLOAD_MAX_SIZE)
+    expect(Math.max(...chunkSizes.slice(1))).toBe(constants.EXTRA_PAYLOAD_MAX_SIZE)
+  })
+
   test('oversized metadata', () => {
     const oversizedMetadata = buildOversizedMetadata(ARC_89_ASA)
 
@@ -81,14 +97,15 @@ describe('metadata size helpers', () => {
     expect(oversizedMetadata.size).toBeGreaterThan(constants.MAX_METADATA_SIZE)
     expect(oversizedMetadata.isShort).toBe(false)
 
-    expect(() => oversizedMetadata.body.validateSize()).toThrowError(/exceeds max/i)
+    expect(() => oversizedMetadata.body.validateSize()).toThrow(RangeError)
+    expect(() => oversizedMetadata.body.validateSize()).toThrow(/exceeds max/i)
 
     // Should still be able to compute hash (even though invalid)
     const hashValue = oversizedMetadata.computeMetadataHash()
     expect(hashValue.length).toBe(32)
 
     // MBR calculation should still work
-    const mbrDelta = oversizedMetadata.getMbrDelta()
+    const mbrDelta = oversizedMetadata.getMbrDelta({ oldSize: null })
     expect(mbrDelta.isPositive).toBe(true) // Positive for creation
     expect(mbrDelta.amount).toBeGreaterThan(0)
   })
@@ -144,7 +161,7 @@ describe('mbr calculations for different sizes', () => {
     ]
 
     for (const [, metadata] of sizesAndMetadata) {
-      const mbrDelta = metadata.getMbrDelta()
+      const mbrDelta = metadata.getMbrDelta({ oldSize: null })
 
       // All should require positive MBR for creation
       expect(mbrDelta.isPositive).toBe(true)
@@ -152,9 +169,9 @@ describe('mbr calculations for different sizes', () => {
     }
 
     // Maxed should require the most MBR
-    const emptyDelta = emptyMetadata.getMbrDelta()
-    const shortDelta = shortMetadata.getMbrDelta()
-    const maxedDelta = maxedMetadata.getMbrDelta()
+    const emptyDelta = emptyMetadata.getMbrDelta({ oldSize: null })
+    const shortDelta = shortMetadata.getMbrDelta({ oldSize: null })
+    const maxedDelta = maxedMetadata.getMbrDelta({ oldSize: null })
 
     expect(emptyDelta.amount).toBeLessThan(shortDelta.amount)
     expect(shortDelta.amount).toBeLessThan(maxedDelta.amount)
