@@ -1,4 +1,4 @@
-import * as flags from './flags'
+import * as flags from './flags.js'
 
 /**
  * Derived bitmasks for ASA Metadata Registry flags (ported from Python `bitmasks.py`).

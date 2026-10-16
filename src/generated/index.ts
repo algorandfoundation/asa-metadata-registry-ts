@@ -9,4 +9,4 @@
  * shipped as source and intentionally not re-exported here.
  */
 
-export * from './AsaMetadataRegistry'
+export * from './AsaMetadataRegistry.js'

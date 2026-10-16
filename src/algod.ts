@@ -6,11 +6,11 @@
  */
 
 import type { Algodv2, modelsv2 } from 'algosdk'
-import { Arc90Uri, assetIdToBoxName, b64Encode, completePartialAssetUrl } from './codec'
-import { isNotFoundError } from './internal/http'
-import { toBigInt } from './internal/numbers'
-import { AsaNotFoundError, BoxNotFoundError, InvalidArc90UriError } from './errors'
-import { AssetMetadataBox, AssetMetadataRecord, RegistryParameters, getDefaultRegistryParams } from './models'
+import { Arc90Uri, assetIdToBoxName, b64Encode, completePartialAssetUrl } from './codec.js'
+import { isNotFoundError } from './internal/http.js'
+import { toBigInt } from './internal/numbers.js'
+import { AsaNotFoundError, BoxNotFoundError, InvalidArc90UriError } from './errors.js'
+import { AssetMetadataBox, AssetMetadataRecord, RegistryParameters, getDefaultRegistryParams } from './models.js'
 
 /** The algosdk `Algodv2` methods required by {@link AlgodBoxReader}. */
 export type AlgodClientSubset = Pick<Algodv2, 'getApplicationBoxByName' | 'getAssetByID' | 'getTransactionParams'>

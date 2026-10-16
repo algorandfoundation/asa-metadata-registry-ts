@@ -6,9 +6,9 @@
  */
 
 import { ALGORAND_ZERO_ADDRESS_STRING } from 'algosdk'
-import * as enums from '../enums'
-import { AlgodBoxReader } from '../algod'
-import { b64UrlDecode } from '../codec'
+import * as enums from '../enums.js'
+import { AlgodBoxReader } from '../algod.js'
+import { b64UrlDecode } from '../codec.js'
 import {
   AsaNotFoundError,
   BoxNotFoundError,
@@ -16,8 +16,8 @@ import {
   InvalidSliceError,
   MetadataEncodingError,
   MetadataKeyError,
-} from '../errors'
-import { computeHeaderHash, computePageHash, paginate } from '../hashing'
+} from '../errors.js'
+import { computeHeaderHash, computePageHash, paginate } from '../hashing.js'
 import {
   AssetMetadataBox,
   AssetMetadataRecord,
@@ -27,11 +27,11 @@ import {
   PaginatedMetadata,
   Pagination,
   RegistryParameters,
-} from '../models'
-import { isPlainObject } from '../validation'
-import { b64DecodeStrict } from '../internal/base64'
-import { integerLiteralValue, scanJsonText } from '../internal/json'
-import { asBigInt } from '../internal/numbers'
+} from '../models.js'
+import { isPlainObject } from '../validation.js'
+import { b64DecodeStrict } from '../internal/base64.js'
+import { integerLiteralValue, scanJsonText } from '../internal/json.js'
+import { asBigInt } from '../internal/numbers.js'
 
 type JsonObject = Record<string, unknown>
 

@@ -4,11 +4,11 @@
  * Ported from Python `asa_metadata_registry/models.py`.
  */
 
-import * as bitmasks from './bitmasks'
-import * as enums from './enums'
-import * as consts from './constants'
-import { BoxParseError, InvalidPageIndexError, MetadataArc3Error, MetadataHashMismatchError } from './errors'
-import { computeArc3MetadataHash, computeHeaderHash, computeMetadataHash, computePageHash } from './hashing'
+import * as bitmasks from './bitmasks.js'
+import * as enums from './enums.js'
+import * as consts from './constants.js'
+import { BoxParseError, InvalidPageIndexError, MetadataArc3Error, MetadataHashMismatchError } from './errors.js'
+import { computeArc3MetadataHash, computeHeaderHash, computeMetadataHash, computePageHash } from './hashing.js'
 import {
   decodeMetadataJson,
   encodeMetadataJson,
@@ -16,11 +16,11 @@ import {
   validateArc3Properties,
   validateArc3Schema,
   validateArc20Arc62RequireArc3,
-} from './validation'
-import { asBigInt, asNumber, asUint8, MAX_UINT8 } from './internal/numbers'
-import { bytesEqual, toBytes, uint64ToBytesBE } from './internal/bytes'
-import { setBit, isNonzero32, chunkMetadataPayload, readUint64BE } from './internal/models'
-import { jsonIntegerMember } from './internal/json'
+} from './validation.js'
+import { asBigInt, asNumber, asUint8, MAX_UINT8 } from './internal/numbers.js'
+import { bytesEqual, toBytes, uint64ToBytesBE } from './internal/bytes.js'
+import { setBit, isNonzero32, chunkMetadataPayload, readUint64BE } from './internal/models.js'
+import { jsonIntegerMember } from './internal/json.js'
 
 const MAX_UINT64 = (1n << 64n) - 1n
 

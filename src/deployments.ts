@@ -1,6 +1,6 @@
-import { b64Decode, b64UrlDecode, b64UrlEncode } from './codec'
-import { MAINNET_GH_B64, TESTNET_GH_B64 } from './constants'
-import { bytesEqual } from './internal/bytes'
+import { b64Decode, b64UrlDecode, b64UrlEncode } from './codec.js'
+import { MAINNET_GH_B64, TESTNET_GH_B64 } from './constants.js'
+import { bytesEqual } from './internal/bytes.js'
 
 /**
  * Known deployments of the singleton ASA Metadata Registry.

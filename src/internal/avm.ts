@@ -1,6 +1,6 @@
-import { toBytes } from './bytes'
-import { asNumber, asUint64BigInt, asUint8 } from './numbers'
-import { AbiValue, MbrDelta, MetadataSlice, PaginatedMetadata } from '../models'
+import { toBytes } from './bytes.js'
+import { asNumber, asUint64BigInt, asUint8 } from './numbers.js'
+import { AbiValue, MbrDelta, MetadataSlice, PaginatedMetadata } from '../models.js'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const withArgs = (params: unknown | undefined, args: unknown[]): any => {

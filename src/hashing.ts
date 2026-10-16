@@ -5,12 +5,12 @@
  */
 
 import { createHash, getHashes } from 'crypto'
-import * as constants from './constants'
-import { InvalidPageIndexError } from './errors'
-import { b64DecodeStrict } from './internal/base64'
-import { concatBytes } from './internal/bytes'
-import { parseJsonAllowNonFinite } from './internal/json'
-import { MAX_UINT8, MAX_UINT16 } from './internal/numbers'
+import * as constants from './constants.js'
+import { InvalidPageIndexError } from './errors.js'
+import { b64DecodeStrict } from './internal/base64.js'
+import { concatBytes } from './internal/bytes.js'
+import { parseJsonAllowNonFinite } from './internal/json.js'
+import { MAX_UINT8, MAX_UINT16 } from './internal/numbers.js'
 
 // ---------------------------------------------------------------------------
 // Internal helpers

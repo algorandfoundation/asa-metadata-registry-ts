@@ -11,32 +11,32 @@
 import { microAlgo } from '@algorandfoundation/algokit-utils'
 import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
 import type { SendParams } from '@algorandfoundation/algokit-utils/types/transaction'
-import * as flagConsts from '../flags'
+import * as flagConsts from '../flags.js'
 import {
   AsaNotFoundError,
   InvalidFlagIndexError,
   InvalidSliceError,
   MetadataNotFoundError,
   MissingAppClientError,
-} from '../errors'
-import { AssetMetadata, MbrDelta, RegistryParameters } from '../models'
-import { asBigInt, toNumber } from '../internal/numbers'
-import { concatBytes, toBytes } from '../internal/bytes'
-import { isNotFoundError } from '../internal/http'
+} from '../errors.js'
+import { AssetMetadata, MbrDelta, RegistryParameters } from '../models.js'
+import { asBigInt, toNumber } from '../internal/numbers.js'
+import { concatBytes, toBytes } from '../internal/bytes.js'
+import { isNotFoundError } from '../internal/http.js'
 import {
   AsaMetadataRegistryClient,
   AsaMetadataRegistryComposer,
   AsaMetadataRegistryComposerResults,
-} from '../generated'
-import { AsaMetadataRegistryAvmRead, SimulateOptions } from '../read/avm'
-import { parseMbrDelta, returnValues } from '../internal/avm'
+} from '../generated/index.js'
+import { AsaMetadataRegistryAvmRead, SimulateOptions } from '../read/avm.js'
+import { parseMbrDelta, returnValues } from '../internal/avm.js'
 import {
   ARC3_PROPERTIES_FLAG_TO_KEY,
   decodeMetadataJson,
   validateArc3Properties,
   validateArc3Schema,
   validateArc3Values,
-} from '../validation'
+} from '../validation.js'
 import {
   ARC89_CREATE_METADATA_FIXED_SIZE,
   ARC89_EXTRA_PAYLOAD_FIXED_SIZE,
@@ -49,7 +49,7 @@ import {
   hashBudgetTxns,
   parseMetadataBox,
   tailBudgetTxns,
-} from '../internal/writer'
+} from '../internal/writer.js'
 
 // ---------------------------------------------------------------------------
 // Types
