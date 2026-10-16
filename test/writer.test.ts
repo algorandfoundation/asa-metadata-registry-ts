@@ -38,6 +38,7 @@ import {
   AssetMetadata,
   AssetMetadataBox,
   MbrDelta,
+  AsaMetadataRegistryAvmRead,
   AsaMetadataRegistryRead,
   AlgodBoxReader,
   MetadataFlags,
@@ -545,6 +546,29 @@ describe('writer initialization', () => {
     vi.mocked(mockClient.newGroup).mockReturnValue(composer as never)
     const writer = new AsaMetadataRegistryWrite({ client: mockClient })
     await expect(writer['_params']()).rejects.toThrow('simulate failed')
+  })
+
+  test('_params reads on-chain params once per writer (TS-only)', async () => {
+    // TS-only: registry parameters are compiled constants, so the writer caches the first read.
+    const read = vi.spyOn(AsaMetadataRegistryAvmRead.prototype, 'arc89GetMetadataRegistryParameters')
+    const writer = new AsaMetadataRegistryWrite({ client })
+    const first = await writer['_params']()
+    const second = await writer['_params']()
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(second).toBe(first)
+  })
+
+  test('_params does not cache a failed read (TS-only)', async () => {
+    // TS-only: a failed on-chain read is retried on the next call.
+    const params = getDefaultRegistryParams()
+    const read = vi
+      .spyOn(AsaMetadataRegistryAvmRead.prototype, 'arc89GetMetadataRegistryParameters')
+      .mockRejectedValueOnce(new Error('simulate failed'))
+      .mockResolvedValueOnce(params)
+    const writer = new AsaMetadataRegistryWrite({ client: mockClient })
+    await expect(writer['_params']()).rejects.toThrow('simulate failed')
+    expect(await writer['_params']()).toBe(params)
+    expect(read).toHaveBeenCalledTimes(2)
   })
 })
 

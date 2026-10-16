@@ -123,6 +123,8 @@ export class AsaMetadataRegistryWrite {
   public readonly client: AsaMetadataRegistryClient
   public readonly params: RegistryParameters | null
 
+  private paramsCache: RegistryParameters | null = null
+
   constructor(args: { client: AsaMetadataRegistryClient; params?: RegistryParameters | null }) {
     if (!args.client) throw new MissingAppClientError('Write module requires a generated AsaMetadataRegistryClient')
     this.client = args.client
@@ -131,8 +133,11 @@ export class AsaMetadataRegistryWrite {
 
   private async _params(): Promise<RegistryParameters> {
     if (this.params) return this.params
-    // Prefer on-chain registry parameters (simulate).
-    return await new AsaMetadataRegistryAvmRead({ client: this.client }).arc89GetMetadataRegistryParameters()
+    if (this.paramsCache) return this.paramsCache
+    // Prefer on-chain registry parameters (simulate); cached for the life of the writer.
+    const p = await new AsaMetadataRegistryAvmRead({ client: this.client }).arc89GetMetadataRegistryParameters()
+    this.paramsCache = p
+    return p
   }
 
   private async minFee(): Promise<number> {
