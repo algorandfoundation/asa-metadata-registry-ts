@@ -1,8 +1,77 @@
 # Contributing
 
+## Development
+
+Use Node.js 22.17.0 (see `.nvmrc`) and the pnpm version pinned in `package.json`. With nvm installed, run these
+commands from the repository root:
+
+```sh
+nvm use
+corepack enable
+git submodule update --init --recursive
+pnpm install --frozen-lockfile
+pnpm exec husky
+```
+
+> `ignore-scripts=true` is set in `.npmrc` to block postinstall scripts from running on install. This means husky won't set up git hooks automatically and should be manually executed after cloning.
+
+The `arc89` submodule pins the reference implementation (smart contract, ARC-56 spec, Python SDK and conformance
+vectors) the SDK is at parity with.
+
+### Tests
+
+Integration tests run against an AlgoKit LocalNet. Install the AlgoKit CLI and Docker, and make sure Docker is
+running before starting LocalNet:
+
+```sh
+algokit localnet start
+pnpm run test
+```
+
+To check that the built package imports by name from both ESM and CommonJS (CI runs this too):
+
+```sh
+pnpm run build && pnpm run check:package
+```
+
+### Code quality
+
+Before opening a pull request, check formatting, lint and build the package, and run the tests above:
+
+```sh
+pnpm run format:check
+pnpm run lint
+pnpm run build
+```
+
+Use `pnpm run format` to apply formatting fixes.
+
+This project uses **Husky** and **lint-staged** to automatically lint and format staged files before they are committed.
+
+Use Conventional Commits, for example `docs: clarify setup`, `fix: handle missing metadata` or `feat: add a reader`.
+CI checks commit messages, and releases are determined from commit types.
+
+### Generated clients
+
+Both clients are generated from the ARC-56 spec of the pinned `arc89` submodule and committed:
+
+- `src/generated/AsaMetadataRegistry.ts`: AlgoKit typed app client (`algokit-client-generator` 6.0.1), wrapped by the
+  SDK. The generator is not a project dependency; regenerate the client with the AlgoKit CLI, which runs the generator
+  through `npx` (outside the lockfile):
+
+  ```sh
+  algokit generate client arc89/smart_contracts/artifacts/asa_metadata_registry/AsaMetadataRegistry.arc56.json \
+    -l typescript -v 6.0.1 -o src/generated/AsaMetadataRegistry.ts
+  ```
+
+- `src/generated/avm/AsaMetadataRegistry.client.ts`: AVM client (`puyats-clientgen`, `pnpm run generate:avm-client`),
+  an Algorand TypeScript contract stub for contract-to-contract calls compiled with PuyaTs. It is shipped as source in
+  the package and is not part of the SDK build. Contracts import it from
+  `@algorandfoundation/asa-metadata-registry-sdk/avm`.
+
 ## Dependency Management
 
-This SDK has no runtime dependencies; this keeps things lean for consumers and avoids security issues from packages we don't control. The published package is TypeScript-compiled output only. All dependencies are either `devDependencies` (build/test tooling) or `peerDependencies` (installed by the consumer).
+This SDK has no runtime dependencies; this keeps things lean for consumers and avoids security issues from packages we don't control. The published package includes compiled JavaScript and TypeScript declarations in `dist`, plus the generated AVM TypeScript source in `src/generated/avm`. All dependencies are either `devDependencies` (build/test tooling) or `peerDependencies` (installed by the consumer).
 
 ### Supply chain protections (`pnpm-workspace.yaml`)
 
