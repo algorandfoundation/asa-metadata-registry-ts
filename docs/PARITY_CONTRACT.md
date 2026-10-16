@@ -18,7 +18,8 @@ where appropriate.
   (`src/generated/avm/AsaMetadataRegistry.client.ts`, Algorand TypeScript stub for
   contract-to-contract calls). The handwritten SDK must _wrap_ them, not re-implement them.
 - **AlgoKit basis:** `@algorandfoundation/algokit-utils` v9 and `algosdk` v3 (peer dependencies).
-  Consensus v42 app args (4 KB payload args, 16 KB aggregate) require `algosdk` >= 3.7.
+  Consensus v42 (AVM 13) allows app args of up to 16 KB in total (4 KB each). `algosdk` supports consensus v42 from
+  3.7.0, and the peer range is `^3.8.0`.
 - **Async boundary:**
   - Pure utilities (flags, bitmasks, codecs, hashing, parsing) stay **sync**.
   - Anything that does network I/O (Algod/Indexer reads, simulate, send) is **async**.
