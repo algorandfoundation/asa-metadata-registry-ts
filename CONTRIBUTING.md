@@ -6,7 +6,7 @@ This SDK has no runtime dependencies; this keeps things lean for consumers and a
 
 ### Supply chain protections (`pnpm-workspace.yaml`)
 
-`packageManager` pins pnpm 10.34.6. These settings need pnpm 10.26 or later, and they live in `pnpm-workspace.yaml` because pnpm 11 and later read only auth and registry settings from `.npmrc`.
+`packageManager` pins pnpm 10.34.7 with the SHA-512 hash of its tarball, so Corepack verifies the download before running it. Change the version with `corepack use pnpm@<version>`, which writes the new hash. These settings need pnpm 10.26 or later, and they live in `pnpm-workspace.yaml` because pnpm 11 and later read only auth and registry settings from `.npmrc`.
 
 - `ignoreScripts: true`: blocks postinstall scripts. The build is pure `tsc`, so none are needed. `.npmrc` also sets `ignore-scripts=true` for npm.
 - `blockExoticSubdeps: true`: prevents transitive deps from using git repos or tarball URLs as sources.
