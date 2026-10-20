@@ -1,4 +1,4 @@
-import { MAX_UINT8 } from './numbers'
+import { MAX_UINT8 } from './numbers.js'
 
 export const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean => {
   if (a.length !== b.length) return false

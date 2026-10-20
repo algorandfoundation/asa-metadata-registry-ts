@@ -4,23 +4,29 @@
  * Ported from Python `asa_metadata_registry/models.py`.
  */
 
-import * as bitmasks from './bitmasks'
-import * as enums from './enums'
-import * as consts from './constants'
-import { BoxParseError, InvalidPageIndexError, MetadataArc3Error, MetadataHashMismatchError } from './errors'
-import { computeHeaderHash, computeMetadataHash, computePageHash } from './hashing'
+import * as bitmasks from './bitmasks.js'
+import * as enums from './enums.js'
+import * as consts from './constants.js'
+import { BoxParseError, InvalidPageIndexError, MetadataArc3Error, MetadataHashMismatchError } from './errors.js'
+import { computeArc3MetadataHash, computeHeaderHash, computeMetadataHash, computePageHash } from './hashing.js'
 import {
   decodeMetadataJson,
   encodeMetadataJson,
   isPlainObject,
-  isPositiveUint64,
   validateArc3Properties,
   validateArc3Schema,
   validateArc20Arc62RequireArc3,
-} from './validation'
-import { asBigInt, asNumber, asUint8, MAX_UINT8 } from './internal/numbers'
-import { bytesEqual, toBytes, uint64ToBytesBE } from './internal/bytes'
-import { setBit, isNonzero32, chunkMetadataPayload, readUint64BE } from './internal/models'
+} from './validation.js'
+import { asBigInt, asNumber, asUint8, MAX_UINT8 } from './internal/numbers.js'
+import { bytesEqual, toBytes, uint64ToBytesBE } from './internal/bytes.js'
+import { setBit, isNonzero32, chunkMetadataPayload, readUint64BE } from './internal/models.js'
+import { jsonIntegerMember } from './internal/json.js'
+
+const MAX_UINT64 = (1n << 64n) - 1n
+
+/** True for ABI integer values (`bigint`, or an integer `number`), like Python's `isinstance(v, int)`. */
+const isAbiInt = (v: unknown): v is bigint | number =>
+  typeof v === 'bigint' || (typeof v === 'number' && Number.isInteger(v))
 
 // ---------------------------------------------------------------------------
 // Types
@@ -376,20 +382,20 @@ export class MetadataHeader {
   public readonly flags: MetadataFlags
   /** 32 bytes */
   public readonly metadataHash: Uint8Array
-  public readonly lastModifiedRound: bigint
+  public readonly revision: bigint
   public readonly deprecatedBy: bigint
 
   constructor(args: {
     identifiers: number
     flags: MetadataFlags
     metadataHash: Uint8Array
-    lastModifiedRound: bigint | number
+    revision: bigint | number
     deprecatedBy: bigint | number
   }) {
     this.identifiers = args.identifiers
     this.flags = args.flags
     this.metadataHash = args.metadataHash
-    this.lastModifiedRound = asBigInt(args.lastModifiedRound, 'last_modified_round')
+    this.revision = asBigInt(args.revision, 'revision')
     this.deprecatedBy = asBigInt(args.deprecatedBy, 'deprecated_by')
     if (this.metadataHash.length !== 32) throw new RangeError('metadata_hash must be 32 bytes')
     if (!Number.isInteger(this.identifiers) || this.identifiers < 0 || this.identifiers > MAX_UINT8)
@@ -438,7 +444,7 @@ export class MetadataHeader {
     out[1] = this.flags.reversibleByte & 0xff
     out[2] = this.flags.irreversibleByte & 0xff
     out.set(this.metadataHash, consts.IDX_METADATA_HASH)
-    out.set(uint64ToBytesBE(this.lastModifiedRound), consts.IDX_LAST_MODIFIED_ROUND)
+    out.set(uint64ToBytesBE(this.revision), consts.IDX_REVISION)
     out.set(uint64ToBytesBE(this.deprecatedBy), consts.IDX_DEPRECATED_BY)
     return out
   }
@@ -450,6 +456,7 @@ export class MetadataHeader {
     return setBit({ bits: this.identifiers & 0xff, mask: bitmasks.MASK_ID_SHORT, value: isShort })
   }
 
+  /** Parse from ABI tuple (identifiers, revFlags, irrFlags, hash, revision, deprecatedBy). */
   static fromTuple(value: readonly AbiValue[]): MetadataHeader {
     if (value.length !== 6) throw new Error('Expected 6-tuple for metadata header')
     const [v0, v1, v2, v3, v4, v5] = value
@@ -460,14 +467,16 @@ export class MetadataHeader {
     const metadataHash = toBytes(v3, 'metadataHash')
     if (metadataHash.length !== 32) throw new Error('metadataHash must be 32 bytes')
 
-    const lastModifiedRound = asBigInt(v4 as bigint | number, 'lastModifiedRound')
-    const deprecatedBy = asBigInt(v5 as bigint | number, 'deprecatedBy')
+    if (!isAbiInt(v4)) throw new TypeError('revision must be int')
+    if (!isAbiInt(v5)) throw new TypeError('deprecatedBy must be int')
+    const revision = asBigInt(v4, 'revision')
+    const deprecatedBy = asBigInt(v5, 'deprecatedBy')
 
     return new MetadataHeader({
       identifiers,
       flags: MetadataFlags.fromBytes(rev, irr),
       metadataHash,
-      lastModifiedRound,
+      revision,
       deprecatedBy,
     })
   }
@@ -548,41 +557,71 @@ export class Pagination {
   public readonly metadataSize: number
   public readonly pageSize: number
   public readonly totalPages: number
+  public readonly revision: bigint
+  public readonly deprecatedBy: bigint
 
-  constructor(args: { metadataSize: number; pageSize: number; totalPages: number }) {
+  constructor(args: {
+    metadataSize: number
+    pageSize: number
+    totalPages: number
+    revision: bigint | number
+    deprecatedBy: bigint | number
+  }) {
     this.metadataSize = args.metadataSize
     this.pageSize = args.pageSize
     this.totalPages = args.totalPages
+    this.revision = asBigInt(args.revision, 'revision')
+    this.deprecatedBy = asBigInt(args.deprecatedBy, 'deprecatedBy')
   }
 
   static fromTuple(value: readonly (number | bigint)[]): Pagination {
-    if (value.length !== 3) throw new Error('Expected (metadataSize, pageSize, totalPages)')
+    if (value.length !== 5) throw new Error('Expected (metadataSize, pageSize, totalPages, revision, deprecatedBy)')
     return new Pagination({
       metadataSize: asNumber(value[0], 'metadataSize'),
       pageSize: asNumber(value[1], 'pageSize'),
       totalPages: asNumber(value[2], 'totalPages'),
+      revision: asBigInt(value[3]!, 'revision'),
+      deprecatedBy: asBigInt(value[4]!, 'deprecatedBy'),
     })
   }
 }
 
 export class PaginatedMetadata {
   public readonly hasNextPage: boolean
-  public readonly lastModifiedRound: bigint
+  public readonly revision: bigint
   public readonly pageContent: Uint8Array
 
-  constructor(args: { hasNextPage: boolean; lastModifiedRound: bigint | number; pageContent: Uint8Array }) {
+  constructor(args: { hasNextPage: boolean; revision: bigint | number; pageContent: Uint8Array }) {
     this.hasNextPage = args.hasNextPage
-    this.lastModifiedRound = asBigInt(args.lastModifiedRound, 'lastModifiedRound')
+    this.revision = asBigInt(args.revision, 'revision')
     this.pageContent = args.pageContent
   }
 
   static fromTuple(value: readonly AbiValue[]): PaginatedMetadata {
-    if (value.length !== 3) throw new Error('Expected (hasNextPage, lastModifiedRound, pageContent)')
+    if (value.length !== 3) throw new Error('Expected (hasNextPage, revision, pageContent)')
     const [v0, v1, v2] = value
     if (typeof v0 !== 'boolean') throw new TypeError('hasNextPage must be bool')
-    const lmr = asBigInt(v1 as bigint | number, 'lastModifiedRound')
+    if (!isAbiInt(v1)) throw new TypeError('revision must be int')
+    const revision = asBigInt(v1, 'revision')
     const pageContent = toBytes(v2, 'pageContent')
-    return new PaginatedMetadata({ hasNextPage: v0, lastModifiedRound: lmr, pageContent })
+    return new PaginatedMetadata({ hasNextPage: v0, revision, pageContent })
+  }
+}
+
+export class MetadataSlice {
+  public readonly revision: bigint
+  public readonly content: Uint8Array
+
+  constructor(args: { revision: bigint | number; content: Uint8Array }) {
+    this.revision = asBigInt(args.revision, 'revision')
+    this.content = args.content
+  }
+
+  static fromTuple(value: readonly AbiValue[]): MetadataSlice {
+    if (value.length !== 2) throw new Error('Expected (revision, content)')
+    const [v0, v1] = value
+    if (!isAbiInt(v0)) throw new TypeError('revision must be int')
+    return new MetadataSlice({ revision: asBigInt(v0, 'revision'), content: toBytes(v1, 'content') })
   }
 }
 
@@ -619,15 +658,15 @@ export class AssetMetadataBox {
     let revFlags: number
     let irrFlags: number
     let metadataHash: Uint8Array
-    let lastModifiedRound: bigint
+    let revision: bigint
     let deprecatedBy: bigint
 
     try {
       identifiers = args.value[consts.IDX_METADATA_IDENTIFIERS]!
       revFlags = args.value[consts.IDX_REVERSIBLE_FLAGS]!
       irrFlags = args.value[consts.IDX_IRREVERSIBLE_FLAGS]!
-      metadataHash = args.value.slice(consts.IDX_METADATA_HASH, consts.IDX_LAST_MODIFIED_ROUND)
-      lastModifiedRound = readUint64BE(args.value, consts.IDX_LAST_MODIFIED_ROUND)
+      metadataHash = args.value.slice(consts.IDX_METADATA_HASH, consts.IDX_REVISION)
+      revision = readUint64BE(args.value, consts.IDX_REVISION)
       deprecatedBy = readUint64BE(args.value, consts.IDX_DEPRECATED_BY)
     } catch (e) {
       throw new BoxParseError('Failed to parse ARC-89 metadata header', { cause: e })
@@ -642,7 +681,7 @@ export class AssetMetadataBox {
       identifiers,
       flags: MetadataFlags.fromBytes(revFlags, irrFlags),
       metadataHash,
-      lastModifiedRound,
+      revision,
       deprecatedBy,
     })
     const body = new MetadataBody(bodyBytes)
@@ -662,7 +701,6 @@ export class AssetMetadataBox {
     const identifiers = this.header.expectedIdentifiers({ body: this.body, params: p })
 
     const computed = computeMetadataHash({
-      assetId: this.assetId,
       metadataIdentifiers: identifiers,
       reversibleFlags: this.header.flags.reversibleByte,
       irreversibleFlags: this.header.flags.irreversibleByte,
@@ -694,15 +732,28 @@ export class AssetMetadataBox {
     return computed
   }
 
-  /** Compare observed on-chain hash to the locally computed effective hash. */
+  /**
+   * Compare observed on-chain hash to the locally computed effective hash.
+   *
+   * With a nonzero `asaAm`, ARC-3 Metadata must also hash to it under ARC-3, since the
+   * registry copies `am` without checking it; `skipValidationOnOverride=true` skips
+   * the `am` checks.
+   */
   hashMatches(args?: {
     params?: RegistryParameters
     asaAm?: Uint8Array | null
     skipValidationOnOverride?: boolean
   }): boolean {
     const asaAm = args?.asaAm ?? null
-    if (asaAm && isNonzero32(asaAm) && (args?.skipValidationOnOverride ?? true)) {
-      return true
+    if (asaAm && isNonzero32(asaAm)) {
+      if (args?.skipValidationOnOverride ?? false) return true
+      if (this.header.isArc3Compliant) {
+        try {
+          if (!bytesEqual(computeArc3MetadataHash(this.body.rawBytes), asaAm)) return false
+        } catch {
+          return false
+        }
+      }
     }
     const expected = this.expectedMetadataHash({ params: args?.params, asaAm })
     return bytesEqual(expected, this.header.metadataHash)
@@ -850,7 +901,6 @@ export class AssetMetadata {
 
   computeHeaderHash(): Uint8Array {
     return computeHeaderHash({
-      assetId: this.assetId,
       metadataIdentifiers: this.identifiersByte,
       reversibleFlags: this.flags.reversibleByte,
       irreversibleFlags: this.flags.irreversibleByte,
@@ -860,7 +910,6 @@ export class AssetMetadata {
 
   computePageHash(args: { pageIndex: number }): Uint8Array {
     return computePageHash({
-      assetId: this.assetId,
       pageIndex: args.pageIndex,
       pageContent: this.body.getPage(args.pageIndex),
     })
@@ -870,7 +919,6 @@ export class AssetMetadata {
   computeArc89MetadataHash(): Uint8Array {
     const p = getDefaultRegistryParams()
     return computeMetadataHash({
-      assetId: this.assetId,
       metadataIdentifiers: this.identifiersByte,
       reversibleFlags: this.flags.reversibleByte,
       irreversibleFlags: this.flags.irreversibleByte,
@@ -1065,9 +1113,9 @@ const getArc3PropertyAppId = (metadataJson: Record<string, unknown>, key: string
   const entry = properties[key]
   if (!isPlainObject(entry)) return undefined
 
-  const appId = entry['application-id']
-  if (!isPositiveUint64(appId)) return undefined
-  return BigInt(appId)
+  const appId = jsonIntegerMember(entry, 'application-id')
+  if (appId === undefined || appId <= 0n || appId > MAX_UINT64) return undefined
+  return appId
 }
 
 const getArc20AppId = (metadataJson: Record<string, unknown>): bigint | undefined => {

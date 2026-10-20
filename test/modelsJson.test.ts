@@ -9,7 +9,12 @@
  */
 
 import { describe, expect, test } from 'vitest'
-import { models, validation } from '@algorandfoundation/asa-metadata-registry-sdk'
+import {
+  models,
+  validation,
+  MetadataArc3Error,
+  MetadataEncodingError,
+} from '@algorandfoundation/asa-metadata-registry-sdk'
 import { chunkMetadataPayload } from '@/internal/models'
 
 const { MetadataBody } = models
@@ -71,24 +76,26 @@ describe('chunk metadata payload', () => {
   })
 
   test('invalid head size zero', () => {
-    // Test that headMaxSize=0 raises ValueError.
-    expect(() =>
-      chunkMetadataPayload({ data: new TextEncoder().encode('data'), headMaxSize: 0, extraMaxSize: 5 }),
-    ).toThrow(/Chunk sizes must be > 0/)
+    // Test that headMaxSize=0 raises RangeError.
+    const call = () => chunkMetadataPayload({ data: new TextEncoder().encode('data'), headMaxSize: 0, extraMaxSize: 5 })
+    expect(call).toThrow(RangeError)
+    expect(call).toThrow(/Chunk sizes must be > 0/)
   })
 
   test('invalid extra size zero', () => {
-    // Test that extraMaxSize=0 raises ValueError.
-    expect(() =>
-      chunkMetadataPayload({ data: new TextEncoder().encode('data'), headMaxSize: 10, extraMaxSize: 0 }),
-    ).toThrow(/Chunk sizes must be > 0/)
+    // Test that extraMaxSize=0 raises RangeError.
+    const call = () =>
+      chunkMetadataPayload({ data: new TextEncoder().encode('data'), headMaxSize: 10, extraMaxSize: 0 })
+    expect(call).toThrow(RangeError)
+    expect(call).toThrow(/Chunk sizes must be > 0/)
   })
 
   test('invalid negative head size', () => {
-    // Test that negative headMaxSize raises ValueError.
-    expect(() =>
-      chunkMetadataPayload({ data: new TextEncoder().encode('data'), headMaxSize: -1, extraMaxSize: 5 }),
-    ).toThrow(/Chunk sizes must be > 0/)
+    // Test that negative headMaxSize raises RangeError.
+    const call = () =>
+      chunkMetadataPayload({ data: new TextEncoder().encode('data'), headMaxSize: -1, extraMaxSize: 5 })
+    expect(call).toThrow(RangeError)
+    expect(call).toThrow(/Chunk sizes must be > 0/)
   })
 
   test('metadata body chunked payload wrapper', () => {
@@ -136,42 +143,49 @@ describe('decode metadata json', () => {
   test('with utf8 bom raises', () => {
     // Test that UTF-8 BOM is rejected.
     const data = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode('{"name":"Test"}')])
+    expect(() => decodeMetadataJson(data)).toThrow(MetadataEncodingError)
     expect(() => decodeMetadataJson(data)).toThrow(/MUST NOT include a UTF-8 BOM/)
   })
 
   test('invalid utf8 raises', () => {
     // Test that invalid UTF-8 raises MetadataEncodingError.
-    const data = new Uint8Array([0xff, 0xfe, 0x20, 0x69, 0x6e, 0x76, 0x61, 0x6c, 0x69, 0x64])
+    const data = new Uint8Array([0xff, 0xfe, ...new TextEncoder().encode(' invalid utf-8')])
+    expect(() => decodeMetadataJson(data)).toThrow(MetadataEncodingError)
     expect(() => decodeMetadataJson(data)).toThrow(/not valid UTF-8/)
   })
 
   test('invalid json raises', () => {
     // Test that invalid JSON raises MetadataEncodingError.
     const data = new TextEncoder().encode('{"invalid json')
+    expect(() => decodeMetadataJson(data)).toThrow(MetadataEncodingError)
     expect(() => decodeMetadataJson(data)).toThrow(/not valid JSON/)
   })
 
   test('json array raises', () => {
     // Test that JSON array (not object) raises MetadataEncodingError.
     const data = new TextEncoder().encode('[1,2,3]')
+    expect(() => decodeMetadataJson(data)).toThrow(MetadataEncodingError)
     expect(() => decodeMetadataJson(data)).toThrow(/MUST be an object/)
   })
 
   test('json string raises', () => {
     // Test that JSON string raises MetadataEncodingError.
     const data = new TextEncoder().encode('"just a string"')
+    expect(() => decodeMetadataJson(data)).toThrow(MetadataEncodingError)
     expect(() => decodeMetadataJson(data)).toThrow(/MUST be an object/)
   })
 
   test('json number raises', () => {
     // Test that JSON number raises MetadataEncodingError.
     const data = new TextEncoder().encode('42')
+    expect(() => decodeMetadataJson(data)).toThrow(MetadataEncodingError)
     expect(() => decodeMetadataJson(data)).toThrow(/MUST be an object/)
   })
 
   test('json null raises', () => {
     // Test that JSON null raises MetadataEncodingError.
     const data = new TextEncoder().encode('null')
+    expect(() => decodeMetadataJson(data)).toThrow(MetadataEncodingError)
     expect(() => decodeMetadataJson(data)).toThrow(/MUST be an object/)
   })
 })
@@ -220,10 +234,16 @@ describe('encode metadata json', () => {
 
   test('non serializable raises', () => {
     // Test that non-JSON-serializable object raises MetadataEncodingError.
-    // JSON.stringify silently omits functions, so we need a truly non-serializable value
-    // Use a circular reference instead
-    const obj: any = { name: 'test' }
-    obj.circular = obj
+    const obj = { func: (x: unknown) => x } // Functions aren't JSON-serializable
+    expect(() => encodeMetadataJson(obj)).toThrow(MetadataEncodingError)
+    expect(() => encodeMetadataJson(obj)).toThrow(/not JSON-serializable/)
+  })
+
+  test('circular reference raises', () => {
+    // TS-only: a circular reference is not JSON-serializable and raises MetadataEncodingError.
+    const obj: Record<string, unknown> = { name: 'test' }
+    obj['circular'] = obj
+    expect(() => encodeMetadataJson(obj)).toThrow(MetadataEncodingError)
     expect(() => encodeMetadataJson(obj)).toThrow(/not JSON-serializable/)
   })
 
@@ -260,16 +280,19 @@ describe('validate arc3 schema', () => {
 
   test('decimals string raises', () => {
     // Test that decimals as string raises.
+    expect(() => validateArc3Schema({ decimals: '6' })).toThrow(MetadataArc3Error)
     expect(() => validateArc3Schema({ decimals: '6' })).toThrow(/'decimals' must be an integer/)
   })
 
   test('decimals negative raises', () => {
     // Test that negative decimals raises.
+    expect(() => validateArc3Schema({ decimals: -1 })).toThrow(MetadataArc3Error)
     expect(() => validateArc3Schema({ decimals: -1 })).toThrow(/must be non-negative/)
   })
 
   test('decimals boolean raises', () => {
     // Test that boolean for decimals raises (even though True==1 in Python).
+    expect(() => validateArc3Schema({ decimals: true })).toThrow(MetadataArc3Error)
     expect(() => validateArc3Schema({ decimals: true })).toThrow(/'decimals' must be an integer/)
   })
 
@@ -280,6 +303,7 @@ describe('validate arc3 schema', () => {
 
   test('description non string raises', () => {
     // Test that non-string description raises.
+    expect(() => validateArc3Schema({ description: 123 })).toThrow(MetadataArc3Error)
     expect(() => validateArc3Schema({ description: 123 })).toThrow(/'description' must be a string/)
   })
 
@@ -290,6 +314,7 @@ describe('validate arc3 schema', () => {
 
   test('image non string raises', () => {
     // Test that non-string image raises.
+    expect(() => validateArc3Schema({ image: 123 })).toThrow(MetadataArc3Error)
     expect(() => validateArc3Schema({ image: 123 })).toThrow(/'image' must be a string/)
   })
 
@@ -300,6 +325,7 @@ describe('validate arc3 schema', () => {
 
   test('properties non object raises', () => {
     // Test that non-object properties raises.
+    expect(() => validateArc3Schema({ properties: 'not an object' })).toThrow(MetadataArc3Error)
     expect(() => validateArc3Schema({ properties: 'not an object' })).toThrow(/'properties' must be an object/)
   })
 
@@ -318,81 +344,88 @@ describe('validate arc3 schema', () => {
 
   test('localization missing uri raises', () => {
     // Test that localization without uri raises.
-    expect(() =>
+    const call = () =>
       validateArc3Schema({
         localization: { default: 'en', locales: ['en'] },
-      }),
-    ).toThrow(/must have 'uri' field/)
+      })
+    expect(call).toThrow(MetadataArc3Error)
+    expect(call).toThrow(/must have 'uri' field/)
   })
 
   test('localization missing default raises', () => {
     // Test that localization without default raises.
-    expect(() =>
+    const call = () =>
       validateArc3Schema({
         localization: { uri: 'https://example.com', locales: ['en'] },
-      }),
-    ).toThrow(/must have 'default' field/)
+      })
+    expect(call).toThrow(MetadataArc3Error)
+    expect(call).toThrow(/must have 'default' field/)
   })
 
   test('localization missing locales raises', () => {
     // Test that localization without locales raises.
-    expect(() =>
+    const call = () =>
       validateArc3Schema({
         localization: { uri: 'https://example.com', default: 'en' },
-      }),
-    ).toThrow(/must have 'locales' field/)
+      })
+    expect(call).toThrow(MetadataArc3Error)
+    expect(call).toThrow(/must have 'locales' field/)
   })
 
   test('localization uri non string raises', () => {
     // Test that non-string localization.uri raises.
-    expect(() =>
+    const call = () =>
       validateArc3Schema({
         localization: {
           uri: 123,
           default: 'en',
           locales: ['en'],
         },
-      }),
-    ).toThrow(/'localization.uri' must be a string/)
+      })
+    expect(call).toThrow(MetadataArc3Error)
+    expect(call).toThrow(/'localization.uri' must be a string/)
   })
 
   test('localization default non string raises', () => {
     // Test that non-string localization.default raises.
-    expect(() =>
+    const call = () =>
       validateArc3Schema({
         localization: {
           uri: 'https://example.com',
           default: 123,
           locales: ['en'],
         },
-      }),
-    ).toThrow(/'localization.default' must be a string/)
+      })
+    expect(call).toThrow(MetadataArc3Error)
+    expect(call).toThrow(/'localization.default' must be a string/)
   })
 
   test('localization locales non array raises', () => {
     // Test that non-array localization.locales raises.
-    expect(() =>
+    const call = () =>
       validateArc3Schema({
         localization: {
           uri: 'https://example.com',
           default: 'en',
           locales: 'en',
         },
-      }),
-    ).toThrow(/'localization.locales' must be an array/)
+      })
+    expect(call).toThrow(MetadataArc3Error)
+    expect(call).toThrow(/'localization.locales' must be an array/)
   })
 
   test('localization locales non string entry raises', () => {
     // Test that non-string entry in localization.locales raises.
-    expect(() =>
+    const call = () =>
       validateArc3Schema({
         localization: {
           uri: 'https://example.com',
           default: 'en',
           locales: ['en', 123],
         },
-      }),
-    ).toThrow(/entries must be strings/)
+      })
+    expect(call).toThrow(MetadataArc3Error)
+    expect(call).toThrow(/entries must be strings/)
   })
 
   test('valid unit name', () => {
@@ -402,6 +435,7 @@ describe('validate arc3 schema', () => {
 
   test('unit name non string raises', () => {
     // Test that non-string unitName raises.
+    expect(() => validateArc3Schema({ unitName: 123 })).toThrow(MetadataArc3Error)
     expect(() => validateArc3Schema({ unitName: 123 })).toThrow(/'unitName' must be a string/)
   })
 

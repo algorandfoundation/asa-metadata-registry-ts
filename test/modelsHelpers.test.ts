@@ -7,6 +7,7 @@
  * - MetadataExistence
  * - Pagination
  * - PaginatedMetadata
+ * - MetadataSlice
  * - Internal helper functions
  */
 
@@ -15,7 +16,8 @@ import { models, enums, constants } from '@algorandfoundation/asa-metadata-regis
 import { toBytes } from '@/internal/bytes'
 import { setBit, isNonzero32, readUint64BE } from '@/internal/models'
 
-const { MbrDeltaSign, MbrDelta, RegistryParameters, MetadataExistence, Pagination, PaginatedMetadata } = models
+const { MbrDeltaSign, MbrDelta, RegistryParameters, MetadataExistence, Pagination, PaginatedMetadata, MetadataSlice } =
+  models
 
 describe('mbr delta sign', () => {
   // Tests for MbrDeltaSign enum.
@@ -349,23 +351,32 @@ describe('pagination', () => {
   // Tests for Pagination class.
   test('basic pagination', () => {
     // Test basic pagination values.
-    const pagination = new Pagination({ metadataSize: 5000, pageSize: 1000, totalPages: 5 })
+    const pagination = new Pagination({
+      deprecatedBy: 0,
+      metadataSize: 5000,
+      pageSize: 1000,
+      totalPages: 5,
+      revision: 42,
+    })
     expect(pagination.metadataSize).toBe(5000)
     expect(pagination.pageSize).toBe(1000)
     expect(pagination.totalPages).toBe(5)
+    expect(pagination.revision).toBe(42n)
   })
 
   test('from tuple', () => {
     // Test fromTuple parsing.
-    const pagination = Pagination.fromTuple([3000, 1000, 3])
+    const pagination = Pagination.fromTuple([3000, 1000, 3, 42, 7])
     expect(pagination.metadataSize).toBe(3000)
     expect(pagination.pageSize).toBe(1000)
     expect(pagination.totalPages).toBe(3)
+    expect(pagination.revision).toBe(42n)
+    expect(pagination.deprecatedBy).toBe(7n)
   })
 
   test('from tuple zero metadata', () => {
     // Test fromTuple with zero metadata.
-    const pagination = Pagination.fromTuple([0, 1000, 0])
+    const pagination = Pagination.fromTuple([0, 1000, 0, 42, 0])
     expect(pagination.metadataSize).toBe(0)
     expect(pagination.pageSize).toBe(1000)
     expect(pagination.totalPages).toBe(0)
@@ -373,7 +384,9 @@ describe('pagination', () => {
 
   test('from tuple invalid length', () => {
     // Test fromTuple with wrong number of elements.
-    expect(() => Pagination.fromTuple([1000, 100])).toThrow(/Expected \(metadataSize, pageSize, totalPages\)/)
+    expect(() => Pagination.fromTuple([1000, 100, 1, 42])).toThrow(
+      /Expected \(metadataSize, pageSize, totalPages, revision, deprecatedBy\)/,
+    )
   })
 })
 
@@ -383,11 +396,11 @@ describe('paginated metadata', () => {
     // Test paginated metadata with next page.
     const metadata = new PaginatedMetadata({
       hasNextPage: true,
-      lastModifiedRound: 1000n,
+      revision: 1000n,
       pageContent: new TextEncoder().encode('page data'),
     })
     expect(metadata.hasNextPage).toBe(true)
-    expect(metadata.lastModifiedRound).toBe(1000n)
+    expect(metadata.revision).toBe(1000n)
     expect(metadata.pageContent).toEqual(new TextEncoder().encode('page data'))
   })
 
@@ -395,11 +408,11 @@ describe('paginated metadata', () => {
     // Test paginated metadata without next page.
     const metadata = new PaginatedMetadata({
       hasNextPage: false,
-      lastModifiedRound: 2000n,
+      revision: 2000n,
       pageContent: new TextEncoder().encode('last page'),
     })
     expect(metadata.hasNextPage).toBe(false)
-    expect(metadata.lastModifiedRound).toBe(2000n)
+    expect(metadata.revision).toBe(2000n)
     expect(metadata.pageContent).toEqual(new TextEncoder().encode('last page'))
   })
 
@@ -407,7 +420,7 @@ describe('paginated metadata', () => {
     // Test fromTuple parsing.
     const metadata = PaginatedMetadata.fromTuple([true, 1500, new TextEncoder().encode('content')])
     expect(metadata.hasNextPage).toBe(true)
-    expect(metadata.lastModifiedRound).toBe(1500n)
+    expect(metadata.revision).toBe(1500n)
     expect(metadata.pageContent).toEqual(new TextEncoder().encode('content'))
   })
 
@@ -415,15 +428,13 @@ describe('paginated metadata', () => {
     // Test fromTuple with empty content.
     const metadata = PaginatedMetadata.fromTuple([false, 0, new Uint8Array()])
     expect(metadata.hasNextPage).toBe(false)
-    expect(metadata.lastModifiedRound).toBe(0n)
+    expect(metadata.revision).toBe(0n)
     expect(metadata.pageContent).toEqual(new Uint8Array())
   })
 
   test('from tuple invalid length', () => {
     // Test fromTuple with wrong number of elements.
-    expect(() => PaginatedMetadata.fromTuple([true, 1000])).toThrow(
-      /Expected \(hasNextPage, lastModifiedRound, pageContent\)/,
-    )
+    expect(() => PaginatedMetadata.fromTuple([true, 1000])).toThrow(/Expected \(hasNextPage, revision, pageContent\)/)
   })
 })
 
@@ -436,10 +447,11 @@ describe('paginated metadata advanced', () => {
     )
   })
 
-  test('from tuple invalid last modified round type', () => {
-    // Test fromTuple with non-int lastModifiedRound.
+  test('from tuple invalid revision type', () => {
+    // Test fromTuple with non-int revision.
+    expect(() => PaginatedMetadata.fromTuple([true, 'not int' as any, new Uint8Array()])).toThrow(TypeError)
     expect(() => PaginatedMetadata.fromTuple([true, 'not int' as any, new Uint8Array()])).toThrow(
-      /lastModifiedRound.*must be an integer/,
+      /revision must be int/,
     )
   })
 
@@ -447,6 +459,27 @@ describe('paginated metadata advanced', () => {
     // Test fromTuple with pageContent as list of ints.
     const result = PaginatedMetadata.fromTuple([false, 2000, [1, 2, 3, 4, 5]])
     expect(result.pageContent).toEqual(new Uint8Array([1, 2, 3, 4, 5]))
+  })
+})
+
+describe('metadata slice', () => {
+  // Tests for MetadataSlice class.
+  test('metadata slice from tuple', () => {
+    const data = new TextEncoder().encode('data')
+    const metadataSlice = MetadataSlice.fromTuple([42, data])
+    expect(metadataSlice).toStrictEqual(new MetadataSlice({ revision: 42, content: data }))
+  })
+
+  test('from tuple invalid length', () => {
+    // Test fromTuple with wrong number of elements.
+    expect(() => MetadataSlice.fromTuple([42])).toThrow(/Expected \(revision, content\)/)
+    expect(() => MetadataSlice.fromTuple([42, new Uint8Array(), 1])).toThrow(/Expected \(revision, content\)/)
+  })
+
+  test('from tuple invalid revision type', () => {
+    // Test fromTuple with non-int revision.
+    expect(() => MetadataSlice.fromTuple(['not int' as any, new Uint8Array()])).toThrow(TypeError)
+    expect(() => MetadataSlice.fromTuple(['not int' as any, new Uint8Array()])).toThrow(/revision must be int/)
   })
 })
 

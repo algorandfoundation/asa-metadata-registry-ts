@@ -4,23 +4,47 @@
  * Ported from Python `asa_metadata_registry/read/avm.py`.
  */
 
-import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '../generated'
-import type { SimulateOptions } from '@algorandfoundation/algokit-utils/composer'
-import { MissingAppClientError } from '../errors'
-import { asNumber, asUint8, asUint64BigInt } from '../internal/numbers'
-import { toBytes } from '../internal/bytes'
+import type { SimulateOptions as AlgoKitSimulateOptions } from '@algorandfoundation/algokit-utils/types/composer'
+import { AsaMetadataRegistryClient, AsaMetadataRegistryComposer } from '../generated/index.js'
+import { MissingAppClientError } from '../errors.js'
+import { asNumber, asUint8, asUint64BigInt } from '../internal/numbers.js'
+import { toBytes } from '../internal/bytes.js'
 import {
   AbiValue,
   MbrDelta,
   MetadataExistence,
   MetadataFlags,
   MetadataHeader,
+  MetadataSlice,
   PaginatedMetadata,
   Pagination,
   RegistryParameters,
-} from '../models'
-import * as enums from '../enums'
-import { parseMbrDelta, parsePaginatedMetadata, returnValues, withArgs } from '../internal/avm'
+} from '../models.js'
+import * as enums from '../enums.js'
+import {
+  parseHashRevision,
+  parseMbrDelta,
+  parseMetadataSlice,
+  parsePaginatedMetadata,
+  returnValues,
+  withArgs,
+} from '../internal/avm.js'
+
+/**
+ * Options passed through to AlgoKit's composer `simulate()`.
+ *
+ * AVM reads merge them over `DEFAULT_SIMULATE_OPTIONS` and the maximum extra opcode budget.
+ */
+export type SimulateOptions = AlgoKitSimulateOptions
+
+/** Default simulate options for AVM reads (no signatures, unnamed resources allowed). */
+export const DEFAULT_SIMULATE_OPTIONS: Readonly<SimulateOptions> = Object.freeze({
+  allowUnnamedResources: true,
+  skipSignatures: true,
+})
+
+/** The largest extra opcode budget that algod accepts in a simulate request (AlgoKit's read-only calls use it). */
+const MAX_SIMULATE_OPCODE_BUDGET = 20_000 * 16
 
 // ------------------------------------------------------------------
 // Decode helpers (simulate return values)
@@ -62,7 +86,7 @@ const parseMetadataHeader = (v: unknown): MetadataHeader => {
       asUint8(o.irreversibleFlags, 'irreversibleFlags'),
     ),
     metadataHash: toBytes(o.hash, 'hash'),
-    lastModifiedRound: asUint64BigInt(o.lastModifiedRound, 'lastModifiedRound'),
+    revision: asUint64BigInt(o.revision, 'revision'),
     deprecatedBy: asUint64BigInt(o.deprecatedBy, 'deprecatedBy'),
   })
 }
@@ -75,6 +99,8 @@ const parsePagination = (v: unknown): Pagination => {
     metadataSize: asNumber(o.metadataSize, 'metadataSize'),
     pageSize: asNumber(o.pageSize, 'pageSize'),
     totalPages: asUint8(o.totalPages, 'totalPages'),
+    revision: asUint64BigInt(o.revision, 'revision'),
+    deprecatedBy: asUint64BigInt(o.deprecatedBy, 'deprecatedBy'),
   })
 }
 
@@ -102,8 +128,11 @@ export class AsaMetadataRegistryAvmRead {
   ): Promise<unknown[]> {
     const composer = this.client.newGroup()
     buildGroup(composer)
-    const defaultSimulate: SimulateOptions = { allowUnnamedResources: true, skipSignatures: true }
-    const results = await composer.simulate(args?.simulate ?? defaultSimulate)
+    const results = await composer.simulate({
+      ...DEFAULT_SIMULATE_OPTIONS,
+      extraOpcodeBudget: MAX_SIMULATE_OPCODE_BUDGET,
+      ...args?.simulate,
+    })
     return returnValues(results)
   }
 
@@ -136,6 +165,10 @@ export class AsaMetadataRegistryAvmRead {
     return String(value)
   }
 
+  /**
+   * MBR Delta for a new Metadata size (the creation delta if the box does not exist).
+   * Pass `newSize: DELETE_METADATA_SIZE` to quote the deletion MBR Delta.
+   */
   async arc89GetMetadataMbrDelta(args: {
     assetId: bigint | number
     newSize: number
@@ -175,23 +208,22 @@ export class AsaMetadataRegistryAvmRead {
     assetId: bigint | number
     simulate?: SimulateOptions
     params?: unknown
-  }): Promise<readonly [boolean, bigint]> {
+  }): Promise<readonly [isShort: boolean, revision: bigint]> {
     const value = await this.simulateOne((c) => c.arc89IsMetadataShort(withArgs(args.params, [args.assetId])), {
       simulate: args.simulate,
     })
 
-    // Generated client returns either a tuple or struct; normalize to (bool, uint64).
+    // Generated client returns either a tuple or the MutableFlag struct; normalize to (bool, uint64).
     if (Array.isArray(value)) {
-      return [Boolean(value[0]), asUint64BigInt(value[1], 'lastModifiedRound')]
+      return [Boolean(value[0]), asUint64BigInt(value[1], 'revision')]
     }
     if (value && typeof value === 'object') {
       const o = value as Record<string, unknown>
-      if ('lastModifiedRound' in o && 'flag' in o) {
-        // This would be MutableFlag shape; tolerate it defensively.
-        return [Boolean(o.flag), asUint64BigInt(o.lastModifiedRound, 'lastModifiedRound')]
+      if ('flag' in o && 'revision' in o) {
+        return [Boolean(o.flag), asUint64BigInt(o.revision, 'revision')]
       }
       if ('0' in o && '1' in o) {
-        return [Boolean(o[0]), asUint64BigInt(o[1], 'lastModifiedRound')]
+        return [Boolean(o[0]), asUint64BigInt(o[1], 'revision')]
       }
     }
     throw new TypeError('Unexpected return type for arc89IsMetadataShort')
@@ -237,47 +269,50 @@ export class AsaMetadataRegistryAvmRead {
     size: number
     simulate?: SimulateOptions
     params?: unknown
-  }): Promise<Uint8Array> {
+  }): Promise<MetadataSlice> {
     const value = await this.simulateOne(
       (c) => c.arc89GetMetadataSlice(withArgs(args.params, [args.assetId, args.offset, args.size])),
       { simulate: args.simulate },
     )
-    return toBytes(value, 'metadataSlice')
+    return parseMetadataSlice(value)
   }
 
+  /** @returns The Metadata Header Hash and the Revision it was computed at. */
   async arc89GetMetadataHeaderHash(args: {
     assetId: bigint | number
     simulate?: SimulateOptions
     params?: unknown
-  }): Promise<Uint8Array> {
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const value = await this.simulateOne((c) => c.arc89GetMetadataHeaderHash(withArgs(args.params, [args.assetId])), {
       simulate: args.simulate,
     })
-    return toBytes(value, 'headerHash')
+    return parseHashRevision(value)
   }
 
+  /** @returns The page hash and the Revision it was computed at. */
   async arc89GetMetadataPageHash(args: {
     assetId: bigint | number
     page: number
     simulate?: SimulateOptions
     params?: unknown
-  }): Promise<Uint8Array> {
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const value = await this.simulateOne(
       (c) => c.arc89GetMetadataPageHash(withArgs(args.params, [args.assetId, args.page])),
       { simulate: args.simulate },
     )
-    return toBytes(value, 'pageHash')
+    return parseHashRevision(value)
   }
 
+  /** @returns The Metadata Hash and the Revision it was computed at. */
   async arc89GetMetadataHash(args: {
     assetId: bigint | number
     simulate?: SimulateOptions
     params?: unknown
-  }): Promise<Uint8Array> {
+  }): Promise<readonly [hash: Uint8Array, revision: bigint]> {
     const value = await this.simulateOne((c) => c.arc89GetMetadataHash(withArgs(args.params, [args.assetId])), {
       simulate: args.simulate,
     })
-    return toBytes(value, 'metadataHash')
+    return parseHashRevision(value)
   }
 
   async arc89GetMetadataStringByKey(args: {

@@ -122,11 +122,19 @@ describe('metadata body', () => {
 
   test('chunked payload fits in first', () => {
     // Test chunkedPayload when data fits in first chunk.
-    const data = new Uint8Array(100).fill(120)
+    const data = new Uint8Array(constants.FIRST_PAYLOAD_MAX_SIZE).fill(120)
     const body = new MetadataBody(data)
     const chunks = body.chunkedPayload()
     expect(chunks.length).toBe(1)
     expect(chunks[0]).toEqual(data)
+  })
+
+  test('chunked payload one byte over first', () => {
+    // Test the 4,094-byte first-payload boundary.
+    const data = new Uint8Array(constants.FIRST_PAYLOAD_MAX_SIZE + 1).fill(120)
+    const chunks = new MetadataBody(data).chunkedPayload()
+
+    expect(chunks.map((chunk) => chunk.length)).toEqual([constants.FIRST_PAYLOAD_MAX_SIZE, 1])
   })
 
   test('chunked payload multiple chunks', () => {
@@ -141,6 +149,16 @@ describe('metadata body', () => {
     expect(chunks[0].length).toBe(headSize)
     expect(chunks[1].length).toBe(extraSize)
     expect(chunks[2].length).toBe(100)
+  })
+
+  test('chunked payload at max metadata size', () => {
+    // Test that a box-sized payload needs eight application calls.
+    const body = new MetadataBody(new Uint8Array(constants.MAX_METADATA_SIZE).fill(120))
+    const chunks = body.chunkedPayload()
+
+    expect(chunks.length).toBe(8)
+    expect(chunks.slice(0, -1).every((chunk) => chunk.length === constants.EXTRA_PAYLOAD_MAX_SIZE)).toBe(true)
+    expect(chunks[chunks.length - 1].length).toBe(constants.MAX_METADATA_SIZE - 7 * constants.EXTRA_PAYLOAD_MAX_SIZE)
   })
 
   test('validate size within limit', () => {
@@ -164,6 +182,7 @@ describe('metadata body', () => {
     const params = getDefaultRegistryParams()
     const data = new Uint8Array(params.maxMetadataSize + 1).fill(120)
     const body = new MetadataBody(data)
+    expect(() => body.validateSize(params)).toThrow(RangeError)
     expect(() => body.validateSize(params)).toThrow(/exceeds max/)
   })
 
@@ -186,13 +205,13 @@ describe('metadata header', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.identifiers).toBe(0)
     expect(header.flags).toBe(flags)
     expect(header.metadataHash).toEqual(new Uint8Array(32))
-    expect(header.lastModifiedRound).toBe(1000n)
+    expect(header.revision).toBe(1000n)
     expect(header.deprecatedBy).toBe(0n)
   })
 
@@ -203,7 +222,7 @@ describe('metadata header', () => {
       identifiers: 0, // Short bit not set
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isShort).toBe(false)
@@ -216,7 +235,7 @@ describe('metadata header', () => {
       identifiers: bitmasks.MASK_ID_SHORT,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isShort).toBe(true)
@@ -229,7 +248,7 @@ describe('metadata header', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isImmutable).toBe(false)
@@ -245,7 +264,7 @@ describe('metadata header', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isImmutable).toBe(true)
@@ -261,10 +280,26 @@ describe('metadata header', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isArc3Compliant).toBe(true)
+  })
+
+  test('is arc54 burnable', () => {
+    // Test isArc54Burnable property.
+    const flags = new MetadataFlags({
+      reversible: ReversibleFlags.empty(),
+      irreversible: new IrreversibleFlags({ burnable: true }),
+    })
+    const header = new MetadataHeader({
+      identifiers: 0,
+      flags,
+      metadataHash: new Uint8Array(32),
+      revision: 1000,
+      deprecatedBy: 0,
+    })
+    expect(header.isArc54Burnable).toBe(true)
   })
 
   test('is arc89 native', () => {
@@ -277,7 +312,7 @@ describe('metadata header', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isArc89Native).toBe(true)
@@ -293,7 +328,7 @@ describe('metadata header', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isArc20SmartAsa).toBe(true)
@@ -309,10 +344,26 @@ describe('metadata header', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     expect(header.isArc62CirculatingSupply).toBe(true)
+  })
+
+  test('is ntt cross chain', () => {
+    // Test isNttCrossChain property.
+    const flags = new MetadataFlags({
+      reversible: new ReversibleFlags({ ntt: true }),
+      irreversible: IrreversibleFlags.empty(),
+    })
+    const header = new MetadataHeader({
+      identifiers: 0,
+      flags,
+      metadataHash: new Uint8Array(32),
+      revision: 1000,
+      deprecatedBy: 0,
+    })
+    expect(header.isNttCrossChain).toBe(true)
   })
 
   test('from tuple', () => {
@@ -322,7 +373,7 @@ describe('metadata header', () => {
       5, // reversible flags
       3, // irreversible flags
       new Uint8Array(32).fill(0xaa), // hash
-      2000, // lastModifiedRound
+      2000, // revision
       100, // deprecatedBy
     ]
     const header = MetadataHeader.fromTuple(tupleData)
@@ -331,7 +382,7 @@ describe('metadata header', () => {
     expect(header.flags.reversibleByte).toBe(5)
     expect(header.flags.irreversibleByte).toBe(3)
     expect(header.metadataHash).toEqual(new Uint8Array(32).fill(0xaa))
-    expect(header.lastModifiedRound).toBe(2000n)
+    expect(header.revision).toBe(2000n)
     expect(header.deprecatedBy).toBe(100n)
   })
 
@@ -377,7 +428,6 @@ describe('asset metadata', () => {
 
     // Verify hash is correct by comparing to the standalone hash function
     const expectedHash = computeMetadataHash({
-      assetId: metadata.assetId,
       metadataIdentifiers: metadata.identifiersByte,
       reversibleFlags: metadata.flags.reversibleByte,
       irreversibleFlags: metadata.flags.irreversibleByte,
@@ -410,7 +460,6 @@ describe('asset metadata', () => {
 
     // Verify hash matches expected value
     const expectedHash = computeMetadataHash({
-      assetId: 456n,
       metadataIdentifiers: bitmasks.MASK_ID_SHORT,
       reversibleFlags: flags.reversibleByte,
       irreversibleFlags: flags.irreversibleByte,
@@ -444,7 +493,6 @@ describe('asset metadata', () => {
 
     // Verify hash matches expected value
     const expectedHash = computeMetadataHash({
-      assetId: 789n,
       metadataIdentifiers: 0,
       reversibleFlags: flags.reversibleByte,
       irreversibleFlags: flags.irreversibleByte,
@@ -749,7 +797,7 @@ describe('asset metadata record', () => {
       identifiers: 0,
       flags: MetadataFlags.empty(),
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
@@ -771,7 +819,7 @@ describe('asset metadata record', () => {
       identifiers: 0,
       flags: MetadataFlags.empty(),
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 0,
     })
     const body = new MetadataBody(new TextEncoder().encode('{"name":"Test","value":123}'))
@@ -800,7 +848,7 @@ describe('asset metadata record', () => {
       identifiers: 0,
       flags: MetadataFlags.empty(),
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 1000,
+      revision: 1000,
       deprecatedBy: 500,
     })
     const body = new MetadataBody(new TextEncoder().encode('{"name":"Test"}'))
@@ -855,17 +903,30 @@ describe('AssetMetadata.deriveAndValidateFlagsFromArc3Json', () => {
     expect(flags.reversible.arc62).toBe(true)
   })
 
+  test('bigint application id beyond 2^53 is validated and written exactly (TS-only)', () => {
+    const metadata = AssetMetadata.fromJson({
+      assetId: 1,
+      jsonObj: { properties: { 'arc-20': { 'application-id': 18446744073709551615n } } },
+      arc3Compliant: true,
+    })
+    expect(metadata.flags.reversible.arc20).toBe(true)
+    expect(new TextDecoder().decode(metadata.body.rawBytes)).toBe(
+      '{"properties":{"arc-20":{"application-id":18446744073709551615}}}',
+    )
+  })
+
   test('flags provided but arc3 flag missing raises', () => {
     const obj = { name: 'T', decimals: 0 }
-    expect(() =>
+    const call = () =>
       derive(
         obj,
         new MetadataFlags({
           reversible: ReversibleFlags.empty(),
           irreversible: IrreversibleFlags.empty(),
         }),
-      ),
-    ).toThrow(/ARC3 metadata flag is not set/)
+      )
+    expect(call).toThrow(MetadataArc3Error)
+    expect(call).toThrow(/ARC3 metadata flag is not set/)
   })
 
   test('flags provided arc20 requires arc3 raises', () => {
@@ -889,15 +950,16 @@ describe('AssetMetadata.deriveAndValidateFlagsFromArc3Json', () => {
         'arc-20': { 'application-id': 0 }, // must be a positive uint64
       },
     }
-    expect(() =>
+    const call = () =>
       derive(
         obj,
         new MetadataFlags({
           reversible: new ReversibleFlags({ arc20: true }),
           irreversible: new IrreversibleFlags({ arc3: true }),
         }),
-      ),
-    ).toThrow(InvalidArc3PropertiesError)
+      )
+    expect(call).toThrow(InvalidArc3PropertiesError)
+    expect(call).toThrow(/application-id/)
   })
 })
 
@@ -912,7 +974,7 @@ describe('model arc20AppId / arc62AppId getters', () => {
       identifiers: 0,
       flags,
       metadataHash: new Uint8Array(32),
-      lastModifiedRound: 0n,
+      revision: 0n,
       deprecatedBy: 0n,
     })
     return new AssetMetadataRecord({ appId: 1n, assetId: 1n, header, body })
@@ -936,5 +998,53 @@ describe('model arc20AppId / arc62AppId getters', () => {
   test('arc62AppId returns undefined when flag not set', () => {
     const record = buildRecord({ name: 'T' })
     expect(record.arc62AppId).toBeUndefined()
+  })
+
+  test('app id getters read large application ids exactly', () => {
+    const record = buildRecord({}, { arc20: true })
+    const body = new MetadataBody(
+      new TextEncoder().encode('{"properties":{"arc-20":{"application-id":18446744073709551615}}}'),
+    )
+    const exact = new AssetMetadataRecord({ appId: 1n, assetId: 1n, header: record.header, body })
+    expect(exact.arc20AppId).toBe(18446744073709551615n)
+  })
+
+  test('app id getters ignore float literal application ids', () => {
+    const record = buildRecord({}, { arc62: true })
+    const body = new MetadataBody(new TextEncoder().encode('{"properties":{"arc-62":{"application-id":222.0}}}'))
+    const floatLiteral = new AssetMetadataRecord({ appId: 1n, assetId: 1n, header: record.header, body })
+    expect(floatLiteral.arc62AppId).toBeUndefined()
+  })
+})
+
+describe('asset metadata from decoded json', () => {
+  test('decoded values changed after decoding are validated', () => {
+    const withDecimals = decodeMetadataJson(new TextEncoder().encode('{"decimals":6}'))
+    withDecimals['decimals'] = 6.5
+    expect(() => AssetMetadata.fromJson({ assetId: 1n, jsonObj: withDecimals, arc3Compliant: true })).toThrow(
+      MetadataArc3Error,
+    )
+
+    const withArc20 = decodeMetadataJson(new TextEncoder().encode('{"properties":{"arc-20":{"application-id":123}}}'))
+    const arc20 = (withArc20['properties'] as Record<string, Record<string, unknown>>)['arc-20']!
+    arc20['application-id'] = 0
+    expect(() => AssetMetadata.fromJson({ assetId: 1n, jsonObj: withArc20, arc3Compliant: true })).toThrow(
+      InvalidArc3PropertiesError,
+    )
+  })
+
+  test('decoded numbers keep their source text', () => {
+    const text = '{"price":1.0,"properties":{"arc-20":{"application-id":18446744073709551615}}}'
+    const jsonObj = decodeMetadataJson(new TextEncoder().encode(text))
+    const metadata = AssetMetadata.fromJson({ assetId: 1n, jsonObj, arc3Compliant: true })
+    expect(new TextDecoder().decode(metadata.body.rawBytes)).toBe(text)
+  })
+
+  test('decoded numbers assigned an equal value use that value', () => {
+    const jsonObj = decodeMetadataJson(new TextEncoder().encode('{"decimals":6.0,"price":-0}'))
+    jsonObj['decimals'] = 6
+    jsonObj['price'] = 0
+    const metadata = AssetMetadata.fromJson({ assetId: 1n, jsonObj, arc3Compliant: true })
+    expect(new TextDecoder().decode(metadata.body.rawBytes)).toBe('{"decimals":6,"price":0}')
   })
 })

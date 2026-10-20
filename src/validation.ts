@@ -4,9 +4,10 @@
  * Ported from Python `asa_metadata_registry/validation.py`.
  */
 
-import { MetadataArc3Error, MetadataEncodingError, InvalidArc3PropertiesError } from './errors'
-import { REV_FLG_ARC20, REV_FLG_ARC62 } from './flags'
-import { ARC3_PROPERTIES_KEY_ARC20, ARC3_PROPERTIES_KEY_ARC62, ARC3_PROPERTIES_KEYS } from './constants'
+import { MetadataArc3Error, MetadataEncodingError, InvalidArc3PropertiesError } from './errors.js'
+import { REV_FLG_ARC20, REV_FLG_ARC62 } from './flags.js'
+import { ARC3_PROPERTIES_KEY_ARC20, ARC3_PROPERTIES_KEY_ARC62, ARC3_PROPERTIES_KEYS } from './constants.js'
+import { jsonIntegerMember, parseJsonStrict, stringifyJsonStrict } from './internal/json.js'
 
 const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf])
 
@@ -21,9 +22,21 @@ const startsWith = (data: Uint8Array, prefix: Uint8Array): boolean => {
 export const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
+const MAX_UINT64 = (1n << 64n) - 1n
+
+/** JSON type name of a value that failed an integer check, for error messages. */
+const jsonTypeName = (v: unknown): string => {
+  if (v === null) return 'null'
+  if (Array.isArray(v)) return 'array'
+  // A number failing the integer check is a non-integer, an unsafe integer or a float literal (`6.0`).
+  if (typeof v === 'number') return 'float'
+  return typeof v
+}
+
 /**
  * Validate a positive uint64 represented as a JSON-parsed number.
- * @remarks Since parsing from JSON, expect a `number` input.
+ * @remarks Since parsing from JSON, expect a `number` input. The ARC-3 validators check members
+ * of decoded metadata exactly (integer literals, beyond 2^53 too) with Python's `int` semantics.
  *
  * @returns `true` if the value is type `number` and fits within the safe
  * integer range (2**53 - 1) and is greater than 0, `false` otherwise
@@ -32,51 +45,74 @@ export const isPositiveUint64 = (value: unknown): value is number => {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
 }
 
-/**
- * Decode ARC-89 metadata bytes into a JS object.
- *
- * ARC-89 requires a UTF-8 JSON *object*. Empty metadata bytes MUST be treated as `{}`.
- */
-export const decodeMetadataJson = (metadata: Uint8Array): Record<string, unknown> => {
-  if (metadata.length === 0) return {}
-
+/** Decode metadata bytes into UTF-8 text, rejecting a BOM and invalid UTF-8. */
+const decodeMetadataText = (metadata: Uint8Array): string => {
   // Reject UTF-8 BOM
   if (startsWith(metadata, UTF8_BOM)) {
     throw new MetadataEncodingError('Metadata MUST NOT include a UTF-8 BOM')
   }
 
-  let txt: string
   try {
-    txt = new TextDecoder('utf-8', { fatal: true }).decode(metadata)
+    return new TextDecoder('utf-8', { fatal: true }).decode(metadata)
   } catch (e) {
     throw new MetadataEncodingError('Metadata is not valid UTF-8', { cause: e })
   }
+}
 
-  let obj: unknown
+/**
+ * Decode ARC-89 metadata bytes into a JS object.
+ *
+ * ARC-89 requires a UTF-8 JSON *object* (RFC 8259): duplicate object names, lone surrogate
+ * escapes and non-finite numbers are rejected. Empty metadata bytes MUST be treated as `{}`.
+ * Number members written as `-0` or with a fraction or exponent that JS writes differently (e.g.
+ * `1.0`, `1e3`) are accessor properties that keep their source text until a value is assigned to
+ * them.
+ */
+export const decodeMetadataJson = (metadata: Uint8Array): Record<string, unknown> => {
+  if (metadata.length === 0) return {}
+
+  const txt = decodeMetadataText(metadata)
+
+  let parsed: ReturnType<typeof parseJsonStrict>
   try {
-    obj = JSON.parse(txt)
+    parsed = parseJsonStrict(txt)
   } catch (e) {
-    throw new MetadataEncodingError('Metadata is not valid JSON', { cause: e })
+    throw new MetadataEncodingError(`Metadata is not valid JSON: ${e instanceof Error ? e.message : String(e)}`, {
+      cause: e,
+    })
+  }
+  if (parsed.scan.loneSurrogate) {
+    throw new MetadataEncodingError('Metadata MUST NOT contain lone surrogate escapes')
   }
 
-  if (!isPlainObject(obj)) {
+  if (!isPlainObject(parsed.value)) {
     throw new MetadataEncodingError('Metadata JSON MUST be an object')
   }
-  return obj
+  return parsed.value
 }
 
 /**
  * Encode a JSON object to UTF-8 bytes without BOM.
  *
- * The encoding is not canonicalized beyond JSON.stringify defaults; ARC-89 hashing uses raw bytes.
+ * The encoding is compact (no whitespace) and not canonicalized further; ARC-89 hashing uses
+ * raw bytes. Non-finite numbers and lone surrogates are rejected (RFC 8259). Numbers decoded by
+ * {@link decodeMetadataJson} keep their source text (e.g. `1.0`) until a value is assigned to them
+ * (even an equal one); integers beyond 2^53 keep it while their value is unchanged.
+ *
+ * Integers beyond 2^53 must be `bigint` values, written as their exact digits: a `number` cannot
+ * hold them exactly, so one is rejected rather than written rounded (unless its decoded source
+ * text is kept). To store bytes exactly as given, build the `MetadataBody` from them instead.
+ *
+ * @throws {MetadataEncodingError} If the object is not JSON-serializable.
  */
 export const encodeMetadataJson = (obj: Record<string, unknown>): Uint8Array => {
   let txt: string | undefined
   try {
     // JSON.stringify uses compact separators by default (no whitespace).
-    txt = JSON.stringify(obj)
+    txt = stringifyJsonStrict(obj)
   } catch (e) {
-    throw new MetadataEncodingError('Object is not JSON-serializable', { cause: e })
+    const reason = e instanceof Error ? `: ${e.message}` : ''
+    throw new MetadataEncodingError(`Object is not JSON-serializable${reason}`, { cause: e })
   }
 
   // JSON.stringify returns undefined for a top-level `undefined`.
@@ -117,11 +153,12 @@ export const validateArc3Schema = (obj: Record<string, unknown>): void => {
 
   for (const [key, value] of Object.entries(obj)) {
     if (key === 'decimals') {
-      if (typeof value !== 'number' || !Number.isInteger(value)) {
-        throw new MetadataArc3Error(`ARC-3 field 'decimals' must be an integer, got ${typeof value}`)
+      const decimals = jsonIntegerMember(obj, key)
+      if (decimals === undefined) {
+        throw new MetadataArc3Error(`ARC-3 field 'decimals' must be an integer, got ${jsonTypeName(value)}`)
       }
-      if (value < 0) {
-        throw new MetadataArc3Error(`ARC-3 field 'decimals' must be non-negative, got ${value}`)
+      if (decimals < 0n) {
+        throw new MetadataArc3Error(`ARC-3 field 'decimals' must be non-negative, got ${decimals}`)
       }
     } else if (key === 'properties') {
       if (!isPlainObject(value)) {
@@ -166,12 +203,12 @@ export const validateArc3Schema = (obj: Record<string, unknown>): void => {
 export const validateArc3Values = (obj: Record<string, unknown>, asaDecimals: number): void => {
   if (!('decimals' in obj)) return // ARC-3 allows omission; only enforce when present
 
-  const dec = obj['decimals']
-  if (typeof dec !== 'number' || !Number.isInteger(dec)) {
-    throw new MetadataArc3Error(`ARC-3 field 'decimals' must be an integer, got ${typeof dec}`)
+  const dec = jsonIntegerMember(obj, 'decimals')
+  if (dec === undefined) {
+    throw new MetadataArc3Error(`ARC-3 field 'decimals' must be an integer, got ${jsonTypeName(obj['decimals'])}`)
   }
 
-  if (dec !== asaDecimals) {
+  if (dec !== BigInt(asaDecimals)) {
     throw new MetadataArc3Error(`ARC-3 field 'decimals' must match ASA decimals (${asaDecimals}), got ${dec}`)
   }
 }
@@ -232,7 +269,8 @@ export const validateArc3Properties = (body: Record<string, unknown>, arcKey: Ar
     throw new InvalidArc3PropertiesError(`properties['${arcKey}'] must be an object`)
   }
 
-  if (!isPositiveUint64(arcValue['application-id'])) {
+  const appId = jsonIntegerMember(arcValue, 'application-id')
+  if (appId === undefined || appId <= 0n || appId > MAX_UINT64) {
     throw new InvalidArc3PropertiesError(`properties['${arcKey}']['application-id'] must be a positive uint64`)
   }
 }
