@@ -83,12 +83,11 @@ const rejectedRequest = (error: Error): AlgodRequest => ({
  * connected network has no genesis hash (`suggested_params().gh` is not a string) unless a test sets it.
  */
 const createMockAlgod = () => ({
-  getApplicationBoxByName: vi.fn(
-    (_appId: bigint | number, _name: Uint8Array): AlgodRequest =>
-      rejectedRequest(new Error('getApplicationBoxByName is not mocked')),
+  getApplicationBoxByName: vi.fn((_appId: bigint | number, _name: Uint8Array): AlgodRequest =>
+    rejectedRequest(new Error('getApplicationBoxByName is not mocked')),
   ),
-  getAssetByID: vi.fn(
-    (_assetId: bigint | number): AlgodRequest => rejectedRequest(new Error('getAssetByID is not mocked')),
+  getAssetByID: vi.fn((_assetId: bigint | number): AlgodRequest =>
+    rejectedRequest(new Error('getAssetByID is not mocked')),
   ),
   getTransactionParams: vi.fn((): AlgodRequest => resolvedRequest({})),
 })
