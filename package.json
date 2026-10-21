@@ -82,6 +82,7 @@
     "prettier": "^3.9.10",
     "semantic-release": "^25.0.9",
     "typescript": "^5.9.3",
+    "vite": "^8.3.4",
     "vitest": "^4.1.11"
   },
   "peerDependencies": {
