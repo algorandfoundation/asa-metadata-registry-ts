@@ -3,10 +3,9 @@
   "compilerOptions": {
     "types": ["vitest/globals", "node"],
     "rootDir": "..",
-    "baseUrl": "..",
     "paths": {
-      "@/*": ["src/*"],
-      "@algorandfoundation/asa-metadata-registry-sdk": ["src/index.ts"]
+      "@/*": ["../src/*"],
+      "@algorandfoundation/asa-metadata-registry-sdk": ["../src/index.ts"]
     }
   },
   "include": ["**/*.ts"]
