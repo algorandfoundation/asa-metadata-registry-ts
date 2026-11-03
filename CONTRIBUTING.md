@@ -117,7 +117,6 @@ The SDK also runs in browsers, so the handwritten code in `src/` must not use No
 
 - Only ignore an advisory when no fixed version exists (so no override can help) and the vulnerable code cannot receive untrusted input in this repo.
 - List each ignored advisory below with its reason, and review them quarterly together with the overrides.
-- `GHSA-vfj7-8cjw-p6xm` (`braces` <= 3.0.3, stack exhaustion through deeply nested patterns): reached only through `semantic-release` (`micromatch`), which runs in the release workflow on glob patterns from this repo's own configuration.
 
 ### Updates
 
