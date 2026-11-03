@@ -6,6 +6,7 @@
 
 import * as constants from './constants.js'
 import { InvalidArc90UriError } from './errors.js'
+import { decodeBase64, encodeBase64 } from './internal/base64.js'
 import { asBigInt, toBigInt } from './internal/numbers.js'
 
 // ---------------------------------------------------------------------------
@@ -64,13 +65,18 @@ export const boxNameToAssetId = (boxName: Uint8Array): bigint => {
 }
 
 /** Standard base64 (with padding). */
-export const b64Encode = (data: Uint8Array): string => Buffer.from(data).toString('base64')
+export const b64Encode = (data: Uint8Array): string => encodeBase64(data)
 
-/** Standard base64 decode (accepts padding). */
-export const b64Decode = (dataB64: string): Uint8Array => new Uint8Array(Buffer.from(dataB64, 'base64'))
+/**
+ * Standard base64 decode (accepts padding).
+ *
+ * @throws {Error} If the input has characters outside the standard alphabet, or an impossible length.
+ */
+export const b64Decode = (dataB64: string): Uint8Array => decodeBase64(dataB64)
 
 /** Canonical unpadded URL-safe base64. */
-export const b64UrlEncode = (data: Uint8Array): string => Buffer.from(data).toString('base64url')
+export const b64UrlEncode = (data: Uint8Array): string =>
+  b64Encode(data).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
 /**
  * Decode canonical unpadded URL-safe base64.
@@ -82,7 +88,8 @@ export const b64UrlDecode = (dataB64Url: string): Uint8Array => {
   if (!BOX_VALUE_RE.test(dataB64Url) || dataB64Url.length % 4 === 1) {
     throw new Error('Invalid base64url')
   }
-  const decoded = new Uint8Array(Buffer.from(dataB64Url, 'base64url'))
+  const padding = '='.repeat((4 - (dataB64Url.length % 4)) % 4)
+  const decoded = b64Decode(dataB64Url.replace(/-/g, '+').replace(/_/g, '/') + padding)
   if (b64UrlEncode(decoded) !== dataB64Url) throw new Error('Non-canonical base64url')
   return decoded
 }

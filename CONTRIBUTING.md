@@ -34,6 +34,12 @@ To check that the built package imports by name from both ESM and CommonJS (CI r
 pnpm run build && pnpm run check:package
 ```
 
+To check that the built package runs in a browser without Node polyfills (CI runs this too):
+
+```sh
+pnpm run build && pnpm run check:browser
+```
+
 ### Code quality
 
 Before opening a pull request, check formatting, lint and build the package, and run the tests above:
@@ -73,6 +79,14 @@ Both clients are generated from the ARC-56 spec of the pinned `arc89` submodule 
 
 This SDK has no runtime dependencies; this keeps things lean for consumers and avoids security issues from packages we don't control. The published package includes compiled JavaScript and TypeScript declarations in `dist`, plus the generated AVM TypeScript source in `src/generated/avm`. All dependencies are either `devDependencies` (build/test tooling) or `peerDependencies` (installed by the consumer).
 
+The SDK also runs in browsers, so the handwritten code in `src/` must not use Node built-ins, Node globals such as `Buffer` and `process`, or dynamic `import()`. ESLint enforces it (the generated clients in `src/generated/` and the vendored code in `src/internal/vendor/` are not linted). For the same reason, hashing uses the SHA-2 code of `@noble/hashes` (see below) instead of Node `crypto`, and base64 uses `btoa` and `atob` (`src/internal/base64.ts`) instead of `Buffer`. `pnpm run check:browser` bundles the ESM build for the browser without Node polyfills and fails if the bundle needs a Node built-in. It then runs the pure entry points (hashing, base64, ARC-90 URIs and a box read) in a realm without Node globals, and compares the results with Node.
+
+### Vendored code (`src/internal/vendor/`)
+
+- `noble-hashes/` holds `sha2.ts`, `_md.ts`, `_u64.ts` and `utils.ts` of [`@noble/hashes`](https://github.com/paulmillr/noble-hashes) 2.4.0 (MIT, see `LICENSE` in the same folder, which the published package also includes), copied unchanged from the npm tarball. The SDK copies them instead of depending on the package, to keep zero runtime dependencies.
+- Do not edit these files. To update them, copy the same files of a newer release unchanged, and update the version above.
+- These files import each other with `.ts` extensions, so `tsconfig.json` sets `rewriteRelativeImportExtensions`. Prettier and ESLint ignore the folder (`.prettierignore`).
+
 ### Supply chain protections (`pnpm-workspace.yaml`)
 
 `packageManager` pins pnpm 10.34.7 with the SHA-512 hash of its tarball, so Corepack verifies the download before running it. Change the version with `corepack use pnpm@<version>`, which writes the new hash. These settings need pnpm 10.26 or later, and they live in `pnpm-workspace.yaml` because pnpm 11 and later read only auth and registry settings from `.npmrc`.
@@ -103,7 +117,6 @@ This SDK has no runtime dependencies; this keeps things lean for consumers and a
 
 - Only ignore an advisory when no fixed version exists (so no override can help) and the vulnerable code cannot receive untrusted input in this repo.
 - List each ignored advisory below with its reason, and review them quarterly together with the overrides.
-- `GHSA-vfj7-8cjw-p6xm` (`braces` <= 3.0.3, stack exhaustion through deeply nested patterns): reached only through `semantic-release` (`micromatch`), which runs in the release workflow on glob patterns from this repo's own configuration.
 
 ### Updates
 

@@ -44,7 +44,8 @@ symbols, with async adaptations where needed.
 
 - Codec:
   - `assetIdToBoxName`, `boxNameToAssetId`
-  - `b64Encode`, `b64Decode`, `b64UrlEncode` (canonical unpadded), `b64UrlDecode` (canonical only)
+  - `b64Encode`, `b64Decode` (standard alphabet only), `b64UrlEncode` (canonical unpadded),
+    `b64UrlDecode` (canonical only)
   - `Arc90Uri`, `Arc90Compliance`, `completePartialAssetUrl`
 
 - Hashing (content-only, no Asset ID):

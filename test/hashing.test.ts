@@ -11,7 +11,7 @@
  * - computeArc3MetadataHash
  */
 
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { hashing, constants, InvalidPageIndexError } from '@algorandfoundation/asa-metadata-registry-sdk'
 import { concatBytes } from '@/internal/bytes'
 
@@ -105,6 +105,41 @@ describe('sha256', () => {
     const result1 = sha256(new TextEncoder().encode('data1'))
     const result2 = sha256(new TextEncoder().encode('data2'))
     expect(result1).not.toEqual(result2)
+  })
+})
+
+describe('digest input types (TS-only)', () => {
+  // Like Python's hashlib, the digests accept bytes-like inputs and reject strings.
+  const bytes = new TextEncoder().encode('ARC-89')
+
+  test.each([
+    ['ArrayBuffer', () => bytes.slice().buffer],
+    ['Buffer', () => Buffer.from(bytes)],
+    ['subarray view', () => new Uint8Array([0, ...bytes, 0]).subarray(1, 1 + bytes.length)],
+    ['DataView', () => new DataView(bytes.slice().buffer)],
+    ['array of byte ints', () => Array.from(bytes)],
+  ])('%s gives the Uint8Array digest', (_name, make) => {
+    expect(sha256(make() as any)).toEqual(sha256(bytes))
+    expect(sha512_256(make() as any)).toEqual(sha512_256(bytes))
+  })
+
+  test('a string throws a TypeError', () => {
+    expect(() => sha256('ARC-89' as any)).toThrow(TypeError)
+    expect(() => sha512_256('ARC-89' as any)).toThrow(TypeError)
+  })
+})
+
+describe('hashing without Buffer (TS-only)', () => {
+  test('digests and the ARC-3 hash with extra_metadata give the same results without Buffer', () => {
+    // Browsers have no Buffer: hashing and the strict base64 decode of extra_metadata must not use it.
+    const json = new TextEncoder().encode('{"name":"ARC-89","extra_metadata":"AAEC"}')
+    const expected = [sha256(json), sha512_256(json), computeArc3MetadataHash(json)]
+    vi.stubGlobal('Buffer', undefined)
+    try {
+      expect([sha256(json), sha512_256(json), computeArc3MetadataHash(json)]).toEqual(expected)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
 

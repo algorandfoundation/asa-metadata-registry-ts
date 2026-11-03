@@ -12,7 +12,7 @@
  * - completePartialAssetUrl
  */
 
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { codec, constants, InvalidArc90UriError } from '@algorandfoundation/asa-metadata-registry-sdk'
 
 const {
@@ -239,6 +239,43 @@ describe('base64 encoding', () => {
   ])('b64url decode rejects non-canonical input %j (TS-only)', (encoded) => {
     // Only the canonical unpadded base64url encoding is accepted (Python raises binascii.Error).
     expect(() => b64UrlDecode(encoded)).toThrow(/base64url/)
+  })
+
+  test('b64 encode and decode give the Buffer results for every length (TS-only)', () => {
+    // Node's Buffer is the reference for the btoa/atob implementation of the codec.
+    for (let length = 0; length <= 300; length++) {
+      const bytes = Uint8Array.from({ length }, (_, i) => (i * 37 + length) & 0xff)
+      const expected = Buffer.from(bytes).toString('base64')
+      expect(b64Encode(bytes), `length ${length}`).toBe(expected)
+      expect(b64Decode(expected), `length ${length}`).toEqual(bytes)
+    }
+    const large = Uint8Array.from({ length: 100_000 }, (_, i) => i & 0xff)
+    expect(b64Encode(large)).toBe(Buffer.from(large).toString('base64'))
+  })
+
+  test.each([
+    '!!!!', // character outside the alphabet
+    'A', // impossible length
+    '-_-_', // URL-safe alphabet
+  ])('b64 decode rejects invalid input %j (TS-only)', (encoded) => {
+    expect(() => b64Decode(encoded)).toThrow('Invalid base64')
+  })
+
+  test('b64, b64url and ARC-90 URIs do not need Buffer (TS-only)', () => {
+    // Browsers have no Buffer: the codec and ARC-90 URIs must not use it.
+    vi.stubGlobal('Buffer', undefined)
+    try {
+      const bytes = new Uint8Array([0xfb, 0xff, 0xfe, 0x00, 0x01])
+      expect(b64Encode(bytes)).toBe('+//+AAE=')
+      expect(b64Decode('+//+AAE=')).toEqual(bytes)
+      expect(b64UrlEncode(bytes)).toBe('-__-AAE')
+      expect(b64UrlDecode('-__-AAE')).toEqual(bytes)
+      const uri = new Arc90Uri({ netauth: 'net:testnet', appId: 772968354n, boxName: null }).withAssetId(1n).toUri()
+      expect(uri).toBe('algorand://net:testnet/app/772968354?box=AAAAAAAAAAE')
+      expect(Arc90Uri.parse(uri).assetId).toBe(1n)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
 
