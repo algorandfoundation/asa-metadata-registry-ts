@@ -7,10 +7,15 @@ import prettierConfig from 'eslint-config-prettier'
 import globals from 'globals'
 import { fileURLToPath } from 'url'
 import { dirname, resolve } from 'path'
+import { builtinModules } from 'module'
 import fs from 'fs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
+
+// The SDK also runs in browsers, where bundlers drop Node built-ins or replace them with polyfills
+// (e.g. crypto-browserify has no SHA-512/256)
+const nodeBuiltinMessage = 'The SDK also runs in browsers: do not import Node built-ins in src/.'
 
 // Source ignored files from prettier to have a single source of truth
 const prettierIgnore = fs
@@ -61,6 +66,33 @@ export default [
       '@typescript-eslint/await-thenable': 'error',
       'prefer-const': 'error',
       'no-var': 'error',
+    },
+  },
+  {
+    files: ['src/**/*.ts'],
+    languageOptions: {
+      // Only the globals that browsers also have, so that no-undef reports process, Buffer, setImmediate and others
+      // (flat config merges `globals` with the block above, so every Node global is switched off first)
+      globals: {
+        ...Object.fromEntries(Object.keys(globals.node).map((name) => [name, 'off'])),
+        ...globals['shared-node-browser'],
+      },
+    },
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: builtinModules.map((name) => ({ name, message: nodeBuiltinMessage })),
+          patterns: [{ group: ['node:*'], message: nodeBuiltinMessage }],
+        },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ImportExpression',
+          message: 'Do not use import() in src/: no-restricted-imports does not check dynamic imports.',
+        },
+      ],
     },
   },
   {

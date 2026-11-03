@@ -56,6 +56,10 @@ runs:
       shell: bash
       run: pnpm run check:package
 
+    - name: Browser bundle check
+      shell: bash
+      run: pnpm run check:browser
+
     - name: Install AlgoKit
       shell: bash
       run: |

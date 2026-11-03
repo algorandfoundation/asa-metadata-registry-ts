@@ -4,13 +4,13 @@
  * Ported from Python `asa_metadata_registry/hashing.py`.
  */
 
-import { createHash, getHashes } from 'crypto'
 import * as constants from './constants.js'
 import { InvalidPageIndexError } from './errors.js'
 import { b64DecodeStrict } from './internal/base64.js'
-import { concatBytes } from './internal/bytes.js'
+import { concatBytes, toBytes } from './internal/bytes.js'
 import { parseJsonAllowNonFinite } from './internal/json.js'
 import { MAX_UINT8, MAX_UINT16 } from './internal/numbers.js'
+import * as sha2 from './internal/vendor/noble-hashes/sha2.js'
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -26,34 +26,29 @@ const uint8ToByte = (n: number, name: string): Uint8Array => {
   return new Uint8Array([n])
 }
 
-/** Cached set of available hash algorithms for O(1) lookup */
-const availableHashes = new Set(getHashes())
-
 /**
  * Reusable UTF-8 decoder with fatal error handling. A leading BOM is kept (and then rejected
  * as invalid JSON), as Python's `bytes.decode('utf-8')` + `json.loads` do.
  */
 const utf8Decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 
-const sha = (algo: string, data: Uint8Array): Uint8Array => {
-  // Ensure algorithm exists (for clearer errors, and parity with Python's explicit check).
-  if (!availableHashes.has(algo)) {
-    throw new Error(`crypto does not support ${algo} on this Node build`)
-  }
-  const h = createHash(algo)
-  h.update(Buffer.from(data))
-  return new Uint8Array(h.digest())
-}
-
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-/** SHA-512/256 digest. */
-export const sha512_256 = (data: Uint8Array): Uint8Array => sha('sha512-256', data)
+/**
+ * SHA-512/256 digest.
+ *
+ * @throws {TypeError} If `data` cannot be interpreted as bytes (e.g. a string).
+ */
+export const sha512_256 = (data: Uint8Array): Uint8Array => sha2.sha512_256(toBytes(data, 'data'))
 
-/** SHA-256 digest. */
-export const sha256 = (data: Uint8Array): Uint8Array => sha('sha256', data)
+/**
+ * SHA-256 digest.
+ *
+ * @throws {TypeError} If `data` cannot be interpreted as bytes (e.g. a string).
+ */
+export const sha256 = (data: Uint8Array): Uint8Array => sha2.sha256(toBytes(data, 'data'))
 
 /**
  * Compute hh = SHA-512/256("arc0089/header" || identifiers || revFlags || irrFlags || metadataSize)

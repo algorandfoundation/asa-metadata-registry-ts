@@ -5,7 +5,7 @@ description: Writes TypeScript code with @algorandfoundation/asa-metadata-regist
 
 # ASA Metadata Registry SDK
 
-`@algorandfoundation/asa-metadata-registry-sdk` needs Node >= 22.17 and the peer dependencies `@algorandfoundation/algokit-utils` (v9) and `algosdk` (v3). All exports below come from the package root. For every signature, return type, model, flag and error, read [reference.md](reference.md).
+`@algorandfoundation/asa-metadata-registry-sdk` needs Node >= 22.17 and the peer dependencies `@algorandfoundation/algokit-utils` (v9) and `algosdk` (v3). It also runs in browsers without Node polyfills; only AVM reads and writes, which go through AlgoKit Utils v9, need a global `Buffer`. All exports below come from the package root. For every signature, return type, model, flag and error, read [reference.md](reference.md).
 
 ## How the registry works
 

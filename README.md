@@ -29,7 +29,8 @@ The package has no runtime dependencies. Install the peer dependencies alongside
 pnpm add @algorandfoundation/asa-metadata-registry-sdk @algorandfoundation/algokit-utils algosdk
 ```
 
-Requires Node.js 22.17 or later.
+Requires Node.js 22.17 or later. The SDK also runs in browsers without Node polyfills: it uses no Node built-in and no
+`Buffer`. AVM reads and writes go through AlgoKit Utils v9, which needs a global `Buffer` in browsers.
 
 ## Quick start
 
