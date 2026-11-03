@@ -71,7 +71,7 @@
     "@types/node": "^25.3.3",
     "@typescript-eslint/eslint-plugin": "^8.71.2",
     "@typescript-eslint/parser": "^8.71.2",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^4.1.12",
     "algosdk": "^3.8.0",
     "conventional-changelog-conventionalcommits": "^9.3.1",
     "eslint": "^10.12.0",
@@ -85,7 +85,7 @@
     "semantic-release": "^25.0.9",
     "typescript": "^5.9.3",
     "vite": "^8.3.4",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "peerDependencies": {
     "@algorandfoundation/algokit-utils": "^9.2.2",
