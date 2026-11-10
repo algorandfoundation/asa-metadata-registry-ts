@@ -12,6 +12,7 @@
  * - completePartialAssetUrl
  */
 
+import { runInNewContext } from 'node:vm'
 import { describe, expect, test, vi } from 'vitest'
 import { codec, constants, InvalidArc90UriError } from '@algorandfoundation/asa-metadata-registry-sdk'
 
@@ -258,6 +259,50 @@ describe('base64 encoding', () => {
     'A', // impossible length
     '-_-_', // URL-safe alphabet
   ])('b64 decode rejects invalid input %j (TS-only)', (encoded) => {
+    expect(() => b64Decode(encoded)).toThrow('Invalid base64')
+  })
+
+  describe('b64 and b64url encode input types (TS-only)', () => {
+    // Like the digests, the encoders accept bytes-like inputs and reject strings.
+    const bytes = new Uint8Array([0xfb, 0xff, 0xfe, 0x00, 0x01, 0x02, 0x03, 0x04])
+
+    test.each([
+      ['ArrayBuffer', () => bytes.slice().buffer],
+      ['Buffer', () => Buffer.from(bytes)],
+      ['subarray view', () => new Uint8Array([9, ...bytes, 9]).subarray(1, 1 + bytes.length)],
+      ['DataView', () => new DataView(bytes.slice().buffer)],
+      ['array of byte ints', () => Array.from(bytes)],
+      // Another realm (iframe, node:vm, jsdom), where `instanceof Uint8Array` is false
+      ['Uint8Array from another realm', () => runInNewContext('Uint8Array.from(b)', { b: Array.from(bytes) })],
+      ['ArrayBuffer from another realm', () => runInNewContext('Uint8Array.from(b).buffer', { b: Array.from(bytes) })],
+    ])('%s gives the Uint8Array encoding', (_name, make) => {
+      expect(b64Encode(make() as any)).toBe('+//+AAECAwQ=')
+      expect(b64UrlEncode(make() as any)).toBe('-__-AAECAwQ')
+    })
+
+    test('an ARC-90 URI with an ArrayBuffer box name keeps the asset ID', () => {
+      const boxName = assetIdToBoxName(1n).slice().buffer
+      const uri = new Arc90Uri({ netauth: 'net:testnet', appId: 1n, boxName: boxName as any }).toUri()
+      expect(uri).toBe('algorand://net:testnet/app/1?box=AAAAAAAAAAE')
+    })
+
+    test.each([
+      ['a string', 'ARC-89'],
+      ['null', null],
+      ['an array with a non-byte', [256]],
+    ])('%s throws a TypeError', (_name, value) => {
+      expect(() => b64Encode(value as any)).toThrow(TypeError)
+      expect(() => b64UrlEncode(value as any)).toThrow(TypeError)
+    })
+  })
+
+  test.each([null, undefined, true, 1234])('b64 and b64url decode reject the non-string %j (TS-only)', (value) => {
+    // atob coerces with String(), so without a type check null would decode as the base64 text 'null'.
+    expect(() => b64Decode(value as any)).toThrow(TypeError)
+    expect(() => b64UrlDecode(value as any)).toThrow(TypeError)
+  })
+
+  test.each(['AB=', 'AA==AA=='])('b64 decode rejects misplaced padding %j (TS-only)', (encoded) => {
     expect(() => b64Decode(encoded)).toThrow('Invalid base64')
   })
 

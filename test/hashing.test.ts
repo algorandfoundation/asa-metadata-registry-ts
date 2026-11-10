@@ -11,6 +11,7 @@
  * - computeArc3MetadataHash
  */
 
+import { runInNewContext } from 'node:vm'
 import { describe, expect, test, vi } from 'vitest'
 import { hashing, constants, InvalidPageIndexError } from '@algorandfoundation/asa-metadata-registry-sdk'
 import { concatBytes } from '@/internal/bytes'
@@ -118,6 +119,9 @@ describe('digest input types (TS-only)', () => {
     ['subarray view', () => new Uint8Array([0, ...bytes, 0]).subarray(1, 1 + bytes.length)],
     ['DataView', () => new DataView(bytes.slice().buffer)],
     ['array of byte ints', () => Array.from(bytes)],
+    // Another realm (iframe, node:vm, jsdom), where `instanceof Uint8Array` is false
+    ['Uint8Array from another realm', () => runInNewContext('Uint8Array.from(b)', { b: Array.from(bytes) })],
+    ['ArrayBuffer from another realm', () => runInNewContext('Uint8Array.from(b).buffer', { b: Array.from(bytes) })],
   ])('%s gives the Uint8Array digest', (_name, make) => {
     expect(sha256(make() as any)).toEqual(sha256(bytes))
     expect(sha512_256(make() as any)).toEqual(sha512_256(bytes))
@@ -126,6 +130,15 @@ describe('digest input types (TS-only)', () => {
   test('a string throws a TypeError', () => {
     expect(() => sha256('ARC-89' as any)).toThrow(TypeError)
     expect(() => sha512_256('ARC-89' as any)).toThrow(TypeError)
+  })
+
+  test.each([
+    ['plain JSON', '{"name":"ARC-89"}'],
+    ['JSON with extra_metadata', '{"name":"ARC-89","extra_metadata":"AAEC"}'],
+  ])('the ARC-3 hash of %s accepts a Uint8Array from another realm', (_name, text) => {
+    const json = new TextEncoder().encode(text)
+    const foreign = runInNewContext('Uint8Array.from(b)', { b: Array.from(json) })
+    expect(computeArc3MetadataHash(foreign)).toEqual(computeArc3MetadataHash(json))
   })
 })
 
