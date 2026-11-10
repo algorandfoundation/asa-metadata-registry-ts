@@ -77,7 +77,12 @@ export const deploymentForGenesis = (genesisHashB64: string): RegistryDeployment
   return null
 }
 
-/** Canonical ARC-90 netauth for a network: the deployment label, else `gh:<base64url>`. */
+/**
+ * Canonical ARC-90 netauth for a network: the deployment label, else `gh:<base64url>`.
+ *
+ * @throws {Error} If `genesisHashB64` is not a known deployment and not valid standard base64
+ * (e.g. it contains `-` or `_`).
+ */
 export const netauthForGenesis = (genesisHashB64: string): string | null => {
   const d = deploymentForGenesis(genesisHashB64)
   if (d !== null) return d.arc90UriNetauth
