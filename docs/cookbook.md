@@ -210,8 +210,14 @@ console.log(header.isNttCrossChain, header.isArc54Burnable, header.isImmutable) 
 Pass the original file, byte for byte, not a parsed object. If the ASA has a nonzero `am`, the SDK sets the immutable
 flag (explicit `flags` must include it), and with `arc3Compliant: true` the ARC-3 hash of the file must match it.
 
-In a browser, read the file with `fetch` instead of `readFile`:
-`new Uint8Array(await (await fetch(metadataUrl)).arrayBuffer())`.
+In a browser, read the file with `fetch` instead of `readFile`, and check the response first, or an HTTP error response
+could be mistaken for metadata.
+
+```ts
+const response = await fetch(metadataUrl)
+if (!response.ok) throw new Error(`Could not fetch the metadata file: HTTP ${response.status}`)
+const fileBytes = new Uint8Array(await response.arrayBuffer())
+```
 
 ```ts
 const fileBytes = await readFile('metadata.json') // the original file, for example from IPFS

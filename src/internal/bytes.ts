@@ -6,38 +6,33 @@ export const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean => {
   return true
 }
 
+// `instanceof ArrayBuffer` is false for an ArrayBuffer from another realm (iframe, node:vm, jsdom)
+const isArrayBuffer = (v: unknown): v is ArrayBuffer =>
+  v instanceof ArrayBuffer || Object.prototype.toString.call(v) === '[object ArrayBuffer]'
+
 /**
  * Convert common byte-like inputs to a Uint8Array.
- * Accepts Uint8Array, ArrayBuffer, Buffer (Node), other typed array views, or an array of byte ints.
+ * Accepts Uint8Array, ArrayBuffer, Buffer (Node), other typed array views, or an array of byte ints,
+ * including typed arrays and ArrayBuffers from another realm (iframe, node:vm, jsdom).
+ * A typed array other than Uint8Array gives its underlying memory bytes, not its element values.
  * @throws {TypeError} when the value cannot be interpreted as bytes.
  */
 export const toBytes = (v: unknown, name: string): Uint8Array => {
   if (v instanceof Uint8Array) return v
-  if (v instanceof ArrayBuffer) return new Uint8Array(v)
+  // Typed arrays (including Buffer) and DataView, from any realm
+  if (ArrayBuffer.isView(v)) return new Uint8Array(v.buffer, v.byteOffset, v.byteLength)
+  if (isArrayBuffer(v)) return new Uint8Array(v)
 
-  const B = (globalThis as unknown as { Buffer?: { isBuffer: (v: unknown) => boolean } }).Buffer
-  if (B?.isBuffer?.(v)) return new Uint8Array(v as ArrayLike<number>)
-
-  if (v && typeof v === 'object') {
-    const view = v as { buffer?: ArrayBuffer; byteOffset?: number; byteLength?: number; length?: number }
-
-    // TypedArray / DataView / buffer-like object
-    if (view.buffer instanceof ArrayBuffer) {
-      return new Uint8Array(view.buffer, view.byteOffset ?? 0, view.byteLength ?? view.length)
-    }
-
-    if (Array.isArray(v)) {
-      const view = v as number[]
-      const out = new Uint8Array(view.length)
-      for (let i = 0; i < view.length; i++) {
-        const n = view[i]
-        if (typeof n !== 'number' || !Number.isInteger(n) || n < 0 || n > MAX_UINT8) {
-          throw new TypeError(`${name} must be bytes or a sequence of ints`)
-        }
-        out[i] = n
+  if (Array.isArray(v)) {
+    const out = new Uint8Array(v.length)
+    for (let i = 0; i < v.length; i++) {
+      const n: unknown = v[i]
+      if (typeof n !== 'number' || !Number.isInteger(n) || n < 0 || n > MAX_UINT8) {
+        throw new TypeError(`${name} must be bytes or a sequence of ints`)
       }
-      return out
+      out[i] = n
     }
+    return out
   }
 
   throw new TypeError(`${name} must be bytes or a sequence of ints`)

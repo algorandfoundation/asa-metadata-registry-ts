@@ -7,6 +7,7 @@
 import * as constants from './constants.js'
 import { InvalidArc90UriError } from './errors.js'
 import { decodeBase64, encodeBase64 } from './internal/base64.js'
+import { toBytes } from './internal/bytes.js'
 import { asBigInt, toBigInt } from './internal/numbers.js'
 
 // ---------------------------------------------------------------------------
@@ -64,27 +65,40 @@ export const boxNameToAssetId = (boxName: Uint8Array): bigint => {
   return bytesToUint64BE(boxName)
 }
 
-/** Standard base64 (with padding). */
-export const b64Encode = (data: Uint8Array): string => encodeBase64(data)
+/**
+ * Standard base64 (with padding).
+ *
+ * @throws {TypeError} If `data` cannot be interpreted as bytes (e.g. a string).
+ */
+export const b64Encode = (data: Uint8Array): string => encodeBase64(toBytes(data, 'data'))
 
 /**
- * Standard base64 decode (accepts padding).
+ * Standard base64 decode. Padding can be left out, but must be correct when present ('AB=' is
+ * rejected), and ASCII whitespace is ignored.
  *
- * @throws {Error} If the input has characters outside the standard alphabet, or an impossible length.
+ * @throws {TypeError} If the input is not a string.
+ * @throws {Error} If the input has characters outside the standard alphabet, misplaced padding, or
+ * an impossible length.
  */
 export const b64Decode = (dataB64: string): Uint8Array => decodeBase64(dataB64)
 
-/** Canonical unpadded URL-safe base64. */
+/**
+ * Canonical unpadded URL-safe base64.
+ *
+ * @throws {TypeError} If `data` cannot be interpreted as bytes (e.g. a string).
+ */
 export const b64UrlEncode = (data: Uint8Array): string =>
   b64Encode(data).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
 /**
  * Decode canonical unpadded URL-safe base64.
  *
+ * @throws {TypeError} If the input is not a string.
  * @throws {Error} If the input has padding, characters outside the URL-safe alphabet, or is not
  * the canonical encoding of the decoded bytes (e.g. non-zero trailing bits).
  */
 export const b64UrlDecode = (dataB64Url: string): Uint8Array => {
+  if (typeof dataB64Url !== 'string') throw new TypeError('base64url input must be a string')
   if (!BOX_VALUE_RE.test(dataB64Url) || dataB64Url.length % 4 === 1) {
     throw new Error('Invalid base64url')
   }

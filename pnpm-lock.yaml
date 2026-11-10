@@ -23,6 +23,9 @@ importers:
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.13.0(jiti@2.7.0))
+      '@noble/hashes':
+        specifier: 2.4.0
+        version: 2.4.0
       '@types/node':
         specifier: ^25.3.3
         version: 25.3.3
@@ -2710,7 +2713,7 @@ snapshots:
       '@algorandfoundation/xhd-wallet-api': 2.0.0-canary.1
       '@noble/curves': 2.2.0
       '@noble/ed25519': 3.1.0
-      '@noble/hashes': 2.2.0
+      '@noble/hashes': 2.4.0
       '@scure/bip39': 2.4.0
       algorand-msgpack: 1.1.0
       buffer: 6.0.3
@@ -2752,7 +2755,7 @@ snapshots:
     dependencies:
       '@noble/ciphers': 2.2.0
       '@noble/curves': 2.2.0
-      '@noble/hashes': 2.2.0
+      '@noble/hashes': 2.4.0
       ajv: 8.20.0
       algo-msgpack-with-bigint: 2.1.1
       bn.js: 5.2.3

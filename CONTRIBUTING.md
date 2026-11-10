@@ -83,8 +83,16 @@ The SDK also runs in browsers, so the handwritten code in `src/` must not use No
 
 ### Vendored code (`src/internal/vendor/`)
 
-- `noble-hashes/` holds `sha2.ts`, `_md.ts`, `_u64.ts` and `utils.ts` of [`@noble/hashes`](https://github.com/paulmillr/noble-hashes) 2.4.0 (MIT, see `LICENSE` in the same folder, which the published package also includes), copied unchanged from the npm tarball. The SDK copies them instead of depending on the package, to keep zero runtime dependencies.
-- Do not edit these files. To update them, copy the same files of a newer release unchanged, and update the version above.
+- `noble-hashes/` holds `sha2.ts`, `_md.ts`, `_u64.ts` and `utils.ts` of [`@noble/hashes`](https://github.com/paulmillr/noble-hashes) (MIT, see `LICENSE` in the same folder, which the published package also includes), copied unchanged from the npm package. The SDK copies them instead of depending on the package, to keep zero runtime dependencies.
+- Do not edit these files. The exact version is pinned as a devDependency in `package.json`. CI runs `pnpm run check:vendor` to compare the vendored sources and license against the installed package.
+- To update them, for example when Dependabot bumps `@noble/hashes` and `check:vendor` fails, run `pnpm install` and copy the files of the new version, plus any new file they import:
+
+  ```sh
+  cp node_modules/@noble/hashes/src/{sha2,_md,_u64,utils}.ts node_modules/@noble/hashes/LICENSE src/internal/vendor/noble-hashes/
+  ```
+
+  Then run the build, the tests and `pnpm run check:browser`. Dependabot opens these updates in their own PR, outside the `minor-and-patch` group.
+
 - These files import each other with `.ts` extensions, so `tsconfig.json` sets `rewriteRelativeImportExtensions`. Prettier and ESLint ignore the folder (`.prettierignore`).
 
 ### Supply chain protections (`pnpm-workspace.yaml`)

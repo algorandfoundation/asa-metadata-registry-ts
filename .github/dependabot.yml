@@ -16,6 +16,9 @@ updates:
         update-types:
           - minor
           - patch
+        # Vendor updates need manual file copying; keep them outside the group.
+        exclude-patterns:
+          - '@noble/hashes'
 
   - package-ecosystem: 'github-actions'
     directory: '/'
