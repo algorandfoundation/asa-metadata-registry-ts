@@ -48,6 +48,10 @@ runs:
       shell: bash
       run: pnpm run format:check
 
+    - name: Vendored code check
+      shell: bash
+      run: pnpm run check:vendor
+
     - name: Build
       shell: bash
       run: pnpm run build
